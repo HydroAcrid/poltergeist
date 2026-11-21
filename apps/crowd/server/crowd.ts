@@ -9,7 +9,8 @@ import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import type { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import type { Verdict } from "@poltergeist/contracts/verdict.js";
 import { GhostNames } from "./ghost-names.js";
-import { conduct, familyOf, kindOf, POLICY, type Candidate, type Decision, type RecentHaunt, type SceneObservation, type Staging } from "./conductor.js";
+import { conduct, familyOf, kindOf, POLICY, withAgent, type Candidate, type Decision, type RecentHaunt, type SceneObservation, type Staging } from "./conductor.js";
+import { isDisplaySafeReason, type ConductorAgent } from "./conductor-agent.js";
 import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
 import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
@@ -85,6 +86,8 @@ export interface CrowdDeps {
   log?: (msg: string, extra?: object) => void;
   /** Latest scene for the conductor (World's rehearsal state today). Missing or stale → FIFO. */
   scene?: () => SceneObservation | undefined;
+  /** Optional Gemini conductor ranker (`withAgent`); deterministic rules lead and stay the fallback. */
+  conductorAgent?: ConductorAgent;
   lobbyPhase?: () => CrowdState["lobbyPhase"];
   matchClock?: () => MatchClock | undefined;
 }
@@ -116,6 +119,7 @@ export class CrowdService {
   // Conductor: one reserved pick, stable until it's sent or becomes impossible.
   private reserved: { hauntId: Id; reason: string; mode: "conductor" | "fifo" } | null = null;
   private reservedWithScene = false;
+  private lastAgentKey = "";
   private waitingReasons = new Map<Id, string>();
   private skips = new Map<Id, number>();
   private staging = new Map<Id, Staging>(); // server-only judgments from the existing moderation call
@@ -457,6 +461,7 @@ export class CrowdService {
 
   private releaseReservation(): void {
     this.reserved = null;
+    this.lastAgentKey = "";
     this.waitingReasons.clear();
   }
 
@@ -490,6 +495,61 @@ export class CrowdService {
       // Fair turns: anything feasible that was passed over gets closer to its guaranteed turn.
       for (const w of d.waiting) if (w.code === "ranked_lower") this.skips.set(w.hauntId, (this.skips.get(w.hauntId) ?? 0) + 1);
     }
+    this.maybeConsultAgent(d, scene);
+  }
+
+  private maybeConsultAgent(d: Decision, scene: SceneObservation | undefined): void {
+    const agent = this.deps.conductorAgent;
+    const ep = this.active;
+    if (!agent || !ep || d.mode !== "conductor") return;
+    const feasibleIds = [
+      d.pick?.hauntId,
+      ...d.waiting.filter((w) => w.code === "ranked_lower").map((w) => w.hauntId),
+    ].filter((x): x is Id => !!x);
+    if (feasibleIds.length < 2) return;
+    const key = `${ep.episodeId}:${ep.dispatched}:${[...feasibleIds].sort().join(",")}`;
+    if (key === this.lastAgentKey) return;
+    this.lastAgentKey = key;
+    const epId = ep.episodeId;
+    const slot = ep.dispatched;
+    const recent = this.hallwayIds.slice(-4).map((id) => {
+      const h = this.haunts.get(id);
+      const idea = { preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "", staging: this.staging.get(id) };
+      return { hauntId: id, kind: kindOf(idea), family: familyOf(idea), seen: scene?.seenHauntIds.includes(id) ?? false };
+    });
+    const job = withAgent(
+      d,
+      (ids) =>
+        agent.rank({
+          candidates: ids
+            .map((id) => this.haunts.get(id))
+            .filter((h): h is Haunt => !!h && h.status === "queued" && !!h.moderated?.safe)
+            .map((h) => {
+              const st = this.staging.get(h.hauntId);
+              const idea = { preset: h.preset, tags: h.moderated!.tags, text: h.moderated!.text, staging: st };
+              return {
+                hauntId: h.hauntId,
+                text: h.moderated!.text,
+                tags: h.moderated!.tags,
+                family: familyOf(idea),
+                ...(st ? { impact: st.impact } : {}),
+              };
+            }),
+          scene,
+          recent,
+        }),
+      isDisplaySafeReason,
+    )
+      .then((res) => {
+        if (!res.agentUsed || !res.pick) return;
+        if (this.active?.episodeId !== epId || this.active.dispatched !== slot) return;
+        const chosen = this.haunts.get(res.pick.hauntId);
+        if (!chosen || chosen.status !== "queued") return;
+        this.reserved = { hauntId: chosen.hauntId, reason: res.pick.reason, mode: "conductor" };
+        this.waitingReasons.delete(chosen.hauntId);
+      })
+      .finally(() => this.pending.delete(job));
+    this.pending.add(job);
   }
 
   private takeSeeded(): Haunt | undefined {

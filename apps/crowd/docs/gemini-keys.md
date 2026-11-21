@@ -1,6 +1,10 @@
 # Crowd's Gemini keys
 
-Crowd uses two Gemini keys for idea moderation (`gemini-4-hydrogen`). Key 1 does the work. If key 1 is rate-limited (429), rejected (401/403) or Gemini has a server error (5xx), key 2 takes over, and key 1 rests for a minute. A rolling cap (`PG_CROWD_GEMINI_MAX_PER_MIN`, default 120 calls a minute across both keys) protects the bill. If both keys fail or the cap is hit, the idea is held back with "The idea check is unavailable…", never approved without a check. The preset suggestions keep working.
+Crowd uses two Gemini keys (`gemini-4-hydrogen`) across two server-only adapters:
+1. **Creative moderation & staging (`server/moderation/gemini.ts`):** rewrites free-text guest ideas into family-safe hallway events, proposes private one-Enter revisions, and labels visual staging (`family`, `impact`, `placement`).
+2. **Live show conductor (`server/conductor-agent.ts`):** ranks rule-feasible ideas for the current hallway shot within a 500 ms budget (`withAgent`), falling back deterministically to rules if slow or unavailable.
+
+Key 1 does the work. If key 1 is rate-limited (429), rejected (401/403) or Gemini has a server error (5xx), key 2 takes over, and key 1 rests for a minute. Rolling per-minute caps protect the bill. If both keys fail or the cap is hit, moderation holds the idea back ("The idea check is unavailable…", never approved unchecked) and the conductor keeps its deterministic rule pick. The preset suggestions keep working.
 
 ## Where the keys live
 
