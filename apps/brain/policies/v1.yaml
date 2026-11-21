@@ -39,6 +39,12 @@ navigation:
   # horizontal FOV, i.e. ~0.04°/ms. One unit of bearing is 90°, so ~2100 ms.
   kTurn: 2100            # ms of turn per unit bearing
   maxTurnMs: 1000        # ≈ 40° per tick; re-observe before turning further
+  # Projector option (World, #2): when a grounded obstacle blocks the next steps
+  # and a side is clear, sidestep with A/D so the dodge is visible; keep turning
+  # for reacquiring the route or when neither side is open.
+  preferSidestep: true
+  sidestepWithin: 0.6    # obstacle within this fraction of the way to the exit row
+  sidestepShift: 100     # lateral frame units one A/D step is assumed to move the boots
   # ER 2's forward floor point varied between runs on the same frames (live probe
   # 2026-11-21), so facing comes from the follow camera until a calibration pair.
   useForwardPoint: false

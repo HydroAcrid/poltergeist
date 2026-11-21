@@ -33,7 +33,7 @@ describe("POST /api/brain/tick", () => {
     expect(r.statusCode).toBe(200);
     const body = r.json();
     expect(TickResponse.safeParse(body).success).toBe(true);
-    expect([body.episodeId, body.seq, body.action.key]).toEqual([EP, 0, "ArrowRight"]);
+    expect([body.episodeId, body.seq, body.action.key]).toEqual([EP, 0, "D"]);
   });
 
   it("after responding, writes the frame and appends a valid TickLog", async () => {
@@ -46,7 +46,8 @@ describe("POST /api/brain/tick", () => {
     expect(lines).toHaveLength(1);
     const log = TickLog.parse(JSON.parse(lines[0]!));
     expect(log.framePath).toBe(`data/episodes/${EP}/frames/3.jpg`);
-    expect(log.rationale).toBe("obstacle ahead, turning toward exit");
+    expect(log.rationale).toBe("obstacle ahead, stepping right");
+    expect(log.reaction).toBe("avoid");
   });
 
   it("records the observed reaction in the TickLog (not in the TickResponse)", async () => {

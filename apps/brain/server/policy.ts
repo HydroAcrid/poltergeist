@@ -51,6 +51,9 @@ export const Policy = z.object({
     turnDeadband: unit,
     kTurn: z.number().positive(),
     maxTurnMs: ms.min(120).max(1500),
+    preferSidestep: z.boolean(),
+    sidestepWithin: unit,
+    sidestepShift: z.number().positive(),
     useForwardPoint: z.boolean(),
   }),
 });

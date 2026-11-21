@@ -129,12 +129,12 @@ describe("Er2Perception", () => {
     expect(res.error).toBe("timeout");
   });
 
-  it("through the tick handler: ER 2's chair-ahead scene turns toward the exit, and a failure falls back", async () => {
+  it("through the tick handler: ER 2's chair-ahead scene sidesteps right, and a failure falls back", async () => {
     const policy = loadPolicy("v1");
     const ok = new TickHandler({ adapter: new Er2Perception(fake(reply(chairAhead)).client), policy, taskFor: () => task });
     const res = await ok.handle(req(0));
     expect(TickResponse.safeParse(res).success).toBe(true);
-    expect([res.mode, res.action.key]).toEqual(["track", "ArrowRight"]);
+    expect([res.mode, res.action.key]).toEqual(["track", "D"]);
 
     const bad = new TickHandler({ adapter: new Er2Perception(fake(new Error("boom")).client), policy, taskFor: () => task });
     const fb = await bad.handle(req(1));
@@ -155,5 +155,21 @@ describe("facingPoint (forward route from the trailing camera)", () => {
     expect(facingPoint([747, 525], [823, 532], [465, 467], 500)).toEqual([465, 500]);
     expect(facingPoint([747, 525], [745, 600], [465, 467], 500)).toEqual([465, 500]);
     expect(facingPoint([747, 525], undefined, [465, 467], 500)).toEqual([465, 500]);
+  });
+});
+
+describe("prefer sidestep on ER 2's live-probe scenes", () => {
+  it("furniture far down the hall doesn't block a sidestep; a near armchair does", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { stepNav, sideClear } = await import("../server/navigate.js");
+    const { initialState } = await import("../server/controller.js");
+    // A real ER 2 reply, frozen so later probe runs can't change this test.
+    const row = JSON.parse(readFileSync(new URL("./fixtures/er2-reply-peel-in-path.json", import.meta.url), "utf8"));
+    const scene = parseScene(row.raw).scene!;
+    const policy = loadPolicy("v1");
+    const facing: [number, number] = [scene.goal![0], policy.navigation.headingX];
+    expect(sideClear(scene, facing, "left", policy)).toBe(true); // stools at 0.66 of the way: too far to matter
+    expect(sideClear(scene, facing, "right", policy)).toBe(false); // armchair right beside the landing spot
+    expect(stepNav(initialState(), scene, req(0), policy).action.key).toBe("A");
   });
 });

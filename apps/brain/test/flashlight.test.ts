@@ -5,7 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
-import { blockingObstacle, feetMidpoint } from "../server/navigate.js";
+import { blockingObstacle, feetMidpoint, sideClear, stepNav } from "../server/navigate.js";
+import { initialState } from "../server/controller.js";
 import { FixturePerception, WORLD_FLASHLIGHT, loadHallwayLabels } from "../server/perception/fixture.js";
 import type { Scene } from "../server/perception/types.js";
 import { loadPolicy } from "../server/policy.js";
@@ -53,12 +54,11 @@ describe("live flashlight round: chair as the obstacle", () => {
     expect(blockingObstacle(scene, goal, policy)).toBeUndefined();
   });
 
-  it("chair ahead: turns right toward the exit instead of walking into the chair", async () => {
+  it("chair ahead: sidesteps right onto the open floor instead of walking into the chair", async () => {
     const res = await once("chair-ahead.jpg");
     expect(res.mode).toBe("track");
-    expect(res.action.key).toBe("ArrowRight");
-    expect(res.action.key).not.toBe("W");
-    expect(res.rationale).toBe("obstacle ahead, turning toward exit");
+    expect(res.action).toEqual({ key: "D", holdMs: 600 });
+    expect(res.rationale).toBe("obstacle ahead, stepping right");
     expect(res.perception.hazards).toEqual([{ label: "obstacle", point: byFile["chair-ahead.jpg"]!.hazard!.point }]);
   });
 
@@ -90,4 +90,35 @@ describe("live flashlight round: chair as the obstacle", () => {
       expect(text).not.toContain("yellow");
     }
   });
+
+  it("chair ahead: the right side is clear for a sidestep", () => {
+    const scene = sceneOf("chair-ahead.jpg");
+    expect(sideClear(scene, [scene.goal![0], policy.navigation.headingX], "right", policy)).toBe(true);
+  });
+
+  it("with preferSidestep off, the old behaviour returns: turn toward the exit", () => {
+    const off = { ...policy, navigation: { ...policy.navigation, preferSidestep: false } };
+    const r = stepNav(initialState(), sceneOf("chair-ahead.jpg"), req(0), off);
+    expect([r.action.key, r.rationale]).toEqual(["ArrowRight", "obstacle ahead, turning toward exit"]);
+  });
 });
+
+describe("prefer sidestep: edge cases", () => {
+  const base = sceneOf("chair-ahead.jpg");
+  const chair = base.obstacles[0]!;
+  const shifted = (dx: number) => ({ point: [chair.point[0], chair.point[1] + dx] as [number, number], box: [chair.box![0], chair.box![1] + dx, chair.box![2], chair.box![3] + dx] as [number, number, number, number] });
+
+  it("if both sides are blocked, it turns to look for a way instead of stepping into something", () => {
+    const boxedIn = { ...base, obstacles: [chair, shifted(-100), shifted(100)] };
+    const r = stepNav(initialState(), boxedIn, req(0), policy);
+    expect(["ArrowLeft", "ArrowRight"]).toContain(r.action.key);
+    expect(r.reaction).toBe("avoid");
+  });
+
+  it("an obstacle far down the route doesn't trigger a sidestep yet", () => {
+    const far = { ...base, obstacles: [{ point: [500, 470] as [number, number], box: [470, 440, 500, 500] as [number, number, number, number] }] };
+    const r = stepNav(initialState(), far, req(0), { ...policy, navigation: { ...policy.navigation, sidestepWithin: 0.6 } });
+    expect(["A", "D"]).not.toContain(r.action.key);
+  });
+});
+
