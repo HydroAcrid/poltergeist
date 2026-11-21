@@ -43,7 +43,8 @@ export default async function enter(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   if (!['GET', 'HEAD'].includes(req.method) || !views.has(view)) return res.status(404).end();
   try {
-    const box = await Sandbox.get({name: 'poltergeist-world', resume: true});
+    const name = process.env.PG_WORLD_SANDBOX_NAME || 'poltergeist-world';
+    const box = await Sandbox.get({name, resume: true});
     const origin = box.domain(3000);
     if (!(await serving(origin))) await startWorld(box, origin);
     return res.redirect(307, origin + '/' + view);
