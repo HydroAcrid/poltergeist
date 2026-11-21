@@ -7,6 +7,8 @@ import { placementTarget } from "../rehearsal/placement.mjs";
 const width = 112,
   height = 64;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+export const recoveryWatchdogMs = 4000;
+const restoredWidth = shoulderFrame.width*.88;
 function sampleFrame(bytes, number) {
   const src = jpeg.decode(bytes, { useTArray: true, maxResolutionInMP: 3 });
   const pixels = new Uint8Array(width * height * 3);
@@ -190,6 +192,9 @@ export function createMoveWindow(fps) {
   return {
     start(at) { firstFrameAt ??= at; },
     settle,
+    settledFrame(frame, at) {
+      return firstFrameAt===undefined ? frame+1 : Math.max(frame,mediaFrameAt(at))+1;
+    },
     accept(command, subject, frame, at) {
       if (firstFrameAt === undefined || mustStopTravel(subject) ||
           !Number.isInteger(command.observed) || command.observed !== subject.observed ||
@@ -217,9 +222,9 @@ export function cameraStep(subject) {
   if (!subject.known || subject.lost || !subject.grounded) return null;
   if (subject.distanceHeld) {
     if (!subject.cameraRecovery) return null;
-    // Physically move the observer along the hallway. One pulse per live reading.
-    return {key:'key_w', ms:clamp(Math.round((shoulderFrame.width-subject.bodyWidth)*1250),95,265),
-      reason:'recover shoulder distance'};
+    // Keep native W down under frame feedback. The timer is a dead-man switch
+    // for a stopped stream or absent vision result, independent of rendering.
+    return {key:'key_w', ms:recoveryWatchdogMs, observed:subject.observed, reason:'recover shoulder distance'};
   }
   const { x, scale, vx, vh, top } = subject;
   if (top < 0.045)
@@ -289,6 +294,7 @@ export function createNativeFollow() {
     lastStaticCorrection = -1,
     lastRecovery = -1;
   let distanceHeld = false, approachClear = false, semanticThrough = -1, semanticAnchor = null;
+  let lastAcceptedAtFrame = -1, opticallyRestoredAt = -1, opticalBreakAt = -1, floorVisible = false;
   let nextCamera = 0,
     lost = true,
     rangeTrend = false,
@@ -312,6 +318,9 @@ export function createNativeFollow() {
     semanticThrough = -1;
     distanceHeld = false;
     approachClear = false;
+    floorVisible = false;
+    lastAcceptedAtFrame = -1;
+    opticallyRestoredAt = -1;
   }
   function advance(previous, current) {
     anchor = locate(previous, current, anchor);
@@ -324,16 +333,29 @@ export function createNativeFollow() {
         frame.number >= current.number - 32,
     );
     localRatio = base && anchor.known ? localScale(base, current) : null;
+    if (localRatio && base.track.grounding===anchor.grounding) {
+      anchor.opticalWidth = base.track.opticalWidth*localRatio;
+      current.track.opticalWidth = anchor.opticalWidth;
+      if (distanceHeld && anchor.opticalWidth>=restoredWidth)
+        opticallyRestoredAt = current.number;
+    }
   }
   function push(bytes, number) {
     const frame = sampleFrame(bytes, number),
       prev = history.at(-1);
     if (prev && number <= prev.number) return;
-    if (lastGrounding >= 0 && number-lastGrounding > 24*4) {
+    // During a camera-only correction a delivered semantic answer is often
+    // already 2–3 s behind. Continue only while native texture still tracks,
+    // and for at most one more four-second observation window from its return.
+    const recentOpticalRecovery = distanceHeld && anchor.known && number-lastAcceptedAtFrame <= 96;
+    if (lastGrounding >= 0 && number-lastGrounding > 96 && !recentOpticalRecovery) {
       semanticThrough = -1;
       suspend('stale observation');
     }
-    if (prev && anchor.known) advance(prev, frame);
+    if (prev && anchor.known) {
+      advance(prev,frame);
+      if (!anchor.known) opticalBreakAt=number;
+    }
     history.push(frame);
     // Keep more than ER2's request timeout to align each delayed measurement
     // with its source frame before bringing the body forward to the current one.
@@ -360,6 +382,8 @@ export function createNativeFollow() {
     const b=upper ? scene.upperBodyBox : scene.bodyBox;
     if (!validBodyBox(scene.bodyBox)) { lose('body unlocated'); return; }
     const [top, left, bottom, right] = scene.bodyBox;
+    floorVisible = scene.rightFloorVisible===true && Array.isArray(scene.ahead) && scene.ahead.length===2 &&
+      scene.ahead.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
     const bodyWidth = (right-left)/1000, bodyX = (right+left)/2000;
     const prior=lastBox && number-lastBox.number<=24*4 ? lastBox : null;
     const continuous = prior && Math.abs(bodyX-prior.bodyX)<.15 &&
@@ -385,13 +409,15 @@ export function createNativeFollow() {
     holdReason = reacquiring ? 'confirming returning subject' : null;
     // Body width is more stable across flashlight/arm poses than upper-body width.
     // Hysteresis keeps commands paused until a new reading verifies the restored crop.
-    distanceHeld = bodyWidth < shoulderFrame.width * (distanceHeld ? .84 : .78);
+    const pullingAway = continuous && bodyWidth<prior.bodyWidth*.94;
+    distanceHeld = bodyWidth < (distanceHeld || pullingAway ? restoredWidth : shoulderFrame.width*.78);
+    lastAcceptedAtFrame = history.at(-1).number;
     approachClear = Boolean(continuous && scene.rightFloorVisible && scene.pose==='upright' &&
       scene.threat!=='startling' && bodyWidth>=.1 && bodyX>=.1 && bodyX<=.56 &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) &&
         o.box[2]>=bottom-20 && o.box[1]<=550 && o.box[3]>=Math.min(450,bodyX*1000+50)));
     lastBox={upper,number,scale,x,bodyX,bodyWidth};
-    anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
+    anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,grounding:number,opticalWidth:bodyWidth,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     semanticAnchor = { ...anchor, clearLane };
     history[index].track = { ...anchor };
     for (let i = index + 1; i < history.length && anchor.known; i++)
@@ -417,7 +443,9 @@ export function createNativeFollow() {
       clearLane: !opticallyLocated && semantic ? semanticAnchor.clearLane : clearLane,
       distanceHeld,
       bodyWidth:lastBox?.bodyWidth,
-      cameraRecovery:Boolean(usable && distanceHeld && approachClear),
+      cameraRecovery:Boolean(usable && distanceHeld && approachClear && opticallyRestoredAt<lastGrounding && opticalBreakAt<=lastAcceptedAtFrame),
+      opticalWidth:anchor.opticalWidth,
+      floorVisible,
       grounded: lastGrounding >= 0,
       observed: lastGrounding,
       holdReason: usable ? distanceHeld ? 'recovering shoulder distance' : null : holdReason,
@@ -434,14 +462,21 @@ export function createNativeFollow() {
     const translation = ["key_d", "key_a", "key_w"].includes(step.key);
     if (!translation && lastStaticCorrection === lastGrounding) return null;
     if (!translation) lastStaticCorrection = lastGrounding;
-    nextCamera = now + step.ms + (step.key==='key_w' ? 180 : translation ? 300 : 520);
+    nextCamera = step.reason==='recover shoulder distance' ? now+180 : now+step.ms+(step.key==='key_w' ? 180 : translation ? 300 : 520);
     return { ...step, x: anchor.x, height: anchor.h, velocity: anchor.vx };
   }
   function permits(key) {
     if (mustStopTravel(status())) return false;
     return ["W", "A", "S", "D", "ArrowLeft", "ArrowRight"].includes(key);
   }
-  return { push, observe, correction, permits, status };
+  function verified(observed) {
+    const lock = status();
+    return lock.observed===observed && lock.grounded && lock.known && !lock.lost;
+  }
+  function permitsPlacement(observed) {
+    return verified(observed) && floorVisible;
+  }
+  return { push, observe, correction, permits, status, verified, permitsPlacement };
 }
 
 export function characterInstruction(command) {
@@ -470,4 +505,32 @@ export function reactionInstruction(command) {
   )
     return `The robot keeps both boots planted and glances to its ${command.toward}, turning just its head and flashlight briefly toward the new movement. Its body stays in place.`;
   return null;
+}
+
+
+// Keep an audience placement on one stationary, observed view. Vision can
+// have an earlier request in flight when a cue asks the camera to stop.
+export function createPlacementView() {
+  let stableFrom=1, holdUntil=0, waiting=false, sending=false;
+  return {
+    moved(settledFrame) { stableFrom=Math.max(stableFrom,settledFrame); },
+    pause(now) {
+      waiting=true;
+      // One in-flight read and one post-stop read, both with 14s deadlines.
+      holdUntil=Math.max(holdUntil,now+28500);
+    },
+    held(now) { return sending || now<holdUntil; },
+    ready(observed, visibleFloor, moving) {
+      return visibleFloor && !moving && Number.isInteger(observed) && observed>=stableFrom;
+    },
+    offered(now) {
+      if (waiting && now<holdUntil) { waiting=false; holdUntil=now+1800; }
+    },
+    reserve(observed, visibleFloor, moving) {
+      if (sending || !this.ready(observed,visibleFloor,moving)) return false;
+      sending=true;
+      return true;
+    },
+    finish(now) { sending=false; waiting=false; holdUntil=now+650; },
+  };
 }

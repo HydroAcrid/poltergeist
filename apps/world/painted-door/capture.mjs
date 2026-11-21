@@ -1,4 +1,4 @@
-import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, shoulderStride } from './native-follow.mjs';
+import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { assessFraming } from './framing-report.mjs';
 import { hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
@@ -111,8 +111,14 @@ async function capture() {
   let gameClock, looking=false, nextLook=0;
   const follow = stagePilot ? createNativeFollow() : null;
   const moveWindow = createMoveWindow(log.fps);
+  const placementView = createPlacementView();
+  let actorStopping=null, actionPending=false, lastRecoveryObservation=-1;
+  const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
+  const noteMotion = () => placementView.moved(motionBoundary());
+  const cameraAllowed = () => !ending && Date.now()>=steadyUntil && !placementView.held(Date.now());
+  const moving = () => Boolean(cameraPress || actorMoving || actorStopping || actionPending);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
-  async function releaseCamera() {
+  async function releaseCamera(completing=false) {
     const press=cameraPress;
     if(!press) return;
     if(!press.release) {
@@ -120,16 +126,29 @@ async function capture() {
       press.release=(async()=>{
         try{
           await press.down;
-          if(!ending) for(const key of press.keys) await session.send({event_type:'user_action',action:'key_up',input:key});
+          if(!ending || completing) {
+            for(const key of press.keys) await session.send({event_type:'user_action',action:'key_up',input:key});
+            noteMotion();
+            publish({cameraMoved:true});
+            if (press.recovery) record('Released shoulder recovery',{observed:press.observed,heldMs:Date.now()-press.startedAt});
+          }
         } finally { if(cameraPress===press) cameraPress=null; }
       })();
     }
     await press.release;
   }
   async function aim(step,frame) {
-    if(ending || cameraPress || Date.now()<steadyUntil) return;
+    if(!cameraAllowed() || cameraPress) return;
     const press={keys:[step.key,step.lateralKey].filter(Boolean), stride:step.reason==='match forward stride', recovery:step.reason==='recover shoulder distance'};
+    if(press.recovery) {
+      if(step.observed===lastRecoveryObservation) return;
+      lastRecoveryObservation=step.observed;
+      press.observed=step.observed;
+      press.minRenewFrame=motionBoundary();
+      press.startedAt=Date.now();
+    }
     cameraPress=press;
+    noteMotion();
     press.down=(async()=>{for(const key of press.keys) await session.send({event_type:'user_action',action:'key_down',input:key});})();
     await press.down;
     publish({cameraMoved:true});
@@ -142,10 +161,13 @@ async function capture() {
     return cameraPress.stride ? !shoulderStride(subject) : !receding(subject);
   }
   async function stopActor(force=false) {
+    if(actorStopping) return actorStopping;
     if(!actorMoving && !force) return;
     actorMoving=false;
-    await session.send("Hold the current view. The existing foreground figure finishes its step and stays in place. Preserve the same lit flashlight and room.");
-    record('Paused robot travel');
+    noteMotion();
+    actorStopping=session.send("Hold the current view. The existing foreground figure finishes its step and stays in place. Preserve the same lit flashlight and room.");
+    try { await actorStopping; noteMotion(); record('Paused robot travel'); }
+    finally { actorStopping=null; }
   }
   async function updateShot(frame) {
     const lock = follow.status();
@@ -153,14 +175,22 @@ async function capture() {
       await releaseCamera();
     if (lock.cameraRecovery) {
       await stopActor();
-      if (!cameraPress && Date.now()>=steadyUntil) {
+      if (cameraPress?.recovery && !cameraPress.release && cameraAllowed() &&
+          lock.observed>cameraPress.observed && lock.observed>=cameraPress.minRenewFrame) {
+        // Only post-command, independently verified pixels may extend a held key.
+        clearTimeout(lookRelease);
+        cameraPress.observed=lastRecoveryObservation=lock.observed;
+        lookRelease=setTimeout(()=>releaseCamera().catch(error=>abort.abort(error)),recoveryWatchdogMs);
+        record('Continued shoulder recovery',{observed:lock.observed,bodyWidth:lock.bodyWidth});
+      }
+      if (!cameraPress && cameraAllowed()) {
         const step = follow.correction(Date.now());
         if (step) await aim(step,frame);
       }
-      return true; // The camera alone can recover distance, while Brain and placement wait.
+      return true; // Hold player travel while the camera catches up.
     }
     const held = await holdIfUntracked(lock,releaseCamera,stopActor);
-    if (!held && !cameraPress && Date.now()>=steadyUntil) {
+    if (!held && !cameraPress && cameraAllowed()) {
       const step=follow.correction(Date.now());
       if (step) await aim(step,frame);
     }
@@ -179,6 +209,7 @@ async function capture() {
       if (ending) return;
       ending = true;
       clearTimeout(gameClock);
+      await releaseCamera(true);
       if (winner) {
         log.winner = winner;
         record(winner === 'robot' ? 'Robot reached the exit' : 'Audience wins on time');
@@ -193,7 +224,9 @@ async function capture() {
         if (stagePilot && command?.haunt) {
           const haunt = command.haunt;
           const lock = follow.status();
-          if (!follow.permits('W') || haunt.observed !== lock.observed) {
+          const targetValid=Array.isArray(haunt.target) && haunt.target.length===2 &&
+            haunt.target.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
+          if (!targetValid || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
             publish({injectionDeferred:haunt.id, attempt:haunt.attempt, observed:haunt.observed});
             record('Held placement for a current single-player view',{id:haunt.id,attempt:haunt.attempt,observed:haunt.observed,holdReason:lock.holdReason});
             return;
@@ -213,25 +246,32 @@ async function capture() {
           } catch (error) {
             publish({injectionFailed:haunt.id, attempt:haunt.attempt});
             throw error;
-          }
+          } finally { placementView.finish(Date.now()); }
         } else if (stagePilot && command?.pause) {
           const now=Date.now();
           const force=command.settleCamera && now>=placedHoldUntil;
           steadyUntil=now+2700;
           moveWindow.settle(log.frames, now, .5);
-          if(command.settleCamera) placedHoldUntil=steadyUntil;
+          if(command.settleCamera) {
+            placedHoldUntil=steadyUntil;
+            placementView.pause(now);
+            noteMotion();
+          }
           await Promise.all([releaseCamera(),stopActor(force)]);
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
           const instruction=reactionInstruction(command);
-          if(!instruction || !follow.permits('W') || (command.observed != null && command.observed !== follow.status().observed)) return;
+          if(!instruction || placementView.held(Date.now()) || !follow.permits('W') || (command.observed != null && command.observed !== follow.status().observed)) return;
           moveWindow.settle(log.frames, Date.now(), 1);
           await releaseCamera();
           await stopActor();
-          await session.send(instruction);
+          if(placementView.held(Date.now()) || !follow.permits('W')) return;
+          actionPending=true;
+          try { noteMotion(); await session.send(instruction); }
+          finally { noteMotion(); actionPending=false; }
           record('Requested robot reaction',{reaction:command.reaction,toward:command.toward});
         } else if(stagePilot && command?.key) {
-          if(Date.now()<steadyUntil || !follow.permits(command.key)) return;
+          if(!cameraAllowed() || !follow.permits(command.key)) return;
           const instruction=characterInstruction(command);
           if(!instruction) return;
           const subject = follow.status();
@@ -242,11 +282,14 @@ async function capture() {
           const stride = command.key === 'W' ? shoulderStride(subject) : null;
           if (cameraPress && (stride || cameraPress.keys.includes('key_w'))) {
             await releaseCamera();
-            if (ending || Date.now() < steadyUntil || !follow.permits(command.key) ||
+            if (!cameraAllowed() || !follow.permits(command.key) ||
                 follow.status().observed !== command.observed) return;
           }
           actorMoving=['W','A','S','D'].includes(command.key);
-          await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]);
+          noteMotion();
+          actionPending=true;
+          try { await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]); }
+          finally { noteMotion(); actionPending=false; }
           publish({navigationMoved:true,key:command.key,observed:command.observed});
           record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
@@ -322,7 +365,9 @@ async function capture() {
               const held = await updateShot(log.frames);
               const lock=follow.status();
               const current = lock.observed === observed;
-              const currentScene = !held && current ? scene : { visible:false, playerCount:scene.playerCount, obstacles:[] };
+              const verifiedScene = follow.verified(observed) ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
+              const trackingPlacementReady = placementView.ready(observed,follow.permitsPlacement(observed),moving());
+              if (trackingPlacementReady) placementView.offered(Date.now());
               if (!held && current) recoveryRequested = false;
               if (held && current && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
                 recoveryRequested = true;
@@ -332,8 +377,8 @@ async function capture() {
                 await session.send(instruction);
                 record('Requested single-subject recovery',{observed,holdReason:lock.holdReason});
               }
-              publish({scene:currentScene,observed,observedAt});
-              record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason}});
+              publish({scene:verifiedScene,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady});
+              record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }
           }).catch(error=>{
             if (!ending) {

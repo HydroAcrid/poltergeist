@@ -7,6 +7,7 @@ import {
   characterInstruction,
   createNativeFollow,
   createMoveWindow,
+  createPlacementView,
   shoulderStride,
   holdIfUntracked,
   reactionInstruction,
@@ -276,7 +277,10 @@ test('hosted return cadence retains one semantic actor through optical loss and 
   assert.equal(pulse.key,'key_w');
   assert.equal(pulse.reason,'recover shoulder distance');
   assert.equal(pulse.lateralKey,undefined);
-  assert.ok(pulse.ms>=95 && pulse.ms<=265);
+  assert.equal(pulse.ms,4000,'recovery uses a finite watchdog while native frames monitor the held key');
+  assert.equal(tracker.verified(135),true,'the distant verified actor remains visible to placement');
+  assert.equal(tracker.permitsPlacement(135),true);
+  assert.equal(tracker.permitsPlacement(71),false);
   assert.equal(tracker.correction(9900),null,'one bounded camera approach per source observation');
   deliver(191,238,[340,190,996,432],{obstacles:[{label:'bench',box:[875,300,1000,590]}]});
   assert.equal(tracker.correction(10500),null,'an obstruction between camera and subject blocks an approach');
@@ -288,4 +292,53 @@ test('hosted return cadence retains one semantic actor through optical loss and 
   deliver(366,418,[300,78,1000,416],{playerCount:2});
   assert.equal(tracker.permits('W'),false);
   assert.equal(tracker.correction(20000),null);
+});
+
+test('placement reserves a stationary post-stop source through the host decision and native send',()=>{
+  const view=createPlacementView(), clock=createMoveWindow(24);
+  clock.start(1000);
+  // The cue in the second hosted run stopped motion around native frame 207.
+  view.pause(9500);
+  view.moved(clock.settledFrame(207,9500));
+  assert.equal(view.held(12700),true,'a three-second vision call cannot expire the queued placement');
+  assert.equal(view.ready(170,true,false),false,'the result returned after the stop but its pixels predate it');
+  assert.equal(view.ready(245,true,true),false);
+  assert.equal(view.ready(245,true,false),true);
+  view.offered(13000);
+  assert.equal(view.held(14300),true);
+  assert.equal(view.reserve(245,true,false),true);
+  assert.equal(view.held(16900),true,'the camera remains fixed until the provider send completes');
+  assert.equal(view.reserve(245,true,false),false);
+  view.finish(17000);
+  assert.equal(view.held(18000),false);
+  view.moved(260);
+  assert.equal(view.reserve(245,true,false),false,'a new physical movement invalidates the target');
+  view.pause(20000);
+  assert.equal(view.held(49000),false,'failed or missing vision cannot hold a game indefinitely');
+});
+
+test('native texture expansion releases recovery before a new semantic result grants actor movement',()=>{
+  const tracker=createNativeFollow();
+  function patternedFrame(scale) {
+    const w=112,h=64,data=Buffer.alloc(w*h*4,255);
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++) {
+      const dx=(x-29)/scale,dy=(y-41)/scale,i=(y*w+x)*4;
+      for(let c=0;c<3;c++)
+        data[i+c]=120+45*Math.sin(dx*.65+c)+40*Math.cos(dy*.55+c)+34*Math.cos(dx*.33+dy*.24+c);
+    }
+    return jpeg.encode({width:w,height:h,data},92).data;
+  }
+  const initial=patternedFrame(1);
+  const scene=(bodyBox)=>({...sighting(bodyBox),rightFloorVisible:true,pose:'upright',threat:'ordinary',ahead:[720,510],obstacles:[]});
+  tracker.push(initial,1);
+  tracker.observe(scene([290,80,1000,435]),1);
+  for(let frame=6;frame<=51;frame+=5) tracker.push(initial,frame);
+  tracker.observe(scene([315,131,970,391]),51);
+  assert.equal(tracker.status().cameraRecovery,true);
+  for(let frame=56;frame<=126;frame+=5)
+    tracker.push(patternedFrame(1+(frame-51)*.006),frame);
+  const lock=tracker.status();
+  assert.ok(lock.known && lock.opticalWidth>=.38*.88,'native subject scale should grow back into the shoulder crop');
+  assert.equal(lock.cameraRecovery,false,'stop the native forward key immediately at restored scale');
+  assert.equal(tracker.permits('W'),false,'only a fresh semantic reading may restart the actor');
 });
