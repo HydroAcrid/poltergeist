@@ -37,9 +37,49 @@ const BLOCK: Rule[] = [
   { re: /https?:|www\.|@\w|\b(guy|girl|man|woman|men|women|person|people|someone|somebody|everyone|everybody|audience|judges?|attendees?|crowd|kids?|boy|lady|dude|he|she|him|her|his|you|your|me|my|i)\b/i, reason: REASONS.people },
 ];
 
+/** NFKC, drop control and invisible format characters (zero-width, soft hyphen, bidi), collapse whitespace. */
+/** Content rules (not people/words), also checked against disguised spellings. */
+const CONTENT = BLOCK.filter((r) => r.reason !== REASONS.people && r.reason !== REASONS.words);
+
+export function normalizeInput(input: string): string {
+  return input
+    .normalize("NFKC")
+    .replace(/[\t\n\r\v\f]/g, " ")
+    .replace(/[\p{Cc}\p{Cf}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Look-alike Cyrillic/Greek letters → Latin, for checking only (never for display). */
+const CONFUSABLES: Record<string, string> = {
+  а: "a", в: "b", е: "e", к: "k", м: "m", н: "h", о: "o", р: "p", с: "c", т: "t", у: "y", х: "x", і: "i", ј: "j", ѕ: "s",
+  α: "a", β: "b", ε: "e", η: "n", ι: "i", κ: "k", ν: "v", ο: "o", ρ: "p", τ: "t", υ: "u", χ: "x",
+};
+const LEET: Record<string, string> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", $: "s" };
+
+/** Disguised spellings of the input to check against the content rules (not the people/words rules). */
+function disguises(text: string): string[] {
+  const lower = text.toLowerCase();
+  const unconfused = [...lower].map((c) => CONFUSABLES[c] ?? c).join("");
+  // Only words that mix letters with digits/symbols are de-leeted, so "aisle 4" stays as is.
+  const deleet = (map: Record<string, string>) =>
+    unconfused.replace(/\S+/g, (w) => (/[a-z]/.test(w) && /[0-9@$]/.test(w) ? [...w].map((c) => map[c] ?? c).join("") : w));
+  const out = [unconfused, deleet(LEET), deleet({ ...LEET, "1": "l" })];
+  // Runs of 3+ single letters ("g u n", "g.u.n") are joined; every suffix is checked as a word.
+  for (const run of unconfused.match(/\b[a-z](?:[\s.\-_*]+[a-z]\b){2,}/g) ?? []) {
+    const joined = run.replace(/[^a-z]/g, "");
+    for (let i = 0; i < joined.length - 1; i++) out.push(joined.slice(i));
+  }
+  return out;
+}
+
 export function blockedReason(text: string): string | undefined {
   if (!text || text.length > 80) return REASONS.length;
-  return BLOCK.find((rule) => rule.re.test(text))?.reason;
+  const direct = BLOCK.find((rule) => rule.re.test(text))?.reason;
+  if (direct) return direct;
+  if (/[<>]/.test(text)) return REASONS.words;
+  const variants = disguises(text);
+  return CONTENT.find((rule) => variants.some((v) => rule.re.test(v)))?.reason;
 }
 
 /** A private, prewritten way to keep the harmless part of a rejected idea. */
@@ -96,7 +136,7 @@ export class RulesOnlyModeration implements ModerationAdapter {
   readonly name = "rules-only";
 
   async moderate(input: string): Promise<Moderated> {
-    const text = input.normalize("NFKC").replace(/\s+/g, " ").trim();
+    const text = normalizeInput(input);
     const reason = blockedReason(text);
     if (reason) return rejected(reason, text);
     if (/\b(hurricane|tornado|tsunami|cyclone)\b/i.test(text)) return rejected("Give the storm one visible effect inside the hallway.", text);
@@ -113,11 +153,11 @@ export class RulesOnlyModeration implements ModerationAdapter {
   }
 
   nickname(name: string): string | undefined {
-    const n = name.normalize("NFKC").replace(/\s+/g, " ").trim();
+    const n = normalizeInput(name);
     if (n.length === 0 || n.length > 16) return undefined;
-    const nickBlock = BLOCK.filter((r) => r.reason !== REASONS.people && r.reason !== REASONS.words);
-    if (nickBlock.some((r) => r.re.test(n))) return undefined;
-    if (/<[A-Z_]+>|https?:|www\.|@/.test(n)) return undefined;
+    const variants = [n, ...disguises(n)];
+    if (CONTENT.some((r) => variants.some((v) => r.re.test(v)))) return undefined;
+    if (/[<>]|https?:|www\.|@/.test(n)) return undefined;
     return n;
   }
 }
