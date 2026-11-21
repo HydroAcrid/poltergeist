@@ -1,0 +1,20 @@
+[
+  {
+    "file": "painted-door-head-on.jpg",
+    "visible": true,
+    "point": [345, 789],
+    "box": [86, 707, 604, 871],
+    "decoys": [{ "point": [339, 276], "box": [114, 213, 564, 339] }],
+    "source": "apps/world/painted-door/replay/head-on.jpg (00:05.9), resized to 640x360",
+    "labelSource": "human"
+  },
+  {
+    "file": "painted-door-sideways.jpg",
+    "visible": true,
+    "point": [337, 644],
+    "box": [92, 574, 583, 715],
+    "decoys": [{ "point": [311, 112], "box": [61, 34, 561, 191] }],
+    "source": "apps/world/painted-door/replay/sideways.jpg (00:09.0), resized to 640x360",
+    "labelSource": "human"
+  }
+]

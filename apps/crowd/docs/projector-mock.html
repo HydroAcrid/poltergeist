@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projector overlay mock</title>
+<style>
+/* Projector overlay mock: full-bleed trailing-camera game view, action first.
+   Everything Crowd draws lives in a thin band at the top edge so the field
+   ahead of the flashlight (center and right) stays clear. Sizes use vw so
+   it scales from a laptop to a 1080p/4K projector.
+   ?state=opening | upnext | sent | seen | drawer | over */
+:root{--paper:#fff6e8;--muted:#c1b7ae;--amber:#ffc08d;--sage:#a9bfa2;--rust:#a55e3c;--glass:rgba(18,16,14,.78);--line:rgba(255,246,232,.16)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--paper);font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+.field{position:fixed;inset:0;background:#000 url(/world/robot-v1/hallway.webp) center/cover no-repeat}
+.field::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55) 0,rgba(0,0,0,0) 22%)} /* keeps the top band legible */
+.ghost{position:absolute;left:61%;top:47%;font-size:3.4vw;opacity:.7;filter:drop-shadow(0 0 1vw rgba(255,246,232,.5))}
+.ghost small{display:block;font-size:.7vw;opacity:.8;text-align:center}
+
+.band{position:fixed;left:1.6vw;right:1.6vw;top:1.4vw;display:flex;justify-content:space-between;align-items:flex-start;gap:1.5vw;z-index:2}
+.card{display:flex;align-items:center;gap:1vw;max-width:50vw;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:.8vw 1.1vw;backdrop-filter:blur(6px)}
+.card .icon{font-size:2.4vw;line-height:1}
+.card .kicker{font:700 .95vw ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.card .what{font:normal 1.95vw/1.2 Georgia,serif;margin:.15vw 0}
+.card .who{font-size:1.15vw;color:var(--muted)}
+.card .react{font-size:1.4vw;margin-top:.25vw;color:var(--sage);font-weight:600}
+.card .react::before{content:"→ ";color:var(--muted)}
+.card.sent .kicker{color:var(--paper)}
+.card.seen{border-color:rgba(169,191,162,.55)}
+.card.seen .kicker{color:var(--sage)}
+
+.meta{display:flex;align-items:center;gap:.8vw}
+.pill{background:var(--glass);border:1px solid var(--line);border-radius:3vw;padding:.6vw 1.1vw;font-size:1.2vw;white-space:nowrap;backdrop-filter:blur(6px)}
+.pill b{font:700 1.55vw ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--amber)}
+.pill.live{color:var(--sage);font-weight:700}
+.goal{position:fixed;left:1.6vw;bottom:1.4vw;z-index:2;font-size:.95vw;color:var(--muted);background:var(--glass);border-radius:3vw;padding:.45vw .9vw}
+
+.qr{position:fixed;right:1.6vw;bottom:1.4vw;z-index:2;display:flex;align-items:center;gap:.8vw;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:.6vw .8vw}
+.qr .code{width:5.2vw;height:5.2vw;border-radius:.3vw;background:
+  conic-gradient(from 90deg at 30% 30%,#111 25%,#fff 0 50%,#111 0 75%,#fff 0) 0 0/1.3vw 1.3vw,#fff}
+.qr .txt{font-size:.85vw;color:var(--muted);line-height:1.3}
+.qr .txt b{display:block;font-size:1.05vw;color:var(--paper)}
+.qr.big .code{width:9vw;height:9vw}
+.qr.big .txt b{font-size:1.4vw}
+
+.drawer-tab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2;writing-mode:vertical-rl;background:var(--glass);border:1px solid var(--line);border-right:0;border-radius:.8vw 0 0 .8vw;padding:1vw .45vw;font-size:.8vw;color:var(--muted)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:26vw;z-index:3;background:rgba(18,16,14,.92);border-left:1px solid var(--line);padding:1.6vw 1.4vw;display:none}
+.drawer h2{font:700 .8vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:1.2vw 0 .5vw}
+.drawer h2:first-child{margin-top:0}
+.drawer .it{padding:.6vw 0;border-top:1px solid var(--line)}
+.drawer .it:first-of-type{border-top:0}
+.drawer .t{font-size:1.05vw}
+.drawer .b{font-size:.8vw;color:var(--muted)}
+.drawer .r{font-size:.8vw;color:var(--amber)}
+.drawer .op{font-size:.75vw;color:var(--muted);margin-top:1.4vw}
+body.drawer-open .drawer{display:block}
+body.drawer-open .band{right:27.6vw}
+body.drawer-open .qr{display:none}
+body.drawer-open .drawer-tab{display:none}
+
+.result{position:fixed;left:50%;top:1.4vw;transform:translateX(-50%);z-index:2;text-align:center;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1vw 2vw}
+.result .k{font:700 .85vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.result .h{font:normal 2.4vw/1.1 Georgia,serif;margin-top:.3vw}
+.result .s{font-size:1vw;color:var(--muted);margin-top:.3vw}
+.tag{position:fixed;left:50%;bottom:.4vw;transform:translateX(-50%);z-index:4;font-size:.7vw;color:rgba(255,246,232,.45)}
+</style>
+</head>
+<body>
+<div class="field"><div class="ghost" id="ghost" hidden>👻<small>World's ghost cue</small></div></div>
+
+<div class="band">
+  <div class="card" id="card"></div>
+  <div class="meta" id="meta"></div>
+</div>
+<div class="goal" id="goal">Goal: walk through the signed EXIT</div>
+<div class="qr" id="qr"><div class="code" aria-hidden="true"></div><div class="txt"><b>Haunt the robot</b>scan to join · /haunt</div></div>
+<aside class="drawer" aria-label="Queue (operator drawer)">
+  <h2>Up next</h2>
+  <div class="it"><div class="t">A chair tips over in the middle of the aisle</div><div class="b">Misty Lantern</div><div class="r">The aisle ahead is open and the beam will catch it</div></div>
+  <h2>Pending</h2>
+  <div class="it"><div class="t">Thick fog rolls down the hallway</div><div class="b">Rainy Lamp</div><div class="r">A chair already fills the beam</div></div>
+  <div class="it"><div class="t">A chandelier crashes down from the ceiling</div><div class="b">Sable Owl</div><div class="r">This camera can't show it</div></div>
+  <h2>Sent this round</h2>
+  <div class="it"><div class="t">A banana peel lands in the aisle</div><div class="b">Cosmic Echo · seen · robot steps right</div></div>
+  <div class="op">Operator view only. Opened from /operator; closed by default so the field stays clear.</div>
+</aside>
+<div class="tag" id="tag"></div>
+
+<script>
+const state = new URLSearchParams(location.search).get("state") || "sent";
+const $ = (id) => document.getElementById(id);
+const meta = (left, scares) => `<span class="pill live">● Round 1</span><span class="pill"><b>${left}</b> left</span><span class="pill">👻 Scares <b>${scares}</b>/3</span>`;
+const S = {
+  opening: {
+    card: `<span class="icon">✍️</span><div><div class="kicker">Ideas open</div><div class="what">Scan to haunt the hallway</div><div class="who">The robot starts moving in 0:24</div></div>`,
+    meta: `<span class="pill">Robot moves in <b>0:24</b></span><span class="pill">👻 Scares <b>0</b>/3</span>`,
+    qrBig: true,
+  },
+  upnext: {
+    card: `<span class="icon">⏭️</span><div><div class="kicker">Up next · in 0:08</div><div class="what">A banana peel lands in the aisle</div><div class="who">from Cosmic Echo</div></div>`,
+    meta: meta("0:44", 0),
+  },
+  sent: {
+    card: `<span class="icon">👻</span><div><div class="kicker">Sent to the hallway</div><div class="what">A banana peel lands in the aisle</div><div class="who">from Cosmic Echo · watching for it…</div></div>`,
+    meta: meta("0:36", 0), cls: "sent",
+  },
+  seen: {
+    card: `<span class="icon">👻</span><div><div class="kicker">In the hallway</div><div class="what">A banana peel lands in the aisle</div><div class="who">from Cosmic Echo</div><div class="react">Robot steps right around it</div></div>`,
+    meta: meta("0:31", 0), cls: "seen", ghost: true,
+  },
+  drawer: {
+    card: `<span class="icon">⏭️</span><div><div class="kicker">Up next · in 0:05</div><div class="what">A chair tips over in the middle of the aisle</div><div class="who">from Misty Lantern</div></div>`,
+    meta: meta("0:24", 1), drawer: true,
+  },
+  over: {
+    card: "", meta: "", result: true,
+  },
+};
+const s = S[state] || S.sent;
+$("card").innerHTML = s.card;
+$("card").className = "card " + (s.cls || "");
+$("card").hidden = !s.card;
+$("meta").innerHTML = s.meta;
+$("ghost").hidden = !s.ghost;
+if (s.qrBig) $("qr").classList.add("big");
+if (s.drawer) document.body.classList.add("drawer-open");
+if (s.result) {
+  document.body.insertAdjacentHTML("beforeend", `<div class="result"><div class="k">Round 1 over</div><div class="h">👻 Audience wins: 3 scares</div><div class="s">Top haunter: Cosmic Echo · next round in 4:12</div></div>`);
+  $("qr").classList.add("big");
+}
+$("tag").textContent = "MOCK · projector · " + state;
+</script>
+</body>
+</html>

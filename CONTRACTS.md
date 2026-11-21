@@ -128,7 +128,10 @@ export interface Episode {
   policyVersion: string;         // e.g. "v1"
   round?: number;
   startedAt: EpochMs;
-  maxDurationMs: Ms;             // ≤ 90000
+  maxDurationMs: Ms;             // single provider session, ≤ 90000
+  match?:                        // one episode ID across all provider sessions
+    | { clockMode: "active"; durationMs: Ms }
+    | { clockMode: "wall"; durationMs: Ms; deadline: EpochMs };
 }
 export interface EpisodeEnded {
   episodeId: Id;
@@ -216,16 +219,22 @@ export interface Haunt {
   raw: string;                   // ≤ 80 chars; NEVER rendered on /stage or /overlay
   preset?: string;               // preset id if tapped
   status: HauntStatus;
-  moderated?: { safe: boolean; text: string; tags: HauntTag[]; reason?: string; model: string };   // text ≤ 60 chars
+  moderated?: { safe: boolean; text: string; tags: HauntTag[]; reason?: string; suggestion?: string; model: string };   // text ≤ 60 chars
   votes: number;
   seeded: boolean;               // pre-approved fallback pool
   episodeId?: Id;
   injectedT?: Ms;
+  sceneReceipt?: "filming" | "film-selected" | "in-recording" | "generated-in-path";
   createdAt: EpochMs;
 }
-export type HauntPublic = Omit<Haunt, "raw" | "deviceId">;
+export type HauntReceipt = Omit<Haunt, "raw" | "deviceId">; // author only; optional reason and suggestion ≤ 80 chars
+export type HauntPublic = Omit<HauntReceipt, "moderated"> & {
+  moderated?: Omit<NonNullable<Haunt["moderated"]>, "reason" | "suggestion">;
+};
 export interface HauntDispatch { hauntId: Id; episodeId: Id; text: string; tags: HauntTag[] }   // text = moderated.text
 ```
+
+A phone can submit a text revision with the rejected idea’s ID in `revisionOf`. The author may immediately revise their most recent original once. Each revision goes through moderation and counts toward the daily limit. Repeating the same revision returns its existing receipt.
 
 ### C08 HauntInjected (`haunt-injected.ts`, world)
 
@@ -235,9 +244,12 @@ export interface HauntInjected {
   t: Ms;                         // when the text event was sent to Genie (or shown as a dare in webcam mode)
   ok: boolean;
   simulated: boolean;            // true in replay mode and in fakes
+  sceneEvidence?: "in-recording" | "generated-in-path";
   error?: string;
 }
 ```
+
+World emits `in-recording` when the server schedules the selected recorded scene and `generated-in-path` at the verified frame offset in generated footage. These receipts describe the scene. Projector playback and decoding are local to each browser.
 
 ### C09 Verdict (`verdict.ts`, crowd)
 
@@ -381,16 +393,16 @@ data/
 | `POST /api/brain/replay-eval` | brain | `ReplayEvalRequest` → `ReplayEvalResult` | `/operator`, MCP, `pnpm proof` |
 | `GET /api/brain/coach/status` | brain | → `{ running, lastRun?, proposals[] }` | `/operator` |
 | `POST /mcp` | brain | MCP Streamable HTTP, `Authorization: Bearer PG_MCP_TOKEN` | the Managed Agent coach |
-| `POST /api/crowd/haunt` | crowd | `{ text? , preset?, displayName? }` + `pg_device` cookie → `{ hauntId, status }` | phones |
+| `POST /api/crowd/haunt` | crowd | `{ text?, preset?, revisionOf? }` + `pg_device` cookie → `{ hauntId, status }` | phones |
 | `GET /api/crowd/presets` | crowd | → `{ id, label, text, tags }[]` | phones |
-| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntPublic[], queue: HauntPublic[] }` | phones (poll every 2 s) |
+| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntReceipt[], queue: HauntPublic[] }` | phones (poll every 2 s) |
 | `GET /api/crowd/scoreboard` | crowd | → `Scoreboard` | `/stage`, `/operator` |
 | `GET /api/crowd/queue` | crowd | → `Haunt[]` (includes raw; operator token) | `/operator` |
 | `GET /api/bus/history` | hub | `?episodeId&types&since` → `Envelope[]` | referee, tests |
 
 For crowd state, derive `mine` from the caller’s device cookie. Return `queue` in dispatch order, containing only eligible, approved proposals with display-safe text and nicknames. Raw text, unreviewed nicknames and moderation reasons stay off shared views. A successful `haunt.injected` acknowledges delivery to Genie; visual confirmation comes from the world frames.
 
-Every error response has the form `{ error: { code: string, message: string } }`. Codes used across lanes: `BUSY`, `CAP_SESSIONS`, `CAP_USD`, `GENIE_UNAVAILABLE`, `RATE_LIMITED`, `REJECTED`, `INVALID`, `UNAUTHORIZED`.
+Every error response has the form `{ error: { code: string, message: string } }`. Codes used across lanes: `BUSY`, `CAP_USD`, `GENIE_UNAVAILABLE`, `RATE_LIMITED`, `REJECTED`, `INVALID`, `UNAUTHORIZED`.
 
 ## 7. C18: Hub integration interface (`hub-types.ts`, world)
 

@@ -1,0 +1,42 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 8,
+  "t": 4000,
+  "driver": "brain",
+  "framePath": "data/episodes/ep_01JDPG00000000000000000001/frames/8.jpg",
+  "frameDiff": 0.07,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "perception": {
+    "visible": true,
+    "point": [
+      420,
+      610
+    ],
+    "box": [
+      300,
+      560,
+      560,
+      660
+    ],
+    "conf": 0.86,
+    "hazards": [
+      {
+        "label": "chair",
+        "point": [
+          542,
+          470
+        ]
+      }
+    ],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "ArrowRight",
+    "holdMs": 188
+  },
+  "mode": "track",
+  "rationale": "obstacle ahead, turning toward exit",
+  "reaction": "avoid"
+}

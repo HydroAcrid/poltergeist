@@ -81,7 +81,7 @@ interface SessionGrant { sessionId: Id; interactionId: string; transport: "webrt
 
 **Broker rules** (unit-test every one with `FakeGenieAdapter`):
 - At most one active session per instance. A second request gets `BUSY`.
-- Enforce the caps from SPEC §6 (`CAP_SESSIONS`, `CAP_USD`).
+- Track spend and enforce the USD budget from SPEC §6 (`CAP_USD`).
 - Real Genie requires `PG_ALLOW_GENIE=1` on local; staging and prod always allow it.
 - **Watchdog:** `hardKillAt = startedAt + maxDurationMs + 5000`. Also, `/stage` sends a heartbeat every 2 s, and three missed heartbeats end the session.
 - **`end()` must be called on every exit path:**

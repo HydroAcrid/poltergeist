@@ -1,0 +1,32 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 7,
+  "t": 3500,
+  "driver": "brain",
+  "frameDiff": 0.07,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "perception": {
+    "visible": true,
+    "point": [
+      420,
+      610
+    ],
+    "box": [
+      300,
+      560,
+      560,
+      660
+    ],
+    "conf": 0.86,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "W",
+    "holdMs": 600
+  },
+  "mode": "track",
+  "rationale": "door ahead"
+}

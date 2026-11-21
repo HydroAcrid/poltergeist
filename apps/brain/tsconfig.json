@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true,
+    "baseUrl": ".",
+    // Until World's workspace lands: contract files resolve zod from this
+    // package, and imports of World-owned contract files that are not on
+    // main yet fall back to test/shims/contracts.
+    "rootDirs": ["../../packages/contracts/src", "./test/shims/contracts"],
+    "paths": {
+      "zod": ["./node_modules/zod"],
+      "@poltergeist/contracts/*": ["../../packages/contracts/src/*", "./test/shims/contracts/*"]
+    }
+  },
+  "include": ["server/**/*.ts", "test/**/*.ts", "vitest.config.ts", "../../packages/contracts/src/tick-response.ts", "../../packages/contracts/src/tick-log.ts", "../../packages/contracts/src/policy.ts", "../../packages/contracts/src/replay.ts"]
+}

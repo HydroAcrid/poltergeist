@@ -1,0 +1,228 @@
+[
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000900",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A banana peel lands in the aisle",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A banana peel lands in the aisle",
+      "tags": [
+        "distractor",
+        "geometry"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800000
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000901",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "Thick fog rolls down the hallway",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "Thick fog rolls down the hallway",
+      "tags": [
+        "visibility",
+        "weather"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800001
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000902",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "The hallway lights flicker and dim",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "The hallway lights flicker and dim",
+      "tags": [
+        "lighting"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800002
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000903",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A gust blows loose papers across the aisle",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A gust blows loose papers across the aisle",
+      "tags": [
+        "distractor",
+        "occlusion",
+        "weather"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800003
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000904",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A stack of cardboard boxes topples over",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A stack of cardboard boxes topples over",
+      "tags": [
+        "geometry",
+        "occlusion"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800004
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000905",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A puddle of water spreads across the floor",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A puddle of water spreads across the floor",
+      "tags": [
+        "distractor",
+        "geometry"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800005
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000906",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "Steam hisses out from a vent in the wall",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "Steam hisses out from a vent in the wall",
+      "tags": [
+        "visibility"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800006
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000907",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A rolling cart drifts slowly into the hall",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A rolling cart drifts slowly into the hall",
+      "tags": [
+        "geometry",
+        "distractor"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800007
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000908",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "The overhead lights switch to a deep red",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "The overhead lights switch to a deep red",
+      "tags": [
+        "lighting"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800008
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000909",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "Autumn leaves swirl down the corridor",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "Autumn leaves swirl down the corridor",
+      "tags": [
+        "distractor",
+        "weather"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800009
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000910",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "A heavy curtain drops across half the aisle",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "A heavy curtain drops across half the aisle",
+      "tags": [
+        "occlusion",
+        "geometry"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800010
+  },
+  {
+    "hauntId": "ht_01JDGZ8Q4M0000000000000911",
+    "deviceId": "seed",
+    "displayName": "House Ghost",
+    "raw": "Marbles scatter across the floor",
+    "status": "approved",
+    "moderated": {
+      "safe": true,
+      "text": "Marbles scatter across the floor",
+      "tags": [
+        "distractor",
+        "geometry"
+      ],
+      "model": "seed"
+    },
+    "votes": 0,
+    "seeded": true,
+    "createdAt": 1795366800011
+  }
+]

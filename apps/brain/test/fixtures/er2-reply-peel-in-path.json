@@ -1,0 +1,5 @@
+{
+  "source": "live ER 2 probe 2026-11-21T19:08:13.016Z, World prototype peel-in-path.jpg",
+  "model": "gemini-robotics-er-2-preview",
+  "raw": "{\n  \"robotVisible\": true,\n  \"feet\": {\n    \"left\": [946, 566],\n    \"right\": [946, 591]\n  },\n  \"forward\": [834, 574],\n  \"obstacles\": [\n    {\n      \"label\": \"banana peel\",\n      \"box\": [732, 497, 810, 577]\n    },\n    {\n      \"label\": \"table and chairs\",\n      \"box\": [492, 649, 764, 874]\n    },\n    {\n      \"label\": \"bar stool\",\n      \"box\": [554, 341, 754, 406]\n    },\n    {\n      \"label\": \"bar stool\",\n      \"box\": [524, 357, 694, 412]\n    },\n    {\n      \"label\": \"bar stool\",\n      \"box\": [496, 379, 644, 425]\n    }\n  ],\n  \"exit\": {\n    \"visible\": true,\n    \"point\": [486, 461]\n  },\n  \"pose\": \"upright\"\n}"
+}

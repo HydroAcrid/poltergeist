@@ -1,0 +1,20 @@
+{
+  "policyVersion": "v1",
+  "split": "heldout",
+  "n": 48,
+  "hitRate": 1.2,
+  "meanPointErr": 61.5,
+  "byTag": {
+    "visibility": {
+      "n": 14,
+      "hitRate": 0.43
+    },
+    "distractor": {
+      "n": 9,
+      "hitRate": 0.78
+    }
+  },
+  "latencyP50": 820,
+  "latencyP95": 1910,
+  "ranAt": 1795276500000
+}

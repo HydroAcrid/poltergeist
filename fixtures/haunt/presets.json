@@ -1,0 +1,100 @@
+[
+  {
+    "id": "banana-peel",
+    "label": "Drop a banana peel",
+    "text": "A banana peel lands in the aisle",
+    "tags": [
+      "distractor",
+      "geometry"
+    ],
+    "group": "On the floor"
+  },
+  {
+    "id": "paper-gust",
+    "label": "Gust of loose papers",
+    "text": "A gust blows loose papers across the aisle",
+    "tags": [
+      "distractor",
+      "occlusion",
+      "weather"
+    ],
+    "group": "In the air"
+  },
+  {
+    "id": "lights-flicker",
+    "label": "Flicker the lights",
+    "text": "The hallway lights flicker and dim",
+    "tags": [
+      "lighting"
+    ],
+    "group": "Lights"
+  },
+  {
+    "id": "fog",
+    "label": "Roll in fog",
+    "text": "Thick fog rolls down the hallway",
+    "tags": [
+      "visibility",
+      "weather"
+    ],
+    "group": "Fog and signs"
+  },
+  {
+    "id": "painted-door",
+    "label": "Paint a fake door",
+    "text": "A painted EXIT door appears on the side wall",
+    "tags": [
+      "sign_change",
+      "distractor"
+    ],
+    "group": "Fog and signs"
+  },
+  {
+    "id": "mop-bucket",
+    "label": "Roll a mop bucket",
+    "text": "A mop bucket rolls into the middle of the aisle",
+    "tags": [
+      "geometry",
+      "distractor"
+    ],
+    "group": "On the floor"
+  },
+  {
+    "id": "balloons",
+    "label": "Release balloons",
+    "text": "A bunch of balloons drifts across the hall",
+    "tags": [
+      "occlusion",
+      "distractor"
+    ],
+    "group": "In the air"
+  },
+  {
+    "id": "chair-tips",
+    "label": "Tip over a chair",
+    "text": "A chair tips over in the middle of the aisle",
+    "tags": [
+      "geometry"
+    ],
+    "group": "On the floor"
+  },
+  {
+    "id": "power-cut",
+    "label": "Cut the power",
+    "text": "The power cuts out for a moment",
+    "tags": [
+      "lighting"
+    ],
+    "group": "Lights"
+  },
+  {
+    "id": "marbles",
+    "label": "Spill marbles",
+    "text": "Marbles scatter across the floor",
+    "tags": [
+      "distractor",
+      "geometry"
+    ],
+    "group": "On the floor"
+  }
+]

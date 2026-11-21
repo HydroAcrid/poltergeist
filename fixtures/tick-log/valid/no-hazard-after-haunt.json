@@ -1,0 +1,27 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000004",
+  "seq": 28,
+  "t": 14000,
+  "driver": "brain",
+  "framePath": "data/episodes/ep_01JDPG00000000000000000004/frames/28.jpg",
+  "frameDiff": 0.06,
+  "perception": {
+    "visible": true,
+    "point": [
+      478,
+      716
+    ],
+    "conf": 0.9,
+    "hazards": [],
+    "model": "fixture",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "W",
+    "holdMs": 600
+  },
+  "mode": "track",
+  "rationale": "path clear, walking (gap 116)",
+  "successClaim": false,
+  "policyVersion": "v1"
+}

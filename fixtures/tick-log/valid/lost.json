@@ -1,0 +1,23 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 15,
+  "t": 7500,
+  "driver": "brain",
+  "framePath": "data/episodes/ep_01JDPG00000000000000000001/frames/15.jpg",
+  "frameDiff": 0.04,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "perception": {
+    "visible": false,
+    "conf": 0.12,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 710
+  },
+  "action": {
+    "key": "NOOP",
+    "holdMs": 0
+  },
+  "mode": "search",
+  "rationale": "lost target"
+}

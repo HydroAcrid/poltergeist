@@ -1,0 +1,71 @@
+version: v1
+parent: null
+createdBy: human
+rationale: baseline
+perception: { adapter: er2, thinking: low, timeoutMs: 2500, promptAddenda: [] }
+# Who chooses the move. "rules": Brain's controller from ER 2's scene (default).
+# "model": the player model chooses from the current and previous frame
+# (server/react.ts), and geometry only vetoes a step into something solid.
+# maxHolds: after this many consecutive holds the model chose itself (~2 s at
+# 2 Hz), the next move comes from geometry, which still never walks into what
+# the model called solid; then the model decides again. Safety holds (stumble,
+# two robots) don't count.
+decision: { mode: rules, maxHolds: 4 }
+controller:
+  emaAlpha: 0.5
+  maxPointJump: 300
+  yawDeadband: 0.15
+  kYaw: 600            # ms of turn per unit |e|   (calibrate: degrees per 100 ms ArrowRight)
+  kFwd: 1200           # ms forward per unit (1 - boxH)
+  defaultFwdMs: 600
+  lostTicksBeforeSearch: 2
+  searchStepMs: 450    # ≈ 45° (calibrate live)
+  searchMaxSteps: 8
+  exploreFwdMs: 800
+  stuckDiffThreshold: 0.02
+  stuckTicks: 2
+  successBoxHeight: 0.45
+  successCenter: 0.2
+  successTicks: 2
+  # Two or more door candidates with no depth cue to tell them apart:
+  # change the viewing angle before committing (the recorded sidestep was D for 1 s).
+  verifyKey: D
+  verifyHoldMs: 1000
+  verifyMaxSteps: 2
+# Third-person navigation (avatar in frame). Units are 0–1000 frame space.
+navigation:
+  pathHalfWidth: 20      # half-width of the walking corridor at the feet
+  farWidthRatio: 0.2     # corridor width at the goal, as a fraction of pathHalfWidth
+  defaultObstacleHalfWidth: 30
+  walkMs: 600
+  stepAsideMs: 600       # ≈ one lane in the prototype (calibrate live)
+  arriveRadius: 25       # feet midpoint within this of the threshold = arrived
+  headingX: 500          # follow camera: W walks toward the frame's centre column
+  turnDeadband: 0.15     # exit bearing (|goalX − headingX| / 500) that triggers a turn
+  # Calibrated from World's native pan pair (rehearsal/calibration, frames 716→732):
+  # a 126 ms ArrowRight shifted the scene ~80 px of 1280 ≈ 5° at an assumed ~90°
+  # horizontal FOV, i.e. ~0.04°/ms. One unit of bearing is 90°, so ~2100 ms.
+  kTurn: 2100            # ms of turn per unit bearing
+  maxTurnMs: 1000        # ≈ 40° per tick; re-observe before turning further
+  # Projector option (World, #2): when a grounded obstacle blocks the next steps
+  # and a side is clear, sidestep with A/D so the dodge is visible; keep turning
+  # for reacquiring the route or when neither side is open.
+  preferSidestep: true
+  sidestepWithin: 0.6    # obstacle within this fraction of the way to the exit row
+  sidestepShift: 100     # lateral frame units one A/D step is assumed to move the boots
+  # Camera rig. "trail": boots visible (World's trail view, or its robot-centred
+  # projection). "shoulder": Sri's target POV, a tight over-the-right-shoulder
+  # shot with the robot on the left third and its boots below the frame, so its
+  # ground position is an estimated anchor and arrival is the exit threshold
+  # reaching the foreground. Calibrated on synthetic frames until World's Genie
+  # frames in this POV exist (fixtures/media/fixture-zero/shoulder).
+  rig: trail
+  shoulder:
+    anchor: [1000, 220]  # estimated ground point under the robot (bottom edge)
+    headingX: 700        # where the route converges (the hall's vanishing point)
+    pathHalfWidth: 110   # the robot is large in this shot, so its corridor is wide
+    arriveRow: 800       # exit threshold at or below this row = arrived
+  # ER 2's forward floor point varied between runs on the same frames (live probe
+  # 2026-11-21), so facing comes from the follow camera until a calibration pair.
+  useForwardPoint: false
+

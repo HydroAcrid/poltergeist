@@ -1,0 +1,21 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 12,
+  "t": 6000,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "brainLatencyMs": 690,
+  "perception": {
+    "visible": false,
+    "conf": 0.12,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 710
+  },
+  "action": {
+    "key": "ArrowRight",
+    "holdMs": 450
+  },
+  "mode": "search",
+  "rationale": "lost target, scanning"
+}

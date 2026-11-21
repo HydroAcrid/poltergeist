@@ -1,0 +1,15 @@
+{
+  "cmd": "round.start",
+  "seed": {
+    "kind": "image",
+    "prompt": "A long venue hallway with a wood arch and an EXIT sign at the far end",
+    "imagePath": "data/seeds/3f9a.jpg"
+  },
+  "task": {
+    "targetLabel": "exit arch",
+    "instruction": "Walk through the wood arch at the end of the hallway"
+  },
+  "driver": "brain",
+  "maxDurationMs": 60000,
+  "round": 1
+}

@@ -1,0 +1,22 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 9,
+  "t": 4500,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "brainLatencyMs": 2540,
+  "perception": {
+    "visible": false,
+    "conf": 0,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 2500,
+    "error": "timeout"
+  },
+  "action": {
+    "key": "ArrowRight",
+    "holdMs": 66
+  },
+  "mode": "fallback",
+  "rationale": "perception timed out, easing turn"
+}

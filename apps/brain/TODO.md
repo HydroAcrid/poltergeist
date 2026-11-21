@@ -1,18 +1,18 @@
 # BRAIN TODO (work top-down; tick items as you finish)
 
 ## Setup: by H+0:30 (write locally right away; push once world's scaffold is on `main`)
-- [ ] `tick-response.ts`, `tick-log.ts`, `policy.ts`, `replay.ts` + valid/invalid fixtures (CONTRACTS §8)
-- [ ] `fixtures/media/fixture-zero/`: your human hands you ~20 hallway photos; resize to 640×360; hand-label `labels.json` `{file, visible, point}`
+- [x] `tick-response.ts`, `tick-log.ts`, `policy.ts`, `replay.ts` + valid/invalid fixtures (CONTRACTS §8)
+- [ ] `fixtures/media/fixture-zero/`: your human hands you ~20 hallway photos; resize to 640×360; hand-label `labels.json` `{file, visible, point}` (painted-door head-on + sideways frames are in; hallway photos still to come)
 - [ ] Rebase on scaffold → `pnpm test:contracts` green → push → NOTICE all
 
 ## Fakes and scenarios: by H+0:45
 - [ ] `apps/brain/server/fake.ts` (fake brain, CONTRACTS §8)
-- [ ] Six scenario bundles in `fixtures/scenarios/` (synthetic) → FIXTURE-READY → crowd
+- [x] Six scenario bundles in `fixtures/scenarios/` (synthetic) → FIXTURE-READY → crowd
 
 ## Tier 0: H+1:30
 - [ ] Controller as a pure function + unit tests on every scenario (track, search, unstick, success, fallback, human driver)
-- [ ] Real `POST /api/brain/tick` with `PerceptionAdapter=fixture`; `pnpm e2e:pair --real=brain` green
-- [ ] `er2` adapter + `@live` probe on `fixture-zero` (accuracy + p50/p95 latency → EVALS.md; your human runs it)
+- [ ] Real `POST /api/brain/tick` with `PerceptionAdapter=fixture`; `pnpm e2e:pair --real=brain` green (standalone server done: `pnpm --dir apps/brain serve`; hub mount + e2e wait on World's scaffold)
+- [x] `er2` adapter + `@live` probe (on World's labeled frames instead of fixture-zero; accuracy + p50/p95 latency → EVALS.md)
 - [ ] Frames written + `tick` published after the response
 
 ## Tier 1: H+2:30

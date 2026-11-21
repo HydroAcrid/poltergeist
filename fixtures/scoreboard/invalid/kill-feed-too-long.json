@@ -1,0 +1,61 @@
+{
+  "updatedAt": 1795370400000,
+  "rounds": 0,
+  "episodes": 0,
+  "successes": 0,
+  "attacks": {
+    "submitted": 0,
+    "approved": 0,
+    "injected": 0,
+    "landed": 0
+  },
+  "uniqueAttackers": 0,
+  "topAttackers": [],
+  "topTags": [],
+  "blame": {
+    "adversary": 0,
+    "agent": 0,
+    "world": 0
+  },
+  "policy": {
+    "version": "v1"
+  },
+  "killFeed": [
+    {
+      "ts": 1795370400000,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400001,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400002,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400003,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400004,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400005,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400006,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400007,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    },
+    {
+      "ts": 1795370400008,
+      "text": "🛡️ anon: Fog → robot shrugged it off"
+    }
+  ]
+}

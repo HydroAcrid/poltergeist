@@ -1,0 +1,10 @@
+{
+  "episodeId": "ep_01JDGZ8Q4M0000000000000001",
+  "overrodeRule": false,
+  "createdAt": 1795370520000,
+  "stage": "provisional",
+  "outcome": "aborted",
+  "evidence": [],
+  "confidence": 0.5,
+  "model": "rule"
+}

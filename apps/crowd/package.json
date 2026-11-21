@@ -1,0 +1,23 @@
+{
+  "name": "@poltergeist/crowd",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite-node -c vitest.config.ts dev/dev-hub.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/qrcode": "1.5.5",
+    "typescript": "5.7.2",
+    "vite-node": "2.1.8",
+    "vitest": "2.1.8"
+  },
+  "dependencies": {
+    "fastify": "5.2.0",
+    "qrcode": "1.5.4",
+    "zod": "3.23.8"
+  }
+}

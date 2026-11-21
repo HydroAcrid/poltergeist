@@ -1,0 +1,19 @@
+{
+  "hauntId": "ht_01JDGZ8Q4M0000000000000003",
+  "deviceId": "dv_7Qm2pX9sLk4vN8rT",
+  "displayName": "Misty Lantern",
+  "raw": "fog lol",
+  "status": "approved",
+  "moderated": {
+    "safe": true,
+    "text": "Thick fog rolls down the hallway",
+    "tags": [
+      "visibility",
+      "weather"
+    ],
+    "model": "rules-only"
+  },
+  "votes": 0,
+  "seeded": false,
+  "createdAt": 1795370462000
+}

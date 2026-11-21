@@ -1,0 +1,19 @@
+{
+  "episodeId": "ep_01JDGZ8Q4M0000000000000001",
+  "overrodeRule": false,
+  "createdAt": 1795370520000,
+  "stage": "provisional",
+  "outcome": "failure",
+  "failureT": 9000,
+  "blame": "adversary",
+  "culpritHauntId": "ht_01JDGZ8Q4M0000000000000005",
+  "ruleBlame": "adversary",
+  "evidence": [
+    {
+      "t": 8240,
+      "note": "Banana peel injected 760 ms before the target was lost"
+    }
+  ],
+  "confidence": 0.6,
+  "model": "rule"
+}

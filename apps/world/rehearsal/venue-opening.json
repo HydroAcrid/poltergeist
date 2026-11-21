@@ -1,0 +1,14 @@
+{
+  "seedSha256": "7a47d68c3cc99e78ebc2ab3eebc3a162e6b1983e148f83b619d86ed4f787c755",
+  "plateSha256": "fec5c583dc5826da70a12d2fda23977fc17b0ffc071f94cfc960e75c377338db",
+  "explorerSha256": "46ac3161401de1b32293e8dacf0e1be7aa8f830d4f18879a8df9f9d561bf9026",
+  "reviewedAt": "2026-11-21T20:00:29Z",
+  "review": {
+    "playerCount": 1,
+    "view": "right-shoulder",
+    "routeVisible": true,
+    "diagonal": true,
+    "standingOnFloor": true,
+    "bodyBox": [256, 62, 981, 356]
+  }
+}

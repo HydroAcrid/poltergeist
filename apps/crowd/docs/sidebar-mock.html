@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audience sidebar mock</title>
+<style>
+:root{--bg:#0e0c17;--panel:#18142a;--ink:#f1ecff;--muted:#a59fc0;--line:#2c2645;--accent:#9b7bff;--ok:#5fd59a;--go:#ffc46b;--chip:#262040}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.stage{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px;min-height:100vh}
+.live{position:relative;border-radius:14px;overflow:hidden;background:#000;align-self:start}
+.live img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;filter:brightness(.8)}
+.hud{position:absolute;inset:auto 12px 12px 12px;display:flex;justify-content:space-between;gap:8px;font-size:15px}
+.hud span{background:rgba(10,8,20,.72);padding:6px 10px;border-radius:999px}
+.hud b{font-variant-numeric:tabular-nums}
+.ghost{position:absolute;left:46%;top:44%;font-size:34px;opacity:.65}
+.feed{display:flex;flex-direction:column;gap:12px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.item{padding:8px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.text{font-weight:600}
+.by{font-size:13px;color:var(--muted)}
+.why{font-size:14px;color:var(--muted);margin-top:2px}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;margin-top:4px}
+.next{background:var(--accent);color:#120f1d}
+.sent{background:#33240b;color:var(--go)}
+.seen{background:#12301f;color:var(--ok)}
+.resp{font-size:14px;margin-top:4px}
+.resp::before{content:"→ ";color:var(--muted)}
+.label{position:fixed;top:6px;right:10px;font-size:11px;color:var(--muted)}
+.phase{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-weight:600}
+.phase .state{color:var(--ok)}
+.phase.opening .state{color:var(--go)}
+.phase b{font-variant-numeric:tabular-nums;font-size:20px}
+.compose{display:none}
+.compose input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px}
+.chip{flex:none;background:var(--chip);border-radius:999px;padding:7px 11px;font-size:14px}
+.receipt{font-size:13px;color:var(--muted);margin-top:8px}
+.empty{color:var(--muted);font-size:14px}
+@media (max-width:700px){
+  .stage{grid-template-columns:1fr;padding:12px;gap:12px}
+  .label{position:static;display:block;padding:6px 12px 0}
+  .compose{display:block}
+  .hud{display:none} /* the phase bar carries goal, scares and time on phones */
+}
+</style>
+</head>
+<body>
+<div class="label">MOCK · conductor trace at t = 24 s</div>
+<div class="stage">
+  <div class="live">
+    <img src="/world/robot-v1/hallway.webp" alt="Live hallway, robot with flashlight seen from over its right shoulder">
+    <div class="ghost" aria-hidden="true">👻</div>
+    <div class="hud"><span>Goal: through the EXIT</span><span>👻 Scares <b>1</b>/3</span><span><b>0:36</b> left</span></div>
+  </div>
+  <div class="feed">
+    <div class="phase" id="phase"><span class="state">● Round 1 live</span><span>👻 <b>1</b>/3 · <b>0:36</b> left</span></div>
+    <section class="box compose" aria-label="Send a haunting (phone only)">
+      <h2>Send a haunting</h2>
+      <input placeholder="What happens in the hallway?" aria-label="Your idea">
+      <div class="chips"><span class="chip">Drop a banana peel</span><span class="chip">Roll in fog</span><span class="chip">Tip over a chair</span><span class="chip">Flicker the lights</span></div>
+      <div class="receipt" id="receipt">Your ideas show here privately until they're approved.</div>
+    </section>
+    <section class="box" aria-label="In the hallway" id="hallway">
+      <h2>In the hallway</h2>
+      <div class="item">
+        <div class="text">Thick fog rolls down the hallway</div>
+        <div class="by">bo</div>
+        <span class="pill seen">Seen in the hallway</span>
+        <div class="resp">Robot flinches and backs up · 👻 scare</div>
+      </div>
+      <div class="item">
+        <div class="text">A chair tips over in the middle of the aisle</div>
+        <div class="by">ghost crew</div>
+        <span class="pill seen">Seen in the hallway</span>
+        <div class="resp">Robot steps right around it</div>
+      </div>
+    </section>
+    <section class="box" aria-label="Up next">
+      <h2>Up next</h2>
+      <div class="item">
+        <div class="text">A chair tips over in the middle of the aisle</div>
+        <div class="by">ana</div>
+        <div class="why">The aisle ahead is open and the beam will catch it</div>
+        <span class="pill next">Up next · 0:08</span>
+      </div>
+    </section>
+    <section class="box" aria-label="Pending">
+      <h2>Pending</h2>
+      <div class="item">
+        <div class="text">A chandelier crashes down from the ceiling</div>
+        <div class="by">cy</div>
+        <div class="why">Great idea, but this camera can't show it</div>
+      </div>
+    </section>
+  </div>
+</div>
+<script>
+// ?phase=opening shows the 30 s submission window before the robot moves and the clock starts.
+const phase = new URLSearchParams(location.search).get("phase");
+if (phase === "over") {
+  document.title = "Audience sidebar mock (over)";
+  document.querySelector(".label").textContent = "MOCK · round over, audience fear win";
+  const ph = document.getElementById("phase");
+  ph.innerHTML = '<span class="state">👻 Audience wins: 3 scares</span><span>Next round in <b>4:12</b></span>';
+  document.querySelector(".hud").innerHTML = '<span>Round 1 over</span><span>👻 Scares <b>3</b>/3</span><span>0:21 left</span>';
+  document.querySelector(".ghost").remove();
+  document.querySelector('[aria-label="Up next"]').innerHTML = '<h2>Up next</h2><div class="empty">Round over. Pending ideas carry over to the next round.</div>';
+}
+if (phase === "opening") {
+  document.title = "Audience sidebar mock (opening)";
+  document.querySelector(".label").textContent = "MOCK · opening window, 0:24 before the robot moves";
+  const ph = document.getElementById("phase");
+  ph.className = "phase opening";
+  ph.innerHTML = '<span class="state">● Ideas open</span><span>robot moves in <b>0:24</b></span>';
+  document.querySelector(".hud").innerHTML = '<span>Goal: through the EXIT</span><span>👻 Scares <b>0</b>/3</span><span>Clock starts in <b>0:24</b></span>';
+  document.querySelector(".ghost").remove();
+  document.getElementById("hallway").innerHTML = '<h2>In the hallway</h2><div class="empty">Nothing yet. The first idea goes in 8 s after the robot starts.</div>';
+  document.getElementById("receipt").textContent = "✓ Got it: “a chandelier crashes down” · checking (only you can see this)";
+  document.querySelector('[aria-label="Up next"] .pill').textContent = "Up next · first slot";
+  document.querySelector('[aria-label="Up next"] .text').textContent = "Thick fog rolls down the hallway";
+  document.querySelector('[aria-label="Up next"] .by').textContent = "bo";
+  document.querySelector('[aria-label="Up next"] .why').textContent = "It will roll right through the flashlight beam";
+  const pending = document.querySelector('[aria-label="Pending"]');
+  pending.insertAdjacentHTML("beforeend", '<div class="item"><div class="text">A chair tips over in the middle of the aisle</div><div class="by">ana</div><div class="why">A chair already fills the beam</div></div>');
+}
+</script>
+</body>
+</html>
