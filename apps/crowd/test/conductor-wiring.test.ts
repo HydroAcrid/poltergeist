@@ -121,6 +121,23 @@ describe("conductor in the scheduler", () => {
     expect((await a.state()).mine[0]?.status).toBe("queued");
   });
 
+  it("upgrades a FIFO pick made before the scene arrived", async () => {
+    hub = await buildTestHub({ scene: live });
+    const a = await phone();
+    const b = await phone();
+    await a.submit({ preset: "chair-tips" });
+    hub.clock.advance(3_000);
+    await b.submit({ preset: "fog" });
+    await hub.crowd.whenIdle();
+    scene = undefined;
+    hub.world.startEpisode();
+    hub.crowd.tick();
+    expect((await a.state()).upNext).toMatchObject({ mode: "fifo" });
+    scene = mkScene({ obstacles: [chairInBeam] }); // World's scene comes online
+    hub.crowd.tick();
+    expect((await a.state()).upNext).toMatchObject({ mode: "conductor", reason: "It will roll right through the flashlight beam" });
+  });
+
   it("falls back to FIFO when World's scene goes stale", async () => {
     hub = await buildTestHub({ scene: live });
     const a = await phone();

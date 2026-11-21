@@ -363,6 +363,8 @@ export class CrowdService {
     const ids = new Set(eligible.map((h) => h.hauntId));
     for (const id of [...this.waitingReasons.keys()]) if (!ids.has(id)) this.waitingReasons.delete(id);
     if (this.reserved && !ids.has(this.reserved.hauntId)) this.reserved = null;
+    // A FIFO pick made before World's scene arrived is upgraded once a fresh scene exists.
+    if (this.reserved?.mode === "fifo" && this.deps.scene?.()) this.reserved = null;
     const others = eligible.filter((h) => h.hauntId !== this.reserved?.hauntId);
     if (!others.length && this.reserved) return;
     const d = this.decide(others);
