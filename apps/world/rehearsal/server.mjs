@@ -348,7 +348,7 @@ export async function registerStage(
         mode: r.live ? 'genie' : 'replay',
         driver: 'brain',
         round: number,
-        seed: { kind: 'image', imagePath: 'venue-photo' },
+        seed: { kind: 'image', imagePath: 'venue-photo', prompt: 'Reach the signed exit in the photographed hallway.' },
         policyVersion: 'v1',
         task: {
           targetLabel: 'exit',
