@@ -64,6 +64,7 @@ export async function registerStage(
       platePreparing: !!entry?.pending,
       plateError: entry?.error || null,
       plateKey: ready ? sourceKey : null,
+      aisle: custom ? entry?.image?.aisle || null : {x:.585,y:.48},
     };
   }
   const aliases = new Map(),
@@ -516,7 +517,7 @@ export async function registerStage(
           if (revision !== checkedRevision)
             return reply.code(409).send({ error: 'The photo changed. Start with the current photo.' });
           if (!review.passes)
-            return reply.code(422).send({ error: 'The opening needs one robot seen over its right shoulder. Choose a clear hallway photo and try again.' });
+            return reply.code(422).send({ error: 'The opening needs one robot on the left and room to see obstacles ahead on the right. Try a photo with a clearer view down the aisle.' });
           verifiedSeedKey = key;
         } catch {
           return reply.code(503).send({ error: 'The opening shot could not be checked. Try again.' });

@@ -1,5 +1,20 @@
 // Fractions of the uncropped 16:9 image. The camera sits behind the right shoulder.
-export const shoulderFrame = Object.freeze({x:.245, width:.38, height:.71, top:.29, packWidth:.28});
+export const shoulderFrame = Object.freeze({x:.21, width:.29, height:.70, top:.26, packWidth:.215});
+
+export const audienceView = [
+  "Use a raised rear three-quarter tracking shot from behind the explorer’s RIGHT shoulder. Travel parallel to the explorer at walking speed with fixed focal length and a steady offset.",
+  "Look diagonally across the action. The route runs from the lower left foreground toward the upper right distance. Keep the explorer near the left fifth, about 29 percent of the image width. The audience can see its backpack and flashlight hand.",
+  "Show the next three strides of floor as a continuous open lane to the right of the silhouette. Keep enough space to see an entire approaching object and the explorer in the same shot.",
+].join(" ");
+
+// Frame the empty opening once. Live frames always use the provider’s full image.
+export function openingCrop(point) {
+  const target = {x:.72, y:.38};
+  const scale = Math.max(.55, Math.min(1, point.x / target.x, (1-point.x) / (1-target.x),
+    point.y / target.y, (1-point.y) / (1-target.y)));
+  const bound = n => Math.max(0, Math.min(1-scale,n));
+  return {x:bound(point.x - target.x * scale), y:bound(point.y - target.y * scale), scale};
+}
 
 // Use the same lighting direction for the room reconstruction and the live world.
 export const hallwayLighting = [

@@ -14,7 +14,7 @@ The shell is scuffed sage enamel. The rounded box head has two warm ring eyes, b
 
 The [bundled seed](hallway-seed.jpg) provides a repeatable reference. The live host adapts the selected venue photo and composes the same robot into the opening frame.
 
-Place the camera just above and behind the robot’s right shoulder, looking in its direction of travel. Its head, backpack and flashlight fill the left foreground. Its knees can meet the lower edge. Keep the next few steps and the route around a hazard visible in the center and right. Move the camera with the robot at walking pace. Let the pendants fall dim and cool after closing time. The warm torch picks out hazards on the floor. Keep the doorway legible on a projector.
+Place the camera just above and behind the robot’s right shoulder, looking in its direction of travel. Frame the explorer near the left fifth of the screen, roughly 29% of the image width. Its backpack and right flank face the audience. Aim diagonally toward the upper right so the audience sees two or three strides of floor, the entire obstacle and a route around it together. Move the camera with the robot at walking pace. Let the pendants fall dim and cool after closing time. The warm torch picks out hazards on the floor. Keep the doorway legible on a projector.
 
 ## Give the audience time to read a haunting
 

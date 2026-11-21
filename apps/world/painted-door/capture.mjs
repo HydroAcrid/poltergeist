@@ -1,6 +1,6 @@
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { assessFraming } from './framing-report.mjs';
-import { hallwayLighting } from '../rehearsal/look.mjs';
+import { audienceView, hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -73,9 +73,8 @@ async function capture() {
   if (stagePilot) setup.world_prompt.text = [
     hallwayLighting,
     "The reference image already contains the entire cast: one explorer at lower left. Animate that existing foreground figure for the entire take. The aisle ahead contains only the room and the invited obstacles. Preserve its helmet, orange backpack, flashlight and scale throughout.",
-    "One continuous third-person shoulder shot. The camera is attached to a short steady boom behind and just RIGHT of the same little robot’s right shoulder, looking forward down the room, within fifteen degrees of its heading. Our eye is just above the head, tilted slightly down onto the next patch of floor. As the robot moves the observer travels with it at the same speed, fixed distance and focal length.",
-    "Keep the near back of its head, sage right shoulder, orange twin-strap backpack and brass flashlight prominent in the LEFT third. The visible silhouette occupies 35 to 40 percent of screen width. Its head starts around 29 percent down. Thighs meet the bottom edge with both boots below the picture. Keep this foreground composition as the hall moves past. The open route and obstacles are visible just beyond the right shoulder across the middle and right.",
-    "The robot lifts its flashlight to look down the actual photographed aisle and pauses for its next instruction. Long connected bays, familiar lamps and flooring continue toward a distant illuminated exit near center-right. Keep the next few unobstructed steps on-screen; the robot can halt, turn, or move around a visible encounter."
+    audienceView,
+    "The robot lifts its flashlight to look down the actual photographed aisle and pauses for its next instruction. Long connected bays, familiar lamps and flooring continue toward a distant illuminated exit in the upper right. Keep the next few unobstructed steps on-screen; the robot can halt, turn, or move around a visible encounter."
   ].join(" ");
   const { trick, moves, endFrame } = sequenceFor(values);
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1beta' });

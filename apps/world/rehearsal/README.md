@@ -34,6 +34,8 @@ Open **Host** and capture or choose the hallway photo. World opens the lobby and
 
 The projector shows the chosen haunting in a small **Up next** card before World sends it. **Taking effect** means the request went to Genie. **In the robot’s path** requires a sighting in its walking lane. A scare requires an observed change of pose. The card stays clear of the score and sits on the opposite side from the robot when its latest position is available.
 
+A host opening now checks for one explorer on clear floor with room to see an obstacle along the upper-right diagonal. The camera follows from behind its right shoulder.
+
 Live World captures save a framing report in the run’s `session.json`. It measures robot size, horizontal position and clipping from observed frames. Check the uncut native recording for forward travel alongside the robot, especially during a pause or sidestep. The framing report measures composition and can flag drift even when the robot is still visible.
 
 The host serves on loopback. Any event deployment or audience gateway should expose Courtney’s audience route separately from the host controls.

@@ -208,7 +208,7 @@ async function updateState() {
     revision = s.revision;
   }
   if (plateKey !== s.plateKey) {
-    await scene.setPlate(s.plateKey);
+    await scene.setPlate(s.plateKey, s.aisle);
     plateKey = s.plateKey;
   }
   state = s;

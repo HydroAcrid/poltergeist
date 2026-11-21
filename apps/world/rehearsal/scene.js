@@ -1,5 +1,5 @@
-import { createHallwayLighting, shoulderFrame } from './look.mjs';
-import { createGhostVeil, createMotionGate } from './veil.mjs';
+import { createHallwayLighting, openingCrop, shoulderFrame } from './look.mjs';
+import { hallwayBlackout, createGhostVeil, createMotionGate } from './veil.mjs';
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const smooth = (v) => {
   v = clamp(v);
@@ -67,7 +67,7 @@ export async function createScene(canvas) {
     return best>0 ? point : expected;
   }
   let sourceAisle=aislePoint(source,{x:.52,y:.54});
-  let roomAisle={x:.59,y:.45};
+  let roomAisle={x:.74,y:.40};
   function openingPhoto(progress) {
     const fit=Math.min(W/source.width,H/source.height);
     const fill=Math.max(W/source.width,H/source.height);
@@ -130,7 +130,7 @@ export async function createScene(canvas) {
   function room(custom, amount = 1) {
     ctx.save();
     ctx.globalAlpha = amount;
-    const plate=custom && preparedHall ? preparedHall : source;
+    const plate=preparedHall || source;
     const cx=cameraZoom>1?clamp(.52+cameraPan):.52;
     cover(plate,cameraZoom,cx,plate.height>plate.width?.58:.60);
     ctx.restore();
@@ -151,7 +151,7 @@ export async function createScene(canvas) {
     entry = 0,
   ) {
     // The opaque sprite is 377px wide inside its original 548px sheet; position
-    // the visible head, shoulders and pack. The knees extend below the screen.
+    // the visible silhouette while keeping the route to its right open.
     const scale = W*shoulderFrame.width/377;
     const w=robot.width*scale, h=robot.height*scale;
     const p={x:(shoulderFrame.x+.045*l)*W,y:shoulderFrame.top*H+(robot.height-33)*scale};
@@ -174,8 +174,10 @@ export async function createScene(canvas) {
       ay - h * 0.06,
       h * 0.8,
     );
-    glow.addColorStop(0, 'rgba(255,206,120,.51)');
+    glow.addColorStop(0, 'rgba(255,206,120,.34)');
     glow.addColorStop(1, 'rgba(255,198,110,0)');
+    ctx.save();
+    ctx.filter = 'blur(7px)';
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.moveTo(ax, ay);
@@ -183,6 +185,7 @@ export async function createScene(canvas) {
     ctx.lineTo(ax + h * 1.2, ay + h * 0.12);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
     ctx.drawImage(robot, -w / 2, -h + walk * h * 0.009, w, h);
     ctx.restore();
   }
@@ -312,9 +315,17 @@ export async function createScene(canvas) {
   }
   return {
     paint,drawLive:followLive,presentLive,
-    async setPlate(key) {
-      preparedHall=key && key!=='venue' ? await image('/rehearsal/plate?key='+encodeURIComponent(key)) : null;
-      roomAisle=preparedHall ? aislePoint(preparedHall,{x:.59,y:.45}) : {x:.59,y:.45};
+    async setPlate(key, aisle) {
+      if (!key) { preparedHall=null; return; }
+      const plate=await image('/rehearsal/plate?key='+encodeURIComponent(key));
+      const point=aisle || aislePoint(plate, {x:.55,y:.48});
+      const crop=openingCrop(point);
+      const framed=document.createElement('canvas');
+      framed.width=W; framed.height=H;
+      framed.getContext('2d').drawImage(plate, crop.x*plate.width, crop.y*plate.height,
+        crop.scale*plate.width, crop.scale*plate.height, 0,0,W,H);
+      preparedHall=framed;
+      roomAisle={x:(point.x-crop.x)/crop.scale,y:(point.y-crop.y)/crop.scale};
     },
     async setPhoto(rev) {
       source = await image('/rehearsal/source?v=' + rev);

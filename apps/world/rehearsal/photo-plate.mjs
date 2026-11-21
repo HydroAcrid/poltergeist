@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
 const framing = [
-  'Reconstruct the photographed interior as a wide 16:9 architectural photograph of the empty venue after closing time. Use the supplied photograph as the sole visual reference. Preserve the identifiable walls, materials, floorboards, lamps, doorways, furniture and artwork. Clear all people, possessions and screens.',
-  'Place the camera at low eye level, looking almost straight down the aisle. The vanishing point is just right of center, about 60 percent across. Keep the left foreground completely vacant, with uninterrupted floor or wall; it is reserved for compositing. Leave the next several floor steps and the central and right approach to a distant illuminated exit clearly visible. Extend the venue through successive recognizable bays.',
+  'Reconstruct the photographed interior as a wide 16:9 architectural photograph of the empty venue after closing time. Use the supplied photograph as the sole visual reference. Preserve the identifiable walls, materials, floorboards, lamps, doorways and wall art. Clear all people, possessions and screens.',
+  'Move the viewpoint several steps sideways and up, as if looking down from a camera behind and to the right of a small walking character. Create a pronounced diagonal composition: an empty walking lane ENTERS at the bottom LEFT near x=20%, crosses open floor at picture center, and recedes to a far opening on the upper RIGHT near x=75%, y=40%. The camera looks down at the floor enough for the audience to see a whole chair-sized obstacle two or three strides ahead. The lower half is mostly visible wood floor, the ceiling occupies at most the top quarter. Preserve the near left foreground for the explorer. Place the camera INSIDE the aisle, three steps beyond the nearest seats. The entire bottom half, from the lower LEFT corner through the center and right, must be uninterrupted empty wood flooring. All tables, stools, chairs and other furniture are beyond the starting position or outside the image. The lower-left quarter will contain the standing player; any chair, desk or pillar there ruins the shot. Fill most of the lower two-thirds with continuous clear floor, extending diagonally into successive recognizable bays. Compose the scene with level verticals.',
   'Use cool blue-green shadows high along the walls and warm pools of light from the remaining practical lamps, with visible detail in the midtones and a readable floor. Furniture stays at the sides. Show only the room, without people, robots, figures, ghosts, newly added obstacles, interface or captions.',
 ].join(' ');
 
@@ -81,7 +81,8 @@ export async function generateVerifiedRoom(photo, models) {
     },
   });
   const image = generatedImage(result);
-  await checkEmptyRoom(image, models);
+  const aisle = await checkEmptyRoom(image, models);
+  if (aisle) image.aisle = aisle;
   return image;
 }
 
@@ -90,7 +91,7 @@ export async function checkEmptyRoom(image, models) {
     model: process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview',
     contents: [{ role: 'user', parts: [
       { inlineData: { mimeType: image.mime, data: image.bytes.toString('base64') } },
-      { text: 'Inspect the entire hallway image, particularly the left foreground and distant aisle. Is there any freestanding character such as a robot, person or ghost? Count even partial heads, shoulders, silhouettes, and reflections of characters. Furniture, light fixtures and flat original wall art are part of the room. Choose empty only when confidently free of characters. Otherwise choose character or uncertain.' },
+      { text: 'Inspect the entire hallway image, particularly the left foreground and distant aisle. Is there any freestanding character such as a robot, person or ghost? Count even partial heads, shoulders, silhouettes, and reflections of characters. Furniture, light fixtures and flat original wall art are part of the room. Choose empty only when confidently free of characters. Otherwise choose character or uncertain. Locate the far end or vanishing point of the main walkable aisle as aisleEnd [y,x] normalized from 0 to 1000.' },
     ] }],
     config: {
       temperature: 0,
@@ -98,13 +99,16 @@ export async function checkEmptyRoom(image, models) {
       responseMimeType: 'application/json',
       responseJsonSchema: {
         type: 'object',
-        properties: { room: { type: 'string', enum: ['empty', 'character', 'uncertain'] } },
-        required: ['room'],
+        properties: { room: { type: 'string', enum: ['empty', 'character', 'uncertain'] }, aisleEnd:{type:'array',items:{type:'integer'},minItems:2,maxItems:2} },
+        required: ['room','aisleEnd'],
       },
     },
   });
-  const verdict = JSON.parse(review.text || '{}')?.room;
+  const {room:verdict, aisleEnd} = JSON.parse(review.text || '{}');
   if (verdict !== 'empty') throw new RoomContainsFigure('Room check: ' + (verdict || 'uncertain'));
+  if (Array.isArray(aisleEnd) && aisleEnd.length === 2 &&
+      aisleEnd.every(n => Number.isInteger(n) && n > 0 && n < 1000))
+    return {y:aisleEnd[0]/1000, x:aisleEnd[1]/1000};
 }
 
 // Jobs and completed plates share one entry keyed by the exact source, so reloads,
