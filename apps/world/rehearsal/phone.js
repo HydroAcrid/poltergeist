@@ -26,14 +26,13 @@ async function send(body) {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok)
-      throw Error(data.error?.message || 'Your idea could not be sent.');
+    if (!res.ok) { setSendError(data.error?.message || 'Your idea could not be sent. Try again.'); return; }
     latest = data.hauntId;
     el('idea').value = '';
-    announce('Your idea is being checked.');
+    announce(body.preset ? 'Your pick was received.' : 'Checking your idea…');
     await refresh();
-  } catch (e) {
-    setSendError(e.message);
+  } catch {
+    setSendError('No connection. Try again in a moment.');
   } finally {
     busy = false;
   }
@@ -62,11 +61,11 @@ document.querySelector('form').onsubmit = (e) => {
 const status = {
   submitted: 'Checking your idea',
   queued: 'In the queue',
-  approved: 'Approved',
+  approved: 'In the queue',
   dispatched: 'Up next',
   injected: 'Sent to the hallway',
-  failed: 'Could not appear this round',
-  rejected: 'This idea wasn’t approved',
+  failed: 'Didn’t appear this round',
+  rejected: 'Edit your idea or choose another haunting',
 };
 async function refresh() {
   try {

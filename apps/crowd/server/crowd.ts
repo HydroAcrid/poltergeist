@@ -143,12 +143,10 @@ export class CrowdService {
   private sending = false;
   private filmedCatalog = "";
   private readonly now: () => number;
-  private readonly presetsById: Map<string, Preset>;
 
   constructor(private deps: CrowdDeps) {
     this.now = deps.now ?? Date.now;
     this.config = { ...DEFAULT_CONFIG, ...deps.config };
-    this.presetsById = new Map(deps.presets.map((p) => [p.id, p]));
     this.unsubscribe = deps.bus.subscribe(["episode.started", "episode.ended", "haunt.injected", "operator.command", "tick"], (e) => this.onEvent(e));
   }
 
@@ -185,8 +183,8 @@ export class CrowdService {
 
   submit(deviceId: string, req: HauntSubmitRequest): SubmitResult {
     const now = this.now();
-    const preset = req.preset !== undefined ? this.presetsById.get(req.preset) : undefined;
-    if (req.preset !== undefined && !preset) return { ok: false, code: "INVALID", message: "That preset doesn't exist." };
+    const preset = req.preset !== undefined ? this.presets.find(p => p.id === req.preset) : undefined;
+    if (req.preset !== undefined && !preset) return { ok: false, code: "INVALID", message: "That choice is unavailable. Pick another from the list." };
 
     if (req.revisionOf !== undefined) {
       const parent = this.haunts.get(req.revisionOf);

@@ -197,11 +197,19 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
 
 it("reports the source receipt without assuming a projector decoded a frame", () => {
   for (const [status, sceneReceipt, label] of [
-    ["dispatched", "filming", "Selected for generation"],
+    ["dispatched", "filming", "Picked for the hallway"],
     ["injected", "in-recording", "In this scene"],
-    ["injected", "generated-in-path", "Confirmed in the generated scene"],
+    ["injected", "generated-in-path", "Seen in the robot’s path"],
   ]) {
     const h = {...pub("ht_A", status!, "Rolling bucket", "Blue Fog"), sceneReceipt};
     expect(M.pickCard({hallway:[h]}, null)).toMatchObject({label});
   }
+});
+
+it("gives a missed haunting a public outcome even when stale World evidence remains", () => {
+  const row = {...pub("ht_A","failed","Fog rolls in","Blue Fog"), sceneReceipt:"filming"};
+  const card = M.pickCard({hallway:[row]}, {props:[{hauntId:"ht_A", acked:120, selectedAt:100,
+    reaction:"internal reviewer details", reason:"internal rendering details"}]});
+  expect(card).toMatchObject({label:"Didn’t appear this round"});
+  expect(JSON.stringify(card)).not.toMatch(/internal|review|render|filming/i);
 });

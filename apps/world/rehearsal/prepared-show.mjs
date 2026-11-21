@@ -31,7 +31,7 @@ export function buildPreparedLibrary(clips,mediaDirectory=new URL('./prepared-me
     if (!verified(clip)) continue;
     const preset=presets.find(p=>p.id===clip.presetId);
     if (!preset || byText.has(preset.text)) continue;
-    effectOptions.push({id:preset.id,text:preset.text,title:clip.title,label:clip.buttonLabel,tags:preset.tags});
+    effectOptions.push({id:preset.id,text:preset.text,title:clip.title || preset.label,label:clip.buttonLabel || preset.label,tags:preset.tags});
     byText.set(preset.text,clip);
   }
   return {clips:[walk,...byText.values()],effectOptions,byText};

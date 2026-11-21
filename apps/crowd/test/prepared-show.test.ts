@@ -144,3 +144,28 @@ it("waits for the shared-key Conductor before sending a buffered guest pick, eve
   expect(hub.dispatched()).toMatchObject([{ hauntId: secondId }]);
   expect(request).toHaveBeenCalledTimes(1);
 });
+
+it("updates a stale phone's choices before making a receipt, and queues a live preset without moderation", async () => {
+  let window: PreparedWindow | null = null;
+  hub = await buildTestHub({prepared: () => window, renderWindow: () => ({canDispatch:false, slots:0})});
+  const first = await hub.app.inject({method:"GET", url:"/api/crowd/presets"});
+  const before = await hub.app.inject({method:"GET", url:"/api/crowd/state"});
+  const cookie = String(before.headers["set-cookie"]).split(";")[0]!;
+  const post = (preset: string, catalog?: string) => hub.app.inject({method:"POST", url:"/api/crowd/haunt",
+    headers: {cookie, ...(catalog && {"x-pg-catalog": catalog})}, payload: {preset}});
+  const mine = async () => (await hub.app.inject({method:"GET", url:"/api/crowd/state", headers:{cookie}})).json().mine;
+  const model = vi.spyOn(RulesOnlyModeration.prototype, "moderate");
+  window = {options, canDispatch:false};
+  const stale = await post("bat-swarm", String(first.headers["x-pg-catalog"]));
+  expect(stale.statusCode).toBe(409);
+  expect(stale.headers["x-pg-catalog"]).toMatch(/^filmed:/);
+  expect(stale.json().error.message).toContain("updated list");
+  expect((await post("bat-swarm")).statusCode).toBe(409); // Older phone, same race.
+  expect(await mine()).toEqual([]);
+  window = null;
+  const fresh = await post("bat-swarm", "buffered");
+  expect(fresh.statusCode).toBe(200);
+  await hub.crowd.whenIdle();
+  expect(await mine()).toMatchObject([{status:"queued", moderated:{model:"preset",safe:true}}]);
+  expect(model).not.toHaveBeenCalled();
+});

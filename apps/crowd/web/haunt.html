@@ -165,7 +165,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   <section class="screen" id="screen-ideas" aria-labelledby="h-ideas" hidden>
     <a class="back" href="#haunt">Back</a>
     <h1 id="h-ideas" tabindex="-1">More ideas</h1>
-    <p class="lede" id="ideas-intro">Tap one to send it. Each idea is checked before it goes into the hallway.</p>
+    <p class="lede" id="ideas-intro">Tap one to put it in the queue.</p>
     <div id="ideas-list"></div>
     <a class="next" href="#haunt">Write your own instead</a>
   </section>
@@ -310,7 +310,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   async function api(path, opts) {
     const res = await fetch(path, { credentials: "same-origin", headers: { "content-type": "application/json" }, ...opts });
     const body = await res.json().catch(() => ({}));
-    return { ok: res.ok, body };
+    return { ok: res.ok, status: res.status, catalog: res.headers.get("x-pg-catalog"), body };
   }
 
   let inflight = false;
@@ -363,7 +363,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     else $("form").scrollIntoView({ block: "center" });
   }
 
-  async function choosePreset(p, button) {
+  async function choosePreset(p, button, key) {
+    if (catalogKey !== key || displayedCatalog !== key) { await refresh(); return; }
     if (sending) return;
     if (submissionsClosed()) {
       showPresetDraft(p.id, p.text, "Draft selected. Tap Send when the hallway opens.");
@@ -386,7 +387,16 @@ ol,ul{list-style:none;margin:0;padding:0}
       else say(message, true);
     }
     try {
-      const { ok, body } = await api("/api/crowd/haunt", { method: "POST", body: JSON.stringify(payload) });
+      const headers = { "content-type": "application/json" };
+      if (payload.preset && displayedCatalog) headers["x-pg-catalog"] = displayedCatalog;
+      const { ok, status, catalog, body } = await api("/api/crowd/haunt", { method: "POST", headers, body: JSON.stringify(payload) });
+      if (!ok && status === 409 && catalog && payload.preset) {
+        catalogKey = catalog;
+        await loadPresets(catalog);
+        say("The choices have changed. Pick a haunting from the updated list.", true);
+        location.hash = "#haunt";
+        return;
+      }
       if (!ok) { showError(body.error?.message || "That didn't send. Try again."); return; }
       say("");
       rawById[body.hauntId] = rawText;
@@ -397,7 +407,7 @@ ol,ul{list-style:none;margin:0;padding:0}
         revisionErrors.delete(payload.revisionOf);
       }
       if (!state.mine.some(h => h.hauntId === body.hauntId) && !pendingMine.some(h => h.hauntId === body.hauntId)) {
-        pendingMine.unshift({ hauntId: body.hauntId, status: "submitted" });
+        pendingMine.unshift({ hauntId: body.hauntId, status: "submitted", preset: payload.preset });
       }
       if (payload.text || presetDraft?.id === payload.preset) {
         presetDraft = null;
@@ -424,11 +434,11 @@ ol,ul{list-style:none;margin:0;padding:0}
   const STATUS = {
     dispatched: ["Going into the hallway…", "p-go"],
     injected: ["Sent to the hallway", "p-ok"],
-    failed: ["Didn't make it in", "p-bad"],
-    rejected: ["Not approved", "p-bad"],
+    failed: ["Didn’t appear this round", "p-bad"],
+    rejected: ["Try a change", "p-bad"],
     withdrawn: ["Replaced by your newer idea", ""],
   };
-  const STEPS = ["Checking", "Approved", "Up next", "Sent to the hallway"];
+  const STEPS = ["Received", "In the queue", "Up next", "Sent to the hallway"];
 
   // Index of the current step; STEPS.length means every step is done.
   function stepIndex(h, isHead) {
@@ -441,9 +451,9 @@ ol,ul{list-style:none;margin:0;padding:0}
 
   const clipLabels = {
     "film-selected": "Selected for the next scene",
-    "filming": "Selected for generation",
+    "filming": "Picked for the hallway",
     "in-recording": "In this scene",
-    "generated-in-path": "Confirmed in the generated scene",
+    "generated-in-path": "Seen in the robot’s path",
   };
   function clipReceipt(h) {
     return ["dispatched", "injected"].includes(h.status) ? clipLabels[h.sceneReceipt] : undefined;
@@ -479,7 +489,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   function rejection(card, h, raw) {
     const id = h.hauntId;
     const suggestion = h.moderated?.suggestion;
-    card.append(el("span", "pill p-bad", "Not approved"));
+    card.append(el("span", "pill p-bad", h.moderated?.model === "filmed" ? "Choose another haunting" : "Try a change"));
     if (h.moderated?.reason) card.append(el("div", "reason", h.moderated.reason));
     if (revised[id]) { card.append(el("div", "by", "Revision sent")); return; }
     const actions = el("div", "revision");
@@ -537,19 +547,20 @@ ol,ul{list-style:none;margin:0;padding:0}
   function receiptStatus(h, reserved) {
     if (!h) return "";
     if (h.status === "rejected") return revised[h.hauntId] ? "Revision sent." :
-      h.moderated?.suggestion ? "The idea check has a suggested change." : "The idea check needs a change.";
-    if (h.status === "submitted") return filmed() ? "Checking the filmed choices…" : "Checking whether your idea can work in the hallway…";
+      h.moderated?.suggestion ? "Try the suggestion below, or edit your idea." : "Edit your idea or choose another haunting.";
+    if (h.status === "submitted") return h.preset ? "Your pick was received." : "Checking your idea…";
     const clip = clipReceipt(h);
-    if (clip) return h.sceneReceipt === "generated-in-path" ? "Confirmed in the generated scene, in the robot’s path." : clip + ".";
+    if (clip) return h.sceneReceipt === "generated-in-path" ? "Seen in the robot’s path." : clip + ".";
     if ((filmed() || buffered()) && h.status === "queued") return "Your idea is in the running for the next scene.";
-    if (h.status === "failed" || h.status === "withdrawn") return STATUS[h.status][0];
+    if (h.status === "failed") return "Your haunting didn’t appear this round. You can send another idea.";
+    if (h.status === "withdrawn") return STATUS.withdrawn[0];
     if (state.verifiedPathHauntIds?.includes(h.hauntId)) return "Seen in the robot’s path.";
     if (h.status === "injected") return "Delivered to the hallway.";
     if (h.status === "dispatched") return "Placing your haunting in the hallway…";
     if (reserved?.hauntId === h.hauntId) return state.upNext?.reason ? "Up next. " + state.upNext.reason : "Your idea is up next.";
     const hold = state.holds?.find(item => item.hauntId === h.hauntId);
-    if (hold) return "Approved. " + hold.reason;
-    return state.episodeActive ? "Approved. Waiting for a place in the round." : "Approved. Waiting for the round to start.";
+    if (hold) return "In the queue. " + hold.reason;
+    return state.episodeActive ? "Your idea is in the queue." : "Your idea is in the queue for the next round.";
   }
 
   const clock = (at) => duration(at - Date.now());
@@ -563,7 +574,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (state.roundPausedRemainingMs != null) {
       ph.append(el("span", "live", "The hallway is shifting"), " · ", el("b", "", duration(state.roundPausedRemainingMs)), " left · Keep sending ideas");
     } else if (lp === "playing" || (!lp && state.episodeActive)) {
-      ph.append(el("span", "live", filmed() ? "● Audience screening" : "● Round " + (state.round ?? "") + " live"));
+      ph.append(el("span", "live", filmed() ? "● Recorded round" : "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
     } else if (lp === "before-photo") {
       ph.append("Setting up the hallway…");
@@ -583,14 +594,14 @@ ol,ul{list-style:none;margin:0;padding:0}
     $("send").disabled = sending || closed;
     if (previouslyClosed !== closed) {
       $("ideas-intro").textContent = closed ? "Choose an idea to draft. You can send it when the hallway opens." :
-        filmed() ? "Tap a filmed scene to put it in the running." : "Tap one to send it. Each idea is checked before it goes into the hallway.";
+        filmed() ? "Tap a haunting to vote for what plays next." : "Tap one to put it in the queue.";
       if (presetDraft && previouslyClosed === true && !closed) say("The hallway is open. Tap Send to submit your draft.");
       previouslyClosed = closed;
     }
     card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
       $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
-      $("lobby-next").textContent = lp === "before-photo" ? "Send your idea now while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : state.episodeActive && !filmed() ? "Send a haunting while the hallway is filmed. The host starts the game when it’s ready." : "Send an idea while you wait for the host to start.";
+      $("lobby-next").textContent = lp === "before-photo" ? "Send your idea now while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : state.episodeActive && !filmed() ? "Send a haunting while the hallway opens." : "Send an idea while you wait for the host to start.";
     }
   }
 
@@ -627,7 +638,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       const why = reserved ? state.upNext.reason : (state.holds || state.waitingReasons)?.find((w) => w.hauntId === head.hauntId)?.reason;
       if (why) up.append(el("div", "why", why));
     } else {
-      up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
+      up.append(el("div", "label", "Up next"), el("div", "empty", "Send the first haunting."));
     }
     const q = $("queue");
     q.textContent = "";
@@ -728,13 +739,25 @@ ol,ul{list-style:none;margin:0;padding:0}
   // ---------- events ----------
   async function loadPresets(key) {
     try {
-      const reply = await fetch("/api/crowd/presets", { credentials: "same-origin" });
+      // Remove the previous buttons immediately. A slow catalog fetch must not leave them actionable.
+      if (displayedCatalog !== key) {
+        const more = $("chips").querySelector(".more");
+        $("chips").replaceChildren(more);
+        $("ideas-list").replaceChildren();
+        displayedCatalog = null;
+        if (presetDraft) {
+          if ($("text").value === presetDraft.text) { $("text").value = ""; updateCount(); }
+          presetDraft = null;
+        }
+      }
+      const reply = await fetch("/api/crowd/presets", { credentials: "same-origin", cache: "no-store" });
       if (!reply.ok || (reply.headers.get("x-pg-catalog") || "live") !== key) return;
       const body = await reply.json();
-      $("haunt-intro").textContent = filmed() ? "Choose which filmed haunting plays next. Your pick counts with the crowd’s." : "Change one thing in the hallway. The robot has to get past it.";
-      $("h-presets").textContent = filmed() ? "Filmed hauntings" : "Or try one";
+      if (catalogKey !== key) return;
+      $("haunt-intro").textContent = filmed() ? "Vote for the next haunting in this recorded round." : "Change one thing in the hallway. The robot has to get past it.";
+      $("h-presets").textContent = filmed() ? "Round choices" : "Or try one";
       previouslyClosed = undefined;
-      $("hallway-intro").textContent = filmed() || buffered() ? "Track which ideas were selected and confirmed in a scene." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
+      $("hallway-intro").textContent = filmed() || buffered() ? "See which hauntings were picked and which ones appeared." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
       $("text").placeholder = filmed() ? (body[0]?.label || "Suggest a scene") : "A banana peel lands in the aisle";
       const more = $("chips").querySelector(".more");
       $("chips").replaceChildren(more);
@@ -744,7 +767,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       for (const p of body.slice(0, 3)) {
         const c = el("button", "chip", p.label);
         c.type = "button";
-        c.onclick = () => choosePreset(p, c);
+        c.onclick = () => choosePreset(p, c, key);
         $("chips").insertBefore(c, more);
       }
       const groups = new Map();
@@ -761,7 +784,7 @@ ol,ul{list-style:none;margin:0;padding:0}
           b.type = "button";
           b.append(el("b", "", p.label), el("span", "", p.text));
           b.setAttribute("aria-label", p.label + ". " + p.text);
-          b.onclick = () => choosePreset(p, b);
+          b.onclick = () => choosePreset(p, b, key);
           box.append(b);
         }
         $("ideas-list").append(box);

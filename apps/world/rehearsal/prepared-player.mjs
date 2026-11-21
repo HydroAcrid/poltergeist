@@ -82,10 +82,10 @@ export function createPreparedPlayer(surface) {
         }
       }
       if (fresh && Number.isFinite(part.collectUntil) && now >= part.collectUntil) {
-        if (part.renderPaused) return {message:'Filming is paused. You can still send a haunting.'};
+        if (part.renderPaused) return {message:'The host is getting the hallway ready. You can still send a haunting.'};
         if (round.playbackMetrics?.rejected > 0 && !first)
-          return {message:'Send more hauntings while the next scene is filmed.'};
-        return {message:part.canStart ? 'The hallway is ready. Send an idea while the host gets started.' : 'Filming the opening. Keep sending ideas.'};
+          return {message:'The hallway is still opening. Send a haunting while you wait.'};
+        return {message:part.canStart ? 'The hallway is ready. Send an idea while the host gets started.' : 'The hallway is opening. Keep sending ideas.'};
       }
       return {collecting:true};
     }

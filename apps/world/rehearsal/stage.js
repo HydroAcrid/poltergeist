@@ -111,8 +111,8 @@ function controls() {
     for (const option of menu.options) option.disabled = !state.canLive;
     recorded.disabled = !state.preparedAvailable;
     buffered.disabled = !state.canLive || !state.bufferedAvailable;
-    if (menu.selectedOptions[0]?.disabled)
-      menu.value = !buffered.disabled ? 'buffered' : state.canLive ? '5' : 'prepared';
+    if (menu.selectedOptions[0]?.disabled && state.canLive)
+      menu.value = buffered.disabled ? '5' : 'buffered';
   }
   const screening = menu.value === 'prepared';
   const canLaunch = !beforePhoto && !busy && (state?.canLive || state?.preparedAvailable);
@@ -141,7 +141,7 @@ function controls() {
   set('go-show',warming ? (state.round.prepared?.renderPaused ? 'Retry filming' : 'Start game') : buffered ? 'Open live lobby' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
   set('show-cost',buffered ? 'Guests can send ideas while Genie films two opening scenes. Start the five-minute clock when both are ready. About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
     'The clock pauses during blackouts. About $6 per generated minute.');
-  el('go-show').disabled ||= !canLaunch || (!screening && el('go-live').disabled);
+  el('go-show').disabled ||= !canLaunch || menu.selectedOptions[0]?.disabled || (!screening && el('go-live').disabled);
   if (warming) el('go-show').disabled = loading || !connected || (!state.round.prepared?.renderPaused && (!state.round.prepared?.canStart || !preparedPlayer.openingDecoded(state.round)));
   el('show-cost').hidden = !canLaunch;
   el('start').hidden = busy || (!beforePhoto && !state?.canLive);
@@ -310,7 +310,7 @@ async function updateState() {
         (r.chapters ? '&chapter=' + encodeURIComponent(r.chapter) : '');
     }
   }
-  if (s.plateError || s.publicStatus) set('message', s.plateError || s.publicStatus);
+  if (host && (s.plateError || s.publicStatus)) set('message', s.plateError || s.publicStatus);
   el('host').hidden = !host;
   controls();
   schedulePaint();

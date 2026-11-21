@@ -64,6 +64,14 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     const deviceId = deviceOf(req, reply);
     const parsed = HauntSubmitRequest.safeParse(req.body ?? {});
     if (!parsed.success) return fail(reply, 400, "INVALID", "Send an idea of up to 80 characters, or tap a preset.");
+    if (parsed.data.preset !== undefined) {
+      const current = crowd.phoneCatalog;
+      reply.header("x-pg-catalog", current);
+      const viewed = req.headers["x-pg-catalog"];
+      if ((viewed !== undefined && viewed !== current) || (current.startsWith("filmed:") && !crowd.presets.some(p => p.id === parsed.data.preset))) {
+        return fail(reply, 409, "INVALID", "The choices have changed. Pick a haunting from the updated list.");
+      }
+    }
     const r = crowd.submit(deviceId, parsed.data);
     if (!r.ok) return fail(reply, r.code === "RATE_LIMITED" ? 429 : 400, r.code, r.message);
     return { hauntId: r.hauntId, status: r.status };

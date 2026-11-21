@@ -168,7 +168,9 @@ export async function registerStage(
   });
   // Use our phone presentation for this rehearsal. All proposals still go through Crowd's real moderation.
   app.addHook('onRequest', async (req, reply) => {
-    if (!crowdPhone && req.url.split('?')[0] === '/haunt') return reply.redirect('/phone');
+    const path = req.url.split('?')[0];
+    if (!crowdPhone && path === '/haunt') return reply.redirect('/phone');
+    if (crowdPhone && path === '/phone') return reply.redirect('/haunt');
   });
   let publicStatus = '',
     live = null,

@@ -13,6 +13,7 @@ export const CARD_MS = 8000; // a stage change shows the card this long, then it
 export const STAGES = ["upnext", "sending", "sent", "seen", "inPath", "reacted"];
 
 export const STAGE_LABEL = {
+  missed: "Didn’t appear this round",
   upnext: "Up next",
   sending: "Taking effect",
   sent: "Taking effect", // Kevin (#2): "Taking effect" once World sends it; sightings/reactions update the same card
@@ -20,9 +21,9 @@ export const STAGE_LABEL = {
   inPath: "In the robot's path",
   reacted: "Robot reacted",
   "film-selected": "Selected for the next scene",
-  filming: "Selected for generation",
+  filming: "Picked for the hallway",
   "in-recording": "In this scene",
-  "generated-in-path": "Confirmed in the generated scene",
+  "generated-in-path": "Seen in the robot’s path",
 };
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -115,6 +116,7 @@ export function cardSide(world, now) {
 
 /** The furthest stage one haunting has reached, combining Crowd's status with World's evidence. */
 export function stageOf(crowdItem, worldProp) {
+  if (crowdItem?.status === "failed") return "missed";
   if (["dispatched", "injected"].includes(crowdItem?.status) && crowdItem.sceneReceipt)
     return crowdItem.sceneReceipt;
   let stage = crowdItem?.status === "dispatched" ? "sending" : crowdItem?.status === "injected" ? "sent" : null;

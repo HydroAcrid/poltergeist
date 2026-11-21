@@ -26,7 +26,7 @@ export function filmedVerdict(raw: string, options: FilmedOption[], preset?: str
   }
   const closest = options.reduce<FilmedOption | undefined>((best, o) =>
     !best || relevance(o) > relevance(best) ? o : best, undefined);
-  const reason = blockedReason(normalizeInput(raw)) ?? "That scene hasn’t been filmed for this show.";
+  const reason = blockedReason(normalizeInput(raw)) ?? "That idea is outside this round’s choices. Try one from the list.";
   return { moderated: { safe: false, text: "", tags: [], reason, model: "filmed", ...(closest && { suggestion: closest.text }) } };
 }
 
