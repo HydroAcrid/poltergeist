@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Join the ghosts · Poltergeist</title
+  ><link rel="stylesheet" href="/stage.css" />
+  <style>
+    main {
+      max-width: 580px;
+    }
+    .ghostname {
+      color: var(--accent);
+    }
+    .phone-title {
+      font:
+        400 clamp(38px, 8vw, 56px) / 1 Georgia,
+        serif;
+      letter-spacing: -0.05em;
+      margin: 25px 0 7px;
+    }
+    #intro {
+      color: var(--muted);
+      margin: 0 0 15px;
+    }
+    .phonebox {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 14px 0;
+    }
+    .phonebox h2 {
+      font-size: 25px;
+      margin: 0 0 10px;
+    }
+    .phonebox label {
+      font-weight: 650;
+    }
+    .phonebox textarea {
+      display: block;
+      color: var(--ink);
+      background: var(--bg);
+      width: 100%;
+      resize: vertical;
+      border: 1px solid #78806e;
+      border-radius: 6px;
+      padding: 10px;
+      margin: 7px 0 10px;
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+    #receipt {
+      margin: 0;
+      color: var(--accent);
+      font-size: 18px;
+      min-height: 24px;
+    }
+    #note {
+      color: var(--muted);
+      margin: 8px 0 0;
+    }
+    .mine-row {
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .mine-row b {
+      display: block;
+      color: var(--accent);
+    }
+  </style>
+  <main>
+    <header class="mast">
+      <div class="wordmark"><i aria-hidden="true">ϟ</i>Poltergeist</div>
+      <span class="format">Audience</span>
+    </header>
+    <h1 class="phone-title">Haunt the hallway</h1>
+    <p id="intro">
+      You are <strong class="ghostname" id="name">joining…</strong>
+    </p>
+    <p id="phase" class="eyebrow"></p>
+    <section class="phonebox">
+      <h2>Send a haunting</h2>
+      <form>
+        <label for="idea">What should happen?</label
+        ><textarea
+          id="idea"
+          maxlength="80"
+          rows="2"
+          placeholder="A chair slides into the flashlight beam"
+        ></textarea
+        ><button class="primary" id="submit">Send idea</button>
+      </form>
+      <div class="chips" id="presets"></div>
+    </section>
+    <section class="phonebox">
+      <h2>Your hauntings</h2>
+      <p id="receipt" role="status" aria-live="polite"></p>
+      <div id="mine"></div>
+    </section>
+    <p id="note">
+      Approved ideas can appear on the projector with your ghost name.
+    </p>
+  </main>
+  <script type="module" src="/phone.js"></script>
+</html>
