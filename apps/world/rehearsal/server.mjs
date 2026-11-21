@@ -47,6 +47,14 @@ export async function registerStage(
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
+  // A deployment gateway and its running sandbox can have separate Git revisions.
+  let runtimeCommit;
+  try {
+    const sha = readFileSync(resolve(root, '../../../.release-commit'), 'utf8').trim();
+    if (/^[a-f0-9]{40}$/.test(sha)) runtimeCommit = sha;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const preparedEncountersAvailable=library.effectOptions.length>0;
   registerPreparedMedia(app, root,library);
   let prepared = null, buffered = null;
@@ -750,7 +758,7 @@ export async function registerStage(
   }
   app.get('/rehearsal/lobby', async (_req, reply) => {
     reply.header('cache-control', 'no-store');
-    return lobbyState();
+    return { ...lobbyState(), ...(runtimeCommit && { runtimeCommit }) };
   });
   app.get('/rehearsal/state', async () => ({
     round,
