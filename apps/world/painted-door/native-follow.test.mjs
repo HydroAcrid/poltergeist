@@ -373,3 +373,19 @@ test('native movement holds report the exact freshness or tracking constraint an
   assert.equal(window.reason(newRead,{...wide,observed:410},550,23000,true),'Observation is over four seconds behind the native view');
   assert.equal(window.accept(newRead,{...wide,observed:410,lost:true},450,19000,true),false);
 });
+
+test('the recorded approaching boots release the camera before they leave the bottom of the frame', () => {
+  const tracker=createNativeFollow();
+  // Successive body boxes from the second hosted hallway take, last clear feet at 266.
+  const boxes=[[270,237,838,434],[266,180,924,401],[259,114,995,381]];
+  for (const [index,box] of boxes.entries()) {
+    const frame=index*60+1;
+    tracker.push(image,frame);
+    tracker.observe({...sighting(box),rightFloorVisible:true,feetVisible:index<2,
+      ahead:[600,680],pose:'upright',threat:'ordinary',obstacles:[]},frame);
+    if (index===0) continue;
+    assert.equal(tracker.status().approachingEdge,true);
+    assert.equal(tracker.status().cameraRecovery,false);
+    assert.equal(shoulderStride({...still,clearLane:true,approachingEdge:tracker.status().approachingEdge}),null);
+  }
+});

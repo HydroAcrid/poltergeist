@@ -172,7 +172,7 @@ export async function holdIfUntracked(subject, releaseCamera, stopActor) {
 export function receding(subject) {
   return (
     !mustStopTravel(subject) &&
-    subject.clearLane === true &&
+    subject.clearLane === true && !subject.approachingEdge &&
     subject.rangeTrend === true &&
     subject.scale < .965 &&
     subject.localRatio !== null &&
@@ -217,7 +217,7 @@ export function createMoveWindow(fps) {
 // A short native camera stride starts with the committed walking instruction.
 // Motion-based corrections can still catch up later when framing actually drifts.
 export function shoulderStride(subject) {
-  if (mustStopTravel(subject) || !subject.clearLane || subject.scale > 1.14 ||
+  if (mustStopTravel(subject) || !subject.clearLane || subject.approachingEdge || subject.scale > 1.14 ||
       subject.scale < .65 || subject.vh > .10 || subject.top < .07 ||
       Math.abs(subject.x - shoulderFrame.x) > .12) return null;
   return { key: 'key_w', ms: 160, reason: 'match forward stride' };
@@ -301,7 +301,7 @@ export function createNativeFollow() {
     lastStaticCorrection = -1,
     lastRecovery = -1;
   let squareAisle=false, orbitClear=false;
-  let distanceHeld = false, approachClear = false, semanticThrough = -1, semanticAnchor = null;
+  let distanceHeld = false, approachingEdge = false, approachClear = false, semanticThrough = -1, semanticAnchor = null;
   let lastAcceptedAtFrame = -1, opticallyRestoredAt = -1, opticalBreakAt = -1, floorVisible = false;
   let nextCamera = 0,
     lost = true,
@@ -326,6 +326,7 @@ export function createNativeFollow() {
     semanticThrough = -1;
     distanceHeld = false;
     approachClear = false;
+    approachingEdge = false;
     floorVisible = false;
     squareAisle=false;
     orbitClear=false;
@@ -423,7 +424,11 @@ export function createNativeFollow() {
     const pullingAway = continuous && bodyWidth<prior.bodyWidth*.94;
     distanceHeld = bodyWidth < (distanceHeld || pullingAway ? restoredWidth : shoulderFrame.width*.78);
     lastAcceptedAtFrame = history.at(-1).number;
-    approachClear = Boolean(continuous && scene.rightFloorVisible && scene.pose==='upright' &&
+    // When the boots and silhouette are already moving toward the frame edge,
+    // the camera has caught up. A delayed read must not renew its forward key.
+    approachingEdge = scene.feetVisible === false || Boolean(continuous && bottom >= 900 &&
+      bottom-prior.bottom >= 35 && bodyWidth >= prior.bodyWidth*1.06);
+    approachClear = Boolean(continuous && !approachingEdge && scene.rightFloorVisible && scene.pose==='upright' &&
       scene.threat!=='startling' && bodyWidth>=.1 && bodyX>=.1 && bodyX<=.56 &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) &&
         o.box[2]>=bottom-20 && o.box[1]<=550 && o.box[3]>=Math.min(450,bodyX*1000+50)));
@@ -432,7 +437,7 @@ export function createNativeFollow() {
     squareAisle=continuous && prior.aisleHeading==='head-on' && scene.aisleHeading==='head-on';
     orbitClear=floorVisible && scene.pose==='upright' && scene.threat==='ordinary' &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) && o.box[2]>810 && o.box[3]>550);
-    lastBox={upper,number,scale,x,bodyX,bodyWidth,aisleHeading:scene.aisleHeading};
+    lastBox={upper,number,scale,x,bodyX,bodyWidth,bottom,aisleHeading:scene.aisleHeading};
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,grounding:number,opticalWidth:bodyWidth,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     semanticAnchor = { ...anchor, clearLane };
     history[index].track = { ...anchor };
@@ -458,7 +463,7 @@ export function createNativeFollow() {
       localRatio,
       clearLane: !opticallyLocated && semantic ? semanticAnchor.clearLane : clearLane,
       distanceHeld,
-      bodyWidth:lastBox?.bodyWidth,
+      bodyWidth:lastBox?.bodyWidth,approachingEdge,
       cameraRecovery:Boolean(usable && distanceHeld && approachClear && opticallyRestoredAt<lastGrounding && opticalBreakAt<=lastAcceptedAtFrame),
       opticalWidth:anchor.opticalWidth,
       floorVisible,squareAisle,orbitClear,
