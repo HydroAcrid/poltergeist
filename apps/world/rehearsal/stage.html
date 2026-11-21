@@ -91,13 +91,13 @@
             <button id="prepare" hidden>Prepare photo</button>
             <label id="show-length" class="show-length" hidden>Show format
               <select id="show-minutes">
-                <option value="buffered">5-minute buffered live game</option>
+                <option value="buffered" selected>5-minute live crowd game</option>
                 <option value="5">5-minute direct live demo</option>
-                <option value="prepared" selected>5-minute audience screening</option>
+                <option value="prepared">Recorded audience screening</option>
                 <option value="10">10 minutes of play</option>
               </select>
             </label>
-            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start audience screening</button>
+            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start live crowd game</button>
             <small id="show-cost" hidden></small>
             <button id="offline-primary" class="primary" hidden>Start offline rehearsal</button>
             <button id="stop-show" hidden>End game</button>

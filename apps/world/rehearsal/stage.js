@@ -144,8 +144,8 @@ function controls() {
   el('show-length').hidden = !canLaunch;
   const buffered = menu.value === 'buffered';
   const isDemo = el('show-minutes').value === '5';
-  set('go-show',buffered ? 'Start buffered live game' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
-  set('show-cost',buffered ? 'Generates two opening scenes, then continues from audience ideas. About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
+  set('go-show',buffered ? 'Start live crowd game' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
+  set('show-cost',buffered ? (state?.venuePrologueReady ? 'Guests have 30 seconds to join. Audience ideas generate the next scenes while the recorded opening plays.' : 'Guests can send ideas while the opening scenes are being generated.') + ' About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
     'The clock pauses during blackouts. About $6 per generated minute.');
   el('go-show').disabled ||= !canLaunch || (!screening && el('go-live').disabled);
   el('show-cost').hidden = !canLaunch;

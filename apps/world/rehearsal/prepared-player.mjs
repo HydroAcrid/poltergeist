@@ -82,17 +82,26 @@ export function createPreparedPlayer(surface) {
       }
       return {collecting:true};
     }
+    const holdPicture = () => {
+      visible?.pause();
+      cover(visible ? 'open' : 'clear');
+      darkAt = 0;
+      return {message:'Preparing the next scene…'};
+    };
+    if (fresh && part.phase === 'waiting') return holdPicture();
     if (part.phase === 'handoff') {
       if (!segment && !visible) {
         source(part.upNext?.clipUrl);
         return {message:fresh ? 'Preparing the first scene…' : 'Loading the first scene…'};
       }
+      const upcoming = source(part.upNext?.clipUrl);
+      if (fresh && (!upcoming || upcoming.readyState < 2 || upcoming.error || upcoming.dataset.failed))
+        return holdPicture();
       blackout(now);
       if (now >= darkAt) {
         cover('dark');
         visible?.pause();
       }
-      source(part.upNext?.clipUrl);
       return {handoff:true, fresh};
     }
     const url = part.clipUrl;
@@ -101,16 +110,12 @@ export function createPreparedPlayer(surface) {
       return {message:fresh ? 'Preparing the next scene…' : 'Waiting for the next scene…'};
     }
     const key = url + '/' + part.clipStartedAt;
-    if (key !== segment) {
-      blackout(now);
-      segment = key;
-      lastSeek = 0;
-    }
     const v = source(url);
     if (part.upNext?.clipUrl && part.upNext.clipUrl !== url) source(part.upNext.clipUrl, v);
     if (surface.dataset.cover === 'closing' && now >= darkAt) cover('dark');
     if (v.error || v.dataset.failed) {
-      cover(visible ? 'dark' : 'clear');
+      if (fresh) holdPicture();
+      else cover(visible ? 'dark' : 'clear');
       if (fresh && !v.dataset.failed) {
         const retryAt = Number(v.dataset.retryAt);
         if (!retryAt) v.dataset.retryAt = String(now + 2000);
@@ -122,7 +127,15 @@ export function createPreparedPlayer(surface) {
       }
       return {message:'This clip could not play. Waiting for the next scene.'};
     }
-    if (v.readyState < 2) return {message: now - part.clipStartedAt > 2000 ? 'Loading the selected scene…' : ''};
+    if (v.readyState < 2) {
+      if (fresh && visible && visible !== v) return holdPicture();
+      return {message: now - part.clipStartedAt > 2000 ? 'Loading the selected scene…' : ''};
+    }
+    if (key !== segment) {
+      blackout(now);
+      segment = key;
+      lastSeek = 0;
+    }
     if (now < part.clipStartedAt || (visible === v && surface.dataset.cover === 'closing')) return {};
     const target = preparedTime(Math.max(now,darkAt), part.clipStartedAt, part.clipDurationMs, v.duration);
     const switching = visible !== v || surface.dataset.cover !== 'open';

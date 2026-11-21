@@ -1,6 +1,7 @@
 import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
 import {createPreparedShow, registerPreparedMedia, serveMovie, preparedLibrary} from './prepared-show.mjs';
 import {createBufferedShow} from './buffered-show.mjs';
+import {loadVenuePrologue} from './venue-prologue.mjs';
 import {renderSegment, bufferedEncoderReady} from './buffered-render.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -84,6 +85,7 @@ export async function registerStage(
   let sourceKey = 'venue';
   let checkingPlayer = false;
   const venueOpening = reviewedVenueOpening(root, stockPlate);
+  const venuePrologue = loadVenuePrologue(root,venueOpening?.digest);
   const seedReviews = new Map();
   function plateStatus() {
     const entry = custom ? plates.get(sourceKey) : null;
@@ -770,6 +772,7 @@ export async function registerStage(
     canLive: !!captureDir,
     cameraTestDurationMs: liveMs,
     approvedVenueOpening: !custom && !!venueOpening,
+    venuePrologueReady: !custom && venuePrologue.length > 0,
     providerClosing: !!providerClosing(),
     custom,
     revision,
@@ -898,6 +901,7 @@ export async function registerStage(
         plannedDurationMs:fiveMinuteShowMs, showDeadline:requestedAt+fiveMinuteShowMs});
       if (rolling) {
         buffered = createBufferedShow({id:r.id,seed,start:requestedAt,deadline:r.deadline,
+          opening:!custom && venueOpening && photoKey(seed) === venueOpening.digest ? venuePrologue : [],
           render:opts => renderBuffered({...opts, makePilot:() => pilot, captureDir}),
           onReceipt:(pick,ok,error) => {
             const now=Date.now();

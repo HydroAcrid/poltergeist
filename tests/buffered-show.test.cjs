@@ -25,11 +25,11 @@ function validEvidence(request, extra) {
     winnerFrame:extra.winner ? 280 : null,...extra};
 }
 
-async function room() {
+async function room(opening = []) {
   const {createBufferedShow} = await import('../apps/world/rehearsal/buffered-show.mjs');
   let now = 10000;
   const requests=[], receipts=[], ended=[], scares=[], disposed=[], seed=Buffer.from('opening');
-  const show=createBufferedShow({id:'match',seed,start:now,deadline:now+300000,clock:()=>now,
+  const show=createBufferedShow({id:'match',seed,opening,start:now,deadline:now+300000,clock:()=>now,
     onScare:p=>scares.push(p.id),onFinish:(...v)=>ended.push(v),onReceipt:(...v)=>receipts.push(v),render:opts=>
       new Promise((resolve,reject)=>requests.push({opts,resolve,reject}))});
   async function step(ms=0){ now+=ms;show.advance(now);await settle(); }
@@ -63,12 +63,13 @@ test('two picks per batch, exact predecessor frames, real playback acknowledgmen
   show.stop();if(requests[3]) await complete(3);await show.dispose();
   assert.deepEqual(disposed.sort(),requests.map((_,i)=>i));
 });
-test('a slow successor waits behind blackout and never reuses an old segment',async()=>{
+test('a slow successor keeps the finished picture until a fresh clip is ready',async()=>{
   const {show,step,complete,requests,ended}=await room();
   await step(8000);await complete(0);await step();await complete(1);await step(22000);await step(1250);
   await step();await step(12000);await step(1250);await step(12000);await step(2250);
-  assert.equal(show.state.phase,'handoff');assert.equal(show.metrics.playbackGaps,1);
-  await complete(2,{winner:'robot'});await step(1000);
+  assert.equal(show.state.phase,'waiting');assert.equal(show.metrics.playbackGaps,1);
+  assert.ok(show.state.clipUrl.endsWith('/2.mp4'));
+  await complete(2,{winner:'robot'});await step(1000);assert.equal(show.state.phase,'handoff');await step(1250);
   assert.equal(show.state.clipUrl,'/rehearsal/segments/match/3.mp4');
   assert.deepEqual(ended,[]);await step(12000);assert.deepEqual(ended,[['exit','robot']]);
   assert.equal(requests.length,3);await show.dispose();
@@ -261,4 +262,33 @@ test('an unavailable film reviewer closes the opening truthfully without retryin
   assert.equal(requests.length,1);assert.equal(show.file(1),undefined);
   assert.deepEqual(ended,[['interrupted',null]]);assert.equal(show.error,message);
   await show.dispose();
+});
+
+test('verified stock opening collects two guest picks and generates against the exact native tail during the opening',async()=>{
+  const {loadVenuePrologue}=await import('../apps/world/rehearsal/venue-prologue.mjs');
+  const dir=require('node:path').resolve(__dirname,'../apps/world/rehearsal');
+  const receipt=require('../apps/world/rehearsal/venue-opening.json');
+  assert.deepEqual(loadVenuePrologue(dir,'custom-photo'),[]);
+  const clips=loadVenuePrologue(dir,receipt.seedSha256);
+  assert.deepEqual(clips.map(clip=>clip.durationMs),[17250,7000]);
+  const {show,requests,receipts,scares,step,complete,pick}=await room(clips);
+  assert.equal(show.metrics.preparedOpening,2);
+  await step(1000);
+  assert.equal(requests.length,0,'a quiet stock lobby does not spend an empty generation');
+  pick('low-fog');pick('swinging-lamp');await step();
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].opts.chapter,3);
+  assert.deepEqual(requests[0].opts.picks.map(p=>p.id),['low-fog','swinging-lamp']);
+  assert.equal(require('node:crypto').createHash('sha256').update(requests[0].opts.seed).digest('hex'),
+    'e10355627e68d4a98a83d0ba90a98edc7cf7b2e453a523822f5ceb9d46e0f1d5');
+  assert.equal(requests[0].opts.continuation,true);
+  await step(28999);assert.equal(show.state.phase,'collecting');
+  await step(1);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/1.mp4');
+  assert.equal(show.busy,true);assert.equal(show.metrics.generated,0);
+  await step(17250);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/2.mp4');
+  assert.deepEqual(receipts,[]);assert.deepEqual(scares,[]);
+  await complete(0);await step(7000);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/3.mp4');
+  assert.deepEqual(receipts,[]);await step(2000);
+  assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['low-fog',true],['swinging-lamp',true]]);
+  show.stop();if(requests[1])await complete(1);await show.dispose();
 });

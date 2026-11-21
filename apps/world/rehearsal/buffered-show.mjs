@@ -9,18 +9,25 @@ const targetSegments = 2;
 const minimumTakeMs = 16000;
 const durationFor = count => minimumTakeMs + count * 8000;
 
-export function createBufferedShow({id, seed, start, deadline, render, onReceipt, onFinish, onScare = () => {}, clock = Date.now}) {
+export function createBufferedShow({id, seed, opening = [], start, deadline, render, onReceipt, onFinish, onScare = () => {}, clock = Date.now}) {
   const state = {phase:'collecting', collectUntil:start+collectMs, upNext:null, preload:[]};
   const picks = [], ready = [], assets = new Map(), seen = new Set();
   const controller = new AbortController();
-  let tail = seed, sequence = 0, worker = null, terminalQueued = false, stopped = false;
+  let tail = opening.at(-1)?.finalFrame ?? seed, sequence = opening.length, worker = null, terminalQueued = false, stopped = false;
   let retry = null, inFlight = null;
   let active = null, handoffAt = null, firstPickAt = null, hasPlayed = false;
   let error = null, renderMs = 0, tailFear = 0, gapStartedAt = null;
-  const metrics = {attempts:0, rejected:0, generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
+  const metrics = {preparedOpening:opening.length, firstPickMs:null, firstRenderMs:null, attempts:0, rejected:0, generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
     playbackGaps:0, playbackGapMs:0};
   const url = n => '/rehearsal/segments/'+encodeURIComponent(id)+'/'+n+'.mp4';
   const brief = segment => ({clipUrl:url(segment.n),title:segment.title});
+  for (const [index, clip] of opening.entries()) {
+    const n = index+1;
+    assets.set(n,clip);
+    ready.push({n,clip,receipts:[],title:clip.title});
+  }
+  state.preload = ready.map(brief);
+  state.upNext = state.preload[0] ?? null;
   function stillFits(now) {
     const activeLeft = active ? Math.max(0, active.start + active.clip.durationMs-now) : 0;
     const readyMs = ready.reduce((sum,s) => sum+s.clip.durationMs+flickerMs,0);
@@ -36,6 +43,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     picks.push({id:h.hauntId,text:h.text,by});
     seen.add(h.hauntId);
     firstPickAt ??= now;
+    metrics.firstPickMs ??= now-start;
     return true;
   }
   function announce(segment, elapsed) {
@@ -71,7 +79,12 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     onFinish(reason,winner);
   }
   function generate(now) {
-    if (worker || terminalQueued || error || !stillFits(now) || ready.length >= targetSegments) return;
+    if (worker || terminalQueued || error || !stillFits(now)) return;
+    // A stock opening gives the renderer a head start. It never consumes a
+    // guest's reservation, nor occupies a slot for unplayed fresh footage.
+    const freshAhead = ready.filter(s => s.n > opening.length).length;
+    if (freshAhead >= targetSegments) return;
+    if (opening.length && !retry && !picks.length && ready.length) return;
     // Allow two Crowd ticks to combine picks. If the lobby is quiet the first
     // walking take can open while guests are still entering their ideas.
     if (!sequence && !picks.length && now-start < 8000) return;
@@ -80,6 +93,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     const batch = retry ?? picks.splice(0);
     const attempt = ++sequence;
     metrics.attempts++;
+    metrics.firstRenderMs ??= now-start;
     if (!repeated) firstPickAt = null;
     retry = null;
     inFlight = batch;
@@ -89,7 +103,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     const reactionTailMs = Math.max(0,Math.min(8000,deadline-now-flickerMs-durationMs));
     const began = now;
     worker = Promise.resolve().then(() => render({seed:tail,picks:batch,durationMs,episodeId:id,
-      chapter:attempt,continuation:metrics.generated > 0,initialFear:tailFear,reactionTailMs,signal:controller.signal})).then(async clip => {
+      chapter:attempt,continuation:assets.size > 0,initialFear:tailFear,reactionTailMs,signal:controller.signal})).then(async clip => {
       if (stopped || controller.signal.aborted) {
         await clip.dispose?.();
         return;
@@ -99,7 +113,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
         await clip.dispose?.();
         throw Error('The render did not produce a playable continuation.');
       }
-      const review = reviewSegment(clip,batch,tailFear,metrics.generated > 0);
+      const review = reviewSegment(clip,batch,tailFear,assets.size > 0);
       if (!review.ok) {
         await clip.dispose?.();
         const failure = Error(review.reason);
@@ -111,7 +125,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
       renderMs = Math.max(0,clock()-began);
       metrics.renderMs += renderMs;
       metrics.footageMs += clip.durationMs;
-      const n = ++metrics.generated;
+      const n = opening.length + ++metrics.generated;
       const segment = {n,clip,receipts:review.receipts,winner:review.winner,winnerAt:review.winnerAt,
         title:review.receipts[0]?.pick.text || 'Follow the flashlight'};
       assets.set(n,clip);
@@ -153,9 +167,16 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     }
     if (active && now >= active.start+active.clip.durationMs) {
       active = null;
-      handoffAt = now + flickerMs;
-      state.phase = 'handoff';
       state.cue = null;
+      if (ready.length) {
+        handoffAt = now + flickerMs;
+        state.phase = 'handoff';
+      } else {
+        handoffAt = null;
+        state.phase = 'waiting';
+        gapStartedAt = now;
+        metrics.playbackGaps++;
+      }
     }
     if (retry && !worker && !stillFits(now)) {
       error = 'There was no time to film a verified retry.';
@@ -170,20 +191,16 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     }
     generate(now);
     if (!active && handoffAt === null && now >= state.collectUntil &&
-        openingReady) {
+        (hasPlayed ? ready.length > 0 : openingReady)) {
       state.phase = 'handoff';
       handoffAt = now + flickerMs;
-    }
-    if (hasPlayed && !active && handoffAt !== null && now >= handoffAt && !ready.length && gapStartedAt === null) {
-      metrics.playbackGaps++;
-      gapStartedAt = now;
     }
     if (!active && handoffAt !== null && now >= handoffAt && ready.length) {
       active = ready.shift();
       active.start = now;
       handoffAt = null;
       if (!hasPlayed) metrics.openingWaitMs = now-start;
-      if (gapStartedAt !== null) metrics.playbackGapMs += now-gapStartedAt;
+      if (gapStartedAt !== null) metrics.playbackGapMs += Math.max(0,now-gapStartedAt-flickerMs);
       gapStartedAt = null;
       hasPlayed = true;
       metrics.played++;

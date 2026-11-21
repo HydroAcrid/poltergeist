@@ -115,3 +115,24 @@ test('a screening choice requires the same filmed encounter to contain an obstac
   for(const change of [{verifiedInPixels:false},{action:'injected'},{responseFrame:72},{responseFrame:241},{episodeId:'other'},{clipSha256:'b'.repeat(64)}])
     assert.equal(hasFilmedResponse({...clip,reactionEvidence:{...evidence,...change}}),false);
 });
+
+test('a late successor leaves the previous native picture visible until its replacement can decode',async t=>{
+  const {createPreparedPlayer}=await moduleUnderTest;
+  const {videos,surface,player}=display(createPreparedPlayer,t);
+  const fresh=(phase,extra)=>({...part(phase,extra),playMode:'buffered-live'});
+  player.show(fresh('playing'),1000);player.show(fresh('playing'),1700);
+  assert.equal(videos[0].hidden,false);
+  player.show(fresh('waiting'),10000);
+  assert.equal(surface.dataset.cover,'open');assert.equal(videos[0].paused,true);
+  videos[1].readyState=0;
+  player.show(fresh('handoff',{upNext:{clipUrl:b}}),12000);
+  player.show(fresh('playing',{clipUrl:b,clipStartedAt:12000}),14000);
+  assert.equal(surface.dataset.cover,'open');assert.equal(videos[0].hidden,false);
+  videos[1].error={code:3};player.show(fresh('playing',{clipUrl:b,clipStartedAt:12000}),15000);
+  assert.equal(surface.dataset.cover,'open');
+  videos[1].error=null;videos[1].readyState=2;
+  player.show(fresh('playing',{clipUrl:b,clipStartedAt:12000}),16000);
+  assert.equal(surface.dataset.cover,'closing');
+  player.show(fresh('playing',{clipUrl:b,clipStartedAt:12000}),16800);
+  assert.equal(surface.dataset.cover,'open');assert.equal(videos[1].playbackRate,1);
+});
