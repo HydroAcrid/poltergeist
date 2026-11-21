@@ -1,7 +1,7 @@
 // TEMPORARY stand-in for World's packages/contracts/src/tick-request.ts (C04),
 // transcribed from CONTRACTS.md. Delete once World's file is on main.
 import { z } from "zod";
-import { Driver, HauntTag, Id, Key, Ms } from "./common.js";
+import { Driver, HauntTag, Id, Key, Ms } from "@poltergeist/contracts/common.js";
 
 export const VERSION = "1.0.0";
 
