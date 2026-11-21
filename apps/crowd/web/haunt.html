@@ -348,8 +348,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     m.className = "msg" + (bad ? " bad" : "");
   }
 
-  function waitingForPhoto() {
-    return loadedPage < 0 || state.lobbyPhase === "before-photo" || state.lobbyPhase === "ended";
+  function submissionsClosed() {
+    return loadedPage < 0 || state.lobbyPhase === "ended";
   }
 
   function showPresetDraft(id, text, message, bad) {
@@ -365,7 +365,7 @@ ol,ul{list-style:none;margin:0;padding:0}
 
   async function choosePreset(p, button) {
     if (sending) return;
-    if (waitingForPhoto()) {
+    if (submissionsClosed()) {
       showPresetDraft(p.id, p.text, "Draft selected. Tap Send when the hallway opens.");
       return;
     }
@@ -376,7 +376,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   async function send(payload, rawText) {
-    if (waitingForPhoto()) { say("You can send your idea when the host opens the hallway."); return; }
+    if (submissionsClosed()) { say("You can send your idea when the host opens the hallway."); return; }
     if (sending) return;
     sending = true;
     $("send").disabled = true;
@@ -413,8 +413,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       showError("No connection. Try again in a moment.");
     } finally {
       sending = false;
-      $("send").disabled = waitingForPhoto();
-      document.querySelectorAll("[data-send-revision]").forEach(button => { button.disabled = waitingForPhoto(); });
+      $("send").disabled = submissionsClosed();
+      document.querySelectorAll("[data-send-revision]").forEach(button => { button.disabled = submissionsClosed(); });
     }
   }
 
@@ -507,7 +507,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       card.append(el("h2", "", "Try this instead"), el("div", "text", suggestion));
       const accept = button("Send this version", () => send({ text: suggestion, revisionOf: id }, suggestion), "btn");
       accept.dataset.sendRevision = id;
-      accept.disabled = sending || waitingForPhoto();
+      accept.disabled = sending || submissionsClosed();
       accept.setAttribute("aria-keyshortcuts", "Enter");
       if (card.id === "sent-card") actions.append(el("span", "key-help", "or press Enter"));
       button("Edit suggestion", () => edit(suggestion), "edit");
@@ -579,7 +579,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       ph.textContent = "Waiting for the host";
     }
     const card = $("lobby");
-    const closed = waitingForPhoto();
+    const closed = submissionsClosed();
     $("send").disabled = sending || closed;
     if (previouslyClosed !== closed) {
       $("ideas-intro").textContent = closed ? "Choose an idea to draft. You can send it when the hallway opens." :
@@ -590,7 +590,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
       $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
-      $("lobby-next").textContent = lp === "before-photo" ? "You can draft an idea while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "Send an idea while you wait for the host to start.";
+      $("lobby-next").textContent = lp === "before-photo" ? "Send your idea now while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "Send an idea while you wait for the host to start.";
     }
   }
 

@@ -119,9 +119,8 @@ function controls() {
   document.querySelector('.score').hidden = !state?.round;
   el('lobby-intro').hidden = host || !waiting;
   el('book').hidden = beforePhoto && !state?.queue?.length;
-  el('join-link').hidden = host && beforePhoto;
   set('lobby-invite',beforePhoto
-    ? 'Join on your phone. When the hallway opens, send a haunting to stop the robot from reaching the exit.'
+    ? 'Join on your phone and send a haunting while the host chooses the hallway.'
     : 'Send a haunting from your phone to stop the robot from reaching the exit.');
   el('photo-next-round').hidden = !busy;
   el('offline-primary').hidden = beforePhoto || busy || canLaunch || !state;
@@ -155,7 +154,7 @@ function controls() {
     if (!copyReady) el('report-text').hidden = true;
     if (!waiting || beforePhoto) el('host-guests').hidden = true;
     set('setup-title', busy ? mode : r?.phase === 'ended' ? 'Round complete' : beforePhoto ? 'Choose the hallway' : 'Waiting room');
-    set('host-readiness', beforePhoto ? 'Take or choose a photo to open the waiting room.' :
+    set('host-readiness', beforePhoto ? 'Guests can send ideas now. Take or choose a hallway photo.' :
       r?.phase === 'ended' ? mode + ' · ' + diagnostics.endReason(r) : busy ? diagnostics.roundStatus(r) :
       preparing ? 'Preparing your photo. Ghosts can join while it develops.' :
       !state?.canLive ? diagnostics.readiness(state) :
@@ -230,7 +229,6 @@ function sync() {
   return syncing;
 }
 async function refreshLobbyJoin(lobby) {
-  if (host && lobby?.phase === 'before-photo') return;
   const show = lobby?.phase === 'before-photo' || lobby?.phase === 'lobby';
   const link = el('join-link'), qr = el('join-qr'), guests = el('guests');
   if (!show) {

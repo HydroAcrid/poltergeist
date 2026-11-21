@@ -155,8 +155,8 @@ export async function registerStage(
   app.get('/', async (_req, reply) => reply.redirect('/haunt'));
   app.addHook('onRequest', async (req, reply) => {
     if (hosted && captureDir && req.method === 'POST' && req.routeOptions.url === '/api/crowd/haunt' &&
-        (round ? round.phase === 'ended' : lobbyOpenedAt == null))
-      return reply.code(409).send({ error: { code: 'BUSY', message: 'The host will open submissions after choosing a photo.' } });
+        round?.phase === 'ended')
+      return reply.code(409).send({ error: { code: 'BUSY', message: 'This round has ended. The host can open the next lobby.' } });
   });
   app.addHook('preValidation', async (req, reply) => {
     if (
