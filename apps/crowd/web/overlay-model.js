@@ -39,7 +39,7 @@ export function feetX(feet) {
 
 /** World's /rehearsal/state → the overlay's own shape. Tolerant of missing or unknown fields. */
 /** Reaction words World uses in props[].response / round.lastReaction → a short caption. */
-const REACTION_TEXT = { flinch: "Robot flinches", stumble: "Robot stumbles", recover: "Robot recovers", avoid: "Robot steps around it", startle: "Robot startles" };
+const REACTION_TEXT = { flinch: "Robot flinches", stumble: "Robot stumbles", recover: "Robot recovers", avoid: "Robot steps around it", dodge: "Robot dodges it", startle: "Robot startles", pause: "Robot stops to look" };
 
 /**
  * World's GET /rehearsal/state → the overlay's own shape. Matches World's real bodies (#2,

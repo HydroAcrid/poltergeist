@@ -153,6 +153,14 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
     expect(M.pickCard(crowd, w)).toMatchObject({ text: "A gust blows loose papers across the aisle" });
   });
 
+  it("captions World's dodge (seen in the first combined rehearsal) without counting a scare", () => {
+    const body = load("rehearsal-playing.json");
+    Object.assign(body.round.props[0], { reactedAt: body.now - 100, response: "dodge" });
+    const w = M.normalizeRehearsal(body);
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "reacted", reaction: "Robot dodges it" });
+    expect(w.fear).toBe(0);
+  });
+
   it("result headlines", () => {
     expect(M.resultText({ winner: "robot" })).toBe("Robot escaped");
     expect(M.resultText({ winner: "audience", reason: "fear", fear: 3 })).toBe("👻 Audience wins: 3 scares");
