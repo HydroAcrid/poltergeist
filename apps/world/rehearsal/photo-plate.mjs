@@ -1,4 +1,3 @@
-import { hallwayLighting } from './look.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -6,12 +5,9 @@ import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
 const framing = [
-  'Create one wide 16:9 empty hallway background for a close right-shoulder adventure camera.',
-  'The FIRST photo is the actual venue. Preserve its architecture, materials, floor, doors, lamps and recognizable artwork. Clear the people, personal possessions and screens.',
-  'The SECOND image shows the trailing camera direction. Reconstruct the FIRST room looking down its aisle, from eye level directly behind and slightly right of a small traveler. The travel direction is within 15 degrees of the optical axis. Reserve the left foreground for a large visible head, shoulders and backpack that will be added later.',
-  'The floor recedes from the lower central foreground toward a vanishing point just right of center, about 60 percent across. Keep the next few steps, adjacent gaps and a reachable illuminated exit visible in the middle and right of the image. Extend the photographed hall through successive recognizable lamp-lit bays. Near furniture at the sides gives moving perspective while keeping the route open.',
-  hallwayLighting,
-  'Leave out people, robots, ghosts, obstacles, interface, labels and text.',
+  'Reconstruct the photographed interior as a wide 16:9 architectural photograph of the empty venue after closing time. Use the supplied photograph as the sole visual reference. Preserve the identifiable walls, materials, floorboards, lamps, doorways, furniture and artwork. Clear all people, possessions and screens.',
+  'Place the camera at low eye level, looking almost straight down the aisle. The vanishing point is just right of center, about 60 percent across. Keep the left foreground completely vacant, with uninterrupted floor or wall; it is reserved for compositing. Leave the next several floor steps and the central and right approach to a distant illuminated exit clearly visible. Extend the venue through successive recognizable bays.',
+  'Use cool blue-green shadows high along the walls and warm pools of light from the remaining practical lamps, with visible detail in the midtones and a readable floor. Furniture stays at the sides. Show only the room, without people, robots, figures, ghosts, newly added obstacles, interface or captions.',
 ].join(' ');
 
 export const photoKey = (bytes) =>
@@ -44,17 +40,23 @@ function generatedImage(response) {
   throw Error('The image model returned an unreadable room.');
 }
 
-export async function generatePhotoPlate({ photo, reference, captureDir }) {
+class RoomContainsFigure extends Error {}
+
+export async function generatePhotoPlate({ photo, captureDir }) {
   const sdk = createRequire(resolve(captureDir, 'package.json'))(
     '@google/genai',
   );
   const key =
     process.env.GEMINI_API_KEY ||
-    parseEnv(readFileSync(resolve(captureDir, '../../../.env'), 'utf8'))
+    parseEnv(readFileSync(process.env.PG_WORLD_ENV_FILE || resolve(captureDir, '../../../.env'), 'utf8'))
       .GEMINI_API_KEY;
   if (!key) throw Error('The room generator is unavailable.');
   const ai = new sdk.GoogleGenAI({ apiKey: key });
-  const result = await ai.models.generateContent({
+  return generateVerifiedRoom(photo, ai.models);
+}
+
+export async function generateVerifiedRoom(photo, models) {
+  const result = await models.generateContent({
     model: 'gemini-3.1-flash-image',
     contents: [
       {
@@ -66,12 +68,6 @@ export async function generatePhotoPlate({ photo, reference, captureDir }) {
               data: photo.toString('base64'),
             },
           },
-          {
-            inlineData: {
-              mimeType: 'image/webp',
-              data: reference.toString('base64'),
-            },
-          },
           { text: framing },
         ],
       },
@@ -81,14 +77,37 @@ export async function generatePhotoPlate({ photo, reference, captureDir }) {
       imageConfig: { aspectRatio: '16:9', imageSize: '1K' },
     },
   });
-  return generatedImage(result);
+  const image = generatedImage(result);
+  await checkEmptyRoom(image, models);
+  return image;
+}
+
+export async function checkEmptyRoom(image, models) {
+  const review = await models.generateContent({
+    model: process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview',
+    contents: [{ role: 'user', parts: [
+      { inlineData: { mimeType: image.mime, data: image.bytes.toString('base64') } },
+      { text: 'Inspect the entire hallway image, particularly the left foreground and distant aisle. Is there any freestanding character such as a robot, person or ghost? Count even partial heads, shoulders, silhouettes, and reflections of characters. Furniture, light fixtures and flat original wall art are part of the room. Choose empty only when confidently free of characters. Otherwise choose character or uncertain.' },
+    ] }],
+    config: {
+      temperature: 0,
+      httpOptions: { apiVersion: 'v1beta', timeout: 14000 },
+      responseMimeType: 'application/json',
+      responseJsonSchema: {
+        type: 'object',
+        properties: { room: { type: 'string', enum: ['empty', 'character', 'uncertain'] } },
+        required: ['room'],
+      },
+    },
+  });
+  const verdict = JSON.parse(review.text || '{}')?.room;
+  if (verdict !== 'empty') throw new RoomContainsFigure('Room check: ' + (verdict || 'uncertain'));
 }
 
 // Jobs and completed plates share one entry keyed by the exact source, so reloads,
 // duplicate clicks and switching photos cannot pay for or publish the wrong room.
 export function createPlateCache({
   captureDir,
-  reference,
   generate = generatePhotoPlate,
 }) {
   const cache = new Map();
@@ -100,12 +119,14 @@ export function createPlateCache({
       const entry = { pending: true };
       cache.set(key, entry);
       Promise.resolve()
-        .then(() => generate({ photo, reference, captureDir }))
+        .then(() => generate({ photo, captureDir }))
         .then((image) => {
           entry.image = image;
         })
-        .catch(() => {
-          entry.error = 'The room could not be prepared. Try again.';
+        .catch((error) => {
+          entry.error = error instanceof RoomContainsFigure
+            ? 'We couldn’t confirm the hallway is empty. Prepare the photo again.'
+            : 'The room could not be prepared. Try again.';
         })
         .finally(() => {
           entry.pending = false;
