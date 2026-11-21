@@ -1,4 +1,5 @@
-import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked } from './native-follow.mjs';
+import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding } from './native-follow.mjs';
+import { assessFraming } from './framing-report.mjs';
 import { hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -71,7 +72,7 @@ async function capture() {
   if (stagePilot) setup.world_prompt.text = [
     hallwayLighting,
     "An explorer walks alongside a small sage robot carrying an orange backpack and a brass flashlight. Our eyes are the moving viewpoint, one stride behind its right shoulder. The original hall and the robot match the reference image.",
-    "The robot starts with a small walking step, then follows its own footstep instructions. The observer travels on a parallel track slightly behind the robot on its right. Fixed focal length and distance. Keep the robot near 26 percent from screen left, head at 44 percent from the top, boots at 82 percent. Its silhouette stays the same size as it walks diagonally across the room. The near side of the aisle slides past and the distant wall moves more slowly. No zoom or push toward the robot.",
+    "The robot starts with a single short step across the near aisle, from screen left toward screen right, then plants both boots and waits for its next footstep instruction. The observer travels on a parallel track slightly behind the robot on its right. Fixed focal length and distance. Keep the robot near 26 percent from screen left, head at 44 percent from the top, boots at 82 percent. Its silhouette stays the same size as it walks diagonally across the room. The near side of the aisle slides past and the distant wall moves more slowly. No zoom or push toward the robot.",
     "The exceptionally long path travels diagonally to the right through successive connected bays: the green arch, paired lamps, a row of booths, another long gallery, and only then the reachable exit. We pass each near doorway and plant while the distant exit stays in sight. The clear floor in front of the robot is visible. Objects landing across that path make the robot stop or step around them."
   ].join(" ");
   const { trick, moves, endFrame } = sequenceFor(values);
@@ -107,7 +108,7 @@ async function capture() {
   if (values.drive || values.round) process.once('disconnect', stop);
   let gameClock, looking=false, nextLook=0;
   const follow = stagePilot ? createNativeFollow() : null;
-  let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false;
+  let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0;
   async function releaseCamera() {
     const press=cameraPress;
     if(!press) return;
@@ -116,7 +117,7 @@ async function capture() {
       press.release=(async()=>{
         try{
           await press.down;
-          if(!ending) await session.send({event_type:'user_action',action:'key_up',input:press.key});
+          if(!ending) for(const key of press.keys) await session.send({event_type:'user_action',action:'key_up',input:key});
         } finally { if(cameraPress===press) cameraPress=null; }
       })();
     }
@@ -124,16 +125,16 @@ async function capture() {
   }
   async function aim(step,frame) {
     if(ending || cameraPress || Date.now()<steadyUntil) return;
-    const press={key:step.key};
+    const press={keys:[step.key,step.lateralKey].filter(Boolean)};
     cameraPress=press;
-    press.down=session.send({event_type:'user_action',action:'key_down',input:step.key});
+    press.down=(async()=>{for(const key of press.keys) await session.send({event_type:'user_action',action:'key_down',input:key});})();
     await press.down;
     publish({cameraMoved:true});
     record('Camera reframed the robot',{...step,frame});
     if(!press.release && !ending) lookRelease=setTimeout(()=>releaseCamera().catch(error=>abort.abort(error)),step.ms);
   }
-  async function stopActor() {
-    if(!actorMoving) return;
+  async function stopActor(force=false) {
+    if(!actorMoving && !force) return;
     actorMoving=false;
     await session.send("The robot stops its current step now, plants both boots, and waits in place. Its flashlight stays lit.");
     record('Paused robot travel');
@@ -180,8 +181,11 @@ async function capture() {
             throw error;
           }
         } else if (stagePilot && command?.pause) {
-          steadyUntil=Date.now()+2700;
-          await Promise.all([releaseCamera(),stopActor()]);
+          const now=Date.now();
+          const force=command.settleCamera && now>=placedHoldUntil;
+          steadyUntil=now+2700;
+          if(command.settleCamera) placedHoldUntil=steadyUntil;
+          await Promise.all([releaseCamera(),stopActor(force)]);
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
           const instruction=reactionInstruction(command);
@@ -260,6 +264,7 @@ async function capture() {
         if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
           follow.push(bytes, log.frames);
           const lock = follow.status();
+          if(cameraPress?.keys.includes('key_w') && !receding(lock)) await releaseCamera();
           if(!await holdIfUntracked(lock,releaseCamera,stopActor) && !cameraPress && Date.now()>=steadyUntil){
             const step=follow.correction(Date.now());
             if(step) await aim(step,log.frames);
@@ -271,7 +276,9 @@ async function capture() {
           inspectRoom(ai,delta.data,abort.signal).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
-              await holdIfUntracked(follow.status(),releaseCamera,stopActor);
+              const lock=follow.status();
+              if(cameraPress?.keys.includes('key_w') && !receding(lock)) await releaseCamera();
+              await holdIfUntracked(lock,releaseCamera,stopActor);
               publish({scene,observed,observedAt});
               record('Gemini observed live frame',{observed,observedAt,scene});
             }
@@ -330,6 +337,7 @@ async function capture() {
         process.send({ terminal: log.terminal || 'unconfirmed' });
         process.disconnect();
       }
+      if(stagePilot && log.terminal) log.framing=assessFraming(log.events,log.frames);
       save();
       if (!interaction || ['completed', 'canceled', 'cancelled', 'failed'].includes(log.terminal)) {
         rmSync(lock, { recursive: true });

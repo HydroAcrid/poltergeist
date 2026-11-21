@@ -1,5 +1,8 @@
 // Measure displacement in native frames. All corrections go to Genie's camera controls.
 import jpeg from "jpeg-js";
+import { shoulderFrame } from "./framing-report.mjs";
+export { shoulderFrame };
+import { placementTarget } from "../rehearsal/placement.mjs";
 
 const width = 112,
   height = 64;
@@ -62,120 +65,331 @@ function locate(previous, current, anchor) {
       }
     }
   }
-  const seconds = Math.max(1/24,(current.number-previous.number)/24);
-  const mix = 1-Math.exp(-seconds/.38);
-  const vx = (1-mix)*anchor.vx + mix*clamp((bx/width-anchor.x)/seconds,-.6,.6);
-  const dy=by/height-anchor.y;
-  return {...anchor,x:bx/width,y:by/height,top:anchor.top+dy,bottom:anchor.bottom+dy,vx,known:anchor.known && best<42};
+  const seconds = Math.max(1 / 24, (current.number - previous.number) / 24);
+  const mix = 1 - Math.exp(-seconds / 0.38);
+  const vx =
+    (1 - mix) * anchor.vx +
+    mix * clamp((bx / width - anchor.x) / seconds, -0.6, 0.6);
+  const dy = by / height - anchor.y;
+  return {
+    ...anchor,
+    x: bx / width,
+    y: by / height,
+    top: anchor.top + dy,
+    bottom: anchor.bottom + dy,
+    vx,
+    known: anchor.known && best < 42,
+  };
+}
+
+// Compare the outline and texture at both ends of a short, tracked baseline.
+// A near tie between scales gives no range evidence. Use bilinear samples
+// because a quiet walking step often moves the small silhouette by less than one pixel.
+function localScale(start, end) {
+  const a = start.track,
+    b = end.track;
+  if (!a?.known || !b?.known || a.h * height < 8) return null;
+  function value(frame, x, y, c) {
+    const ix = Math.floor(x),
+      iy = Math.floor(y),
+      fx = x - ix,
+      fy = y - iy;
+    if (ix < 0 || iy < 0 || ix >= width - 1 || iy >= height - 1) return 0;
+    const i = 3 * (iy * width + ix) + c,
+      p = frame.pixels;
+    return (
+      (1 - fy) * ((1 - fx) * p[i] + fx * p[i + 3]) +
+      fy * ((1 - fx) * p[i + 3 * width] + fx * p[i + 3 * width + 3])
+    );
+  }
+  const points = [];
+  let min = 255,
+    max = 0;
+  for (let row = -4; row <= 4; row++) {
+    for (let col = -2; col <= 2; col++) {
+      const dx = col * 0.13 * a.h * height,
+        dy = row * 0.105 * a.h * height;
+      const rgb = [0, 1, 2].map((c) =>
+        value(start, a.x * width + dx, a.y * height + dy, c),
+      );
+      min = Math.min(min, rgb[1]);
+      max = Math.max(max, rgb[1]);
+      points.push({ dx, dy, rgb });
+    }
+  }
+  if (max - min < 28) return null;
+  let unit = Infinity,
+    best = Infinity,
+    ratio = 1;
+  for (const scale of [0.78, 0.85, 0.92, 1, 1.08, 1.16, 1.24]) {
+    let cost = Infinity;
+    for (const tx of [-0.8, 0, 0.8])
+      for (const ty of [-0.8, 0, 0.8]) {
+        let err = 0;
+        for (const { dx, dy, rgb } of points)
+          for (let c = 0; c < 3; c++)
+            err += Math.abs(
+              rgb[c] -
+                value(
+                  end,
+                  b.x * width + dx * scale + tx,
+                  b.y * height + dy * scale + ty,
+                  c,
+                ),
+            );
+        cost = Math.min(cost, err / (points.length * 3));
+      }
+    if (scale === 1) unit = cost;
+    if (cost < best) {
+      best = cost;
+      ratio = scale;
+    }
+  }
+  if (best > 34 || unit - best < Math.max(1.1, unit * 0.06)) return null;
+  return ratio;
 }
 
 // Position and size are fractions of the entire unmodified native image.
 // Left-third composition leaves the diagonal aisle open on the flashlight side.
-export const shoulderFrame = {x:.265, height:.385};
 export function mustStopTravel(subject) {
-  return !subject.known || subject.lost || !subject.grounded || subject.x<.055 || subject.x>.94;
+  return (
+    !subject.known ||
+    subject.lost ||
+    !subject.grounded ||
+    subject.x < 0.055 ||
+    subject.x > 0.94
+  );
 }
 // Release a live key immediately even when vision has not yet explicitly called the robot lost.
-export async function holdIfUntracked(subject,releaseCamera,stopActor) {
-  if(!mustStopTravel(subject)) return false;
-  await Promise.all([releaseCamera(),stopActor()]);
+export async function holdIfUntracked(subject, releaseCamera, stopActor) {
+  if (!mustStopTravel(subject)) return false;
+  await Promise.all([releaseCamera(), stopActor()]);
   return true;
+}
+export function receding(subject) {
+  return (
+    !mustStopTravel(subject) &&
+    subject.clearLane === true &&
+    subject.rangeTrend === true &&
+    subject.h < 0.345 &&
+    subject.localRatio !== null &&
+    subject.localRatio < 0.965
+  );
 }
 export function cameraStep(subject) {
   if (!subject.known || subject.lost || !subject.grounded) return null;
-  const {x,h,vx,vh,top,bottom} = subject;
-  if (top<.045 && bottom<.93) return {key:'arrow_up',ms:70,reason:'headroom'};
-  if (bottom>.95 && top>.10) return {key:'arrow_down',ms:70,reason:'footroom'};
-  const error=x-shoulderFrame.x;
-  const near=h>shoulderFrame.height*1.34 || (h>.45 && vh>.055);
-  const moving=Math.abs(vx)>.021;
+  const { x, h, vx, vh, top, bottom } = subject;
+  if (top < 0.045 && bottom < 0.93)
+    return { key: "arrow_up", ms: 70, reason: "headroom" };
+  if (bottom > 0.95 && top > 0.1)
+    return { key: "arrow_down", ms: 70, reason: "footroom" };
+  const error = x - shoulderFrame.x;
+  const near = h > shoulderFrame.height * 1.34 || (h > 0.45 && vh > 0.055);
+  const moving = Math.abs(vx) > 0.021;
   // When the robot is already moving back toward its mark, let it settle.
-  if(moving && error*vx<0 && Math.abs(error)>.025) return null;
-  if(!near && moving){
-    const forecast=error+.42*vx;
-    if(Math.abs(forecast)>.037 && Math.sign(forecast)===Math.sign(vx)){
-      // Shrinking while moving down the diagonal asks for a little more lateral
-      // pace. It never substitutes a forward/backward dolly for missing depth.
-      const rangePace=clamp(-vh/.16,-.28,.38);
-      const ms=clamp(Math.round((52+205*Math.abs(forecast)+210*Math.abs(vx))*(1+rangePace)),60,185);
-      return {key:forecast>0?'key_d':'key_a',ms,reason:'parallel travel'};
+  const depth = receding(subject);
+  const depthStep = depth
+    ? {
+        key: "key_w",
+        ms: clamp(Math.round(65 + (shoulderFrame.height - h) * 280), 75, 140),
+        reason: "diagonal range follow",
+      }
+    : null;
+  if (moving && error * vx < 0 && Math.abs(error) > 0.025) return depthStep;
+  if (!near && moving) {
+    const forecast = error + 0.42 * vx;
+    if (Math.abs(forecast) > 0.037 && Math.sign(forecast) === Math.sign(vx)) {
+      // Keep the lateral component when matching a diagonal stride.
+      const rangePace = clamp(-vh / 0.16, -0.28, 0.38);
+      const ms = clamp(
+        Math.round(
+          (52 + 205 * Math.abs(forecast) + 210 * Math.abs(vx)) *
+            (1 + rangePace),
+        ),
+        60,
+        185,
+      );
+      if (depthStep)
+        return { ...depthStep, lateralKey: forecast > 0 ? "key_d" : "key_a" };
+      return {
+        key: forecast > 0 ? "key_d" : "key_a",
+        ms,
+        reason: "parallel travel",
+      };
     }
   }
-  if(Math.abs(error)>.135 && (!moving || near))
-    return {key:error>0?'arrow_right':'arrow_left',ms:clamp(Math.round(45+125*Math.abs(error)),55,105),reason:'small pan'};
+  if (depthStep) return depthStep;
+  if (Math.abs(error) > 0.135 && (!moving || near))
+    return {
+      key: error > 0 ? "arrow_right" : "arrow_left",
+      ms: clamp(Math.round(45 + 125 * Math.abs(error)), 55, 105),
+      reason: "small pan",
+    };
   return null;
 }
 
 export function createNativeFollow() {
-  const history=[];
-  const neutral={x:.22,y:.65,h:shoulderFrame.height,vx:0,vh:0,top:.44,bottom:.82,known:false};
-  let anchor={...neutral}, lastGrounding=-1, lastBox=null, lastStaticCorrection=-1;
-  let nextCamera=0, lost=true;
-  function push(bytes,number){
-    const frame=sampleFrame(bytes,number),prev=history.at(-1);
-    if(prev && number<=prev.number)return;
-    if(number-lastGrounding>24*16)anchor.known=false;
-    if(prev && anchor.known)anchor=locate(prev,frame,anchor);
+  const history = [];
+  const neutral = {
+    x: 0.22,
+    y: 0.65,
+    h: shoulderFrame.height,
+    vx: 0,
+    vh: 0,
+    top: 0.44,
+    bottom: 0.82,
+    known: false,
+  };
+  let anchor = { ...neutral },
+    lastGrounding = -1,
+    lastBox = null,
+    lastStaticCorrection = -1;
+  let nextCamera = 0,
+    lost = true,
+    rangeTrend = false,
+    localRatio = null,
+    clearLane = false;
+  function advance(previous, current) {
+    anchor = locate(previous, current, anchor);
+    current.track = { ...anchor };
+    const base = history.findLast(
+      (frame) =>
+        frame.track?.known &&
+        frame.number <= current.number - 22 &&
+        frame.number >= current.number - 32,
+    );
+    localRatio = base && anchor.known ? localScale(base, current) : null;
+  }
+  function push(bytes, number) {
+    const frame = sampleFrame(bytes, number),
+      prev = history.at(-1);
+    if (prev && number <= prev.number) return;
+    if (number - lastGrounding > 24 * 16) anchor.known = false;
+    if (prev && anchor.known) advance(prev, frame);
     history.push(frame);
     // Keep more than ER2's request timeout to align each delayed measurement
     // with its source frame before bringing the body forward to the current one.
-    while(history.length>1 && history[0].number<number-24*16)history.shift();
+    while (history.length > 1 && history[0].number < number - 24 * 16)
+      history.shift();
   }
-  function observe(scene,number){
-    if(number<=lastGrounding)return;
-    if(!history.length || number<history[0].number || number>history.at(-1).number+4)return;
-    const match=history.findIndex(f=>f.number>=number);
-    const index=match<0?history.length-1:match;
-    lastGrounding=number;
-    if(!scene.visible){lost=true;anchor.known=false;anchor.vx=0;return;}
-    const b=scene.bodyBox;
-    const valid=Array.isArray(b) && b.length===4 && b.every(v=>Number.isFinite(v)&&v>=0&&v<=1000) && b[0]<b[2] && b[1]<b[3];
-    const footX=(scene.feet.left[1]+scene.feet.right[1])/2000;
-    const footY=(scene.feet.left[0]+scene.feet.right[0])/2000;
-    const h=valid?(b[2]-b[0])/1000:anchor.h;
-    const x=valid?(b[1]+b[3])/2000:footX;
-    const dt=lastBox?Math.max(1/24,(number-lastBox.number)/24):1;
-    const vh=valid&&lastBox?clamp((h-lastBox.h)/dt,-.3,.3):0;
-    const vx=lastBox?clamp((x-lastBox.x)/dt,-.6,.6):0;
-    if(valid)lastBox={number,h,x};
-    lost=false;
-    anchor={x,y:valid?(b[0]*.45+b[2]*.55)/1000:clamp(footY-h*.48,.04,.96),h,
-      top:valid?b[0]/1000:clamp(footY-h,0,1),bottom:valid?b[2]/1000:footY,
-      vx,vh,known:true};
-    for(let i=index+1;i<history.length&&anchor.known;i++)anchor=locate(history[i-1],history[i],anchor);
+  function observe(scene, number) {
+    if (number <= lastGrounding) return;
+    if (
+      !history.length ||
+      number < history[0].number ||
+      number > history.at(-1).number + 4
+    )
+      return;
+    const match = history.findIndex((f) => f.number >= number);
+    const index = match < 0 ? history.length - 1 : match;
+    lastGrounding = number;
+    if (!scene.visible) {
+      lost = true;
+      anchor.known = false;
+      anchor.vx = 0;
+      lastBox = null;
+      rangeTrend = false;
+      localRatio = null;
+      return;
+    }
+    const b = scene.bodyBox;
+    const valid =
+      Array.isArray(b) &&
+      b.length === 4 &&
+      b.every((v) => Number.isFinite(v) && v >= 0 && v <= 1000) &&
+      b[0] < b[2] &&
+      b[1] < b[3];
+    const footX = (scene.feet.left[1] + scene.feet.right[1]) / 2000;
+    const footY = (scene.feet.left[0] + scene.feet.right[0]) / 2000;
+    const h = valid ? (b[2] - b[0]) / 1000 : anchor.h;
+    const x = valid ? (b[1] + b[3]) / 2000 : footX;
+    const dt = lastBox ? Math.max(1 / 24, (number - lastBox.number) / 24) : 1;
+    const vh = valid && lastBox ? clamp((h - lastBox.h) / dt, -0.3, 0.3) : 0;
+    const vx = lastBox ? clamp((x - lastBox.x) / dt, -0.6, 0.6) : 0;
+    rangeTrend = Boolean(
+      valid &&
+        lastBox &&
+        number - lastBox.number <= 24 * 12 &&
+        h < lastBox.h - 0.009 &&
+        h < lastBox.h * 0.965 &&
+        vh < -0.002,
+    );
+    clearLane =
+      Boolean(placementTarget(scene)) &&
+      scene.threat !== "startling" &&
+      scene.pose !== "stumbling" &&
+      scene.pose !== "startled" &&
+      !scene.obstacles?.some((o) => o.relation === "crossing");
+    localRatio = null;
+    if (valid) lastBox = { number, h, x };
+    lost = false;
+    anchor = {
+      x,
+      y: valid
+        ? (b[0] * 0.45 + b[2] * 0.55) / 1000
+        : clamp(footY - h * 0.48, 0.04, 0.96),
+      h,
+      top: valid ? b[0] / 1000 : clamp(footY - h, 0, 1),
+      bottom: valid ? b[2] / 1000 : footY,
+      vx,
+      vh,
+      known: true,
+    };
+    history[index].track = { ...anchor };
+    for (let i = index + 1; i < history.length && anchor.known; i++)
+      advance(history[i - 1], history[i]);
   }
-  function status(){return {...anchor,lost,grounded:lastGrounding>=0};}
-  function correction(now,allowCamera=true){
-    if(!allowCamera || now<nextCamera)return null;
-    const step=cameraStep(status());
-    if(!step)return null;
-    const translation=step.key==='key_d'||step.key==='key_a';
-    if(!translation && lastStaticCorrection===lastGrounding)return null;
-    if(!translation)lastStaticCorrection=lastGrounding;
-    nextCamera=now+step.ms+(translation?300:520);
-    return {...step,x:anchor.x,height:anchor.h,velocity:anchor.vx};
+  function status() {
+    return {
+      ...anchor,
+      lost,
+      rangeTrend,
+      localRatio,
+      clearLane,
+      grounded: lastGrounding >= 0,
+    };
   }
-  function permits(key){
-    if(mustStopTravel(status()))return false;
-    return ['W','A','S','D','ArrowLeft','ArrowRight'].includes(key);
+  function correction(now, allowCamera = true) {
+    if (!allowCamera || now < nextCamera) return null;
+    const step = cameraStep(status());
+    if (!step) return null;
+    const translation = ["key_d", "key_a", "key_w"].includes(step.key);
+    if (!translation && lastStaticCorrection === lastGrounding) return null;
+    if (!translation) lastStaticCorrection = lastGrounding;
+    nextCamera = now + step.ms + (translation ? 300 : 520);
+    return { ...step, x: anchor.x, height: anchor.h, velocity: anchor.vx };
   }
-  return {push,observe,correction,permits,status};
+  function permits(key) {
+    if (mustStopTravel(status())) return false;
+    return ["W", "A", "S", "D", "ArrowLeft", "ArrowRight"].includes(key);
+  }
+  return { push, observe, correction, permits, status };
 }
 
 export function characterInstruction(command) {
-  const dir={A:'left',D:'right',ArrowLeft:'left',ArrowRight:'right'}[command.key];
-  if(command.key==='W')return 'The robot takes the next two small walking strides toward the signed exit along the visible floor, then waits for its next decision. Its backpack and flashlight stay in view.';
-  if(command.key==='S')return 'The robot takes one small step back along its own approach, then steadies its feet.';
-  if(command.key==='A'||command.key==='D')return command.reaction==='avoid'
-    ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, keeping both boots clear. It plants its foot and points its flashlight along the open route.`
-    : `The robot takes one small sidestep to its ${dir}, then plants both boots on the floor.`;
-  if(dir)return `The robot turns its shoulders and flashlight slightly to its ${dir} to inspect the next piece of walkable floor. Its feet stay planted.`;
+  const dir = { A: "left", D: "right", ArrowLeft: "left", ArrowRight: "right" }[
+    command.key
+  ];
+  if (command.key === "W")
+    return "The robot takes the next two small walking strides toward the signed exit along the visible floor, then waits for its next decision. Its backpack and flashlight stay in view.";
+  if (command.key === "S")
+    return "The robot takes one small step back along its own approach, then steadies its feet.";
+  if (command.key === "A" || command.key === "D")
+    return command.reaction === "avoid"
+      ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, keeping both boots clear. It plants its foot and points its flashlight along the open route.`
+      : `The robot takes one small sidestep to its ${dir}, then plants both boots on the floor.`;
+  if (dir)
+    return `The robot turns its shoulders and flashlight slightly to its ${dir} to inspect the next piece of walkable floor. Its feet stay planted.`;
   return null;
 }
 
 export function reactionInstruction(command) {
-  if(command.reaction==='startle') return "The same small robot jolts at the surprise in front of its boots, makes one short hop back and steadies its flashlight on the obstacle. Both boots land nearby.";
-  if(command.reaction==='notice' && ['left','right'].includes(command.toward))
+  if (command.reaction === "startle")
+    return "The same small robot jolts at the surprise in front of its boots, makes one short hop back and steadies its flashlight on the obstacle. Both boots land nearby.";
+  if (
+    command.reaction === "notice" &&
+    ["left", "right"].includes(command.toward)
+  )
     return `The robot keeps both boots planted and glances to its ${command.toward}, turning just its head and flashlight briefly toward the new movement. Its body stays in place.`;
   return null;
 }
