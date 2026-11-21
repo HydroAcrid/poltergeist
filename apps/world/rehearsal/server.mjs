@@ -47,7 +47,6 @@ export async function registerStage(
   const stockPlate = readFileSync(resolve(root, 'long-hall.webp'));
   const plates = createPlateCache({
     captureDir,
-    reference: readFileSync(resolve(root, '../robot-v1/hallway.webp')),
     generate: generatePlate,
   });
   let sourceKey = 'venue';
@@ -306,9 +305,9 @@ export async function registerStage(
                   r.action = 'Assessing the path';
                 } else if (canCrossThreshold(crossing, m.scene, decision)) {
                   r.action = 'Stepping through the exit';
-                  live.send({ key: 'W', ms: 260 });
+                  live.send({ key: 'W', ms: 260, observed: m.observed });
                 } else if (decision.action.key !== 'NOOP') {
-                  live.send(placement.characterCommand(decision));
+                  live.send({ ...placement.characterCommand(decision), observed: m.observed });
                 }
               }
               if (m.observationFailed)

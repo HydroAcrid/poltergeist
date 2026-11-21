@@ -63,9 +63,7 @@ async function openStage(t, generatePlate) {
 
 test('a host photo opens the lobby and prepares one matching plate while guests wait for Start', async (t) => {
   const jobs = [];
-  const shoulder = readFileSync(resolve(root, '../robot-v1/hallway.webp'));
-  const req = await openStage(t, ({ photo, reference }) => {
-    assert.deepEqual(reference, shoulder);
+  const req = await openStage(t, ({ photo }) => {
     return new Promise((resolve) => jobs.push({
       photo,
       finish: () => resolve({ bytes: photo, mime: 'image/jpeg' }),

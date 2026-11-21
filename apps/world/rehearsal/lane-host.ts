@@ -6,11 +6,11 @@ import { createCrowdModule } from '../../crowd/server/index';
 import { newId } from '../../crowd/server/ids';
 import { stepNav } from '../../brain/server/navigate';
 import { initialState } from '../../brain/server/controller';
-import { loadPolicy } from '../../brain/server/policy';
+import { loadPolicy, withRig } from '../../brain/server/policy';
 import { FixturePerception } from '../../brain/server/perception/fixture';
 import { TickHandler } from '../../brain/server/tick';
 import type { PlayerTask } from '../../brain/server/perception/player-input';
-import { fromTrailView, trailInput } from './trail-view.mjs';
+import { fromShoulderView, fromTrailView, trailInput } from './trail-view.mjs';
 import { registerStage } from './server.mjs';
 
 const requireCrowd = createRequire(
@@ -44,7 +44,7 @@ const unsubscribe = bus.subscribe(
 app.post('/api/brain/tick', async (req) => ticks.handle(req.body));
 const makePilot = () => {
   let state = initialState();
-  const policy = loadPolicy();
+  const policy = withRig(loadPolicy(), process.env.PG_CAMERA_RIG === 'trail' ? 'trail' : 'shoulder');
   return (scene) => {
     if (!scene.visible) {
       state = initialState();
@@ -55,7 +55,7 @@ const makePilot = () => {
     }
     const decision = stepNav(
       state,
-      fromTrailView(scene),
+      policy.navigation.rig === 'shoulder' ? fromShoulderView(scene, policy.navigation.shoulder.anchor) : fromTrailView(scene),
       { driver: 'brain' } as any,
       policy,
     );

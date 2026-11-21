@@ -28,6 +28,21 @@ export function fromTrailView(scene) {
     goal:scene.goal?project(scene.goal):scene.rightFloorVisible?[350,500]:undefined,
     obstacles:scene.obstacles.map(obstacle)};
 }
+// Sri's close shoulder policy is calibrated in screen coordinates. The
+// ground anchor marks the player's estimated position below the picture.
+export function fromShoulderView(scene, [y, x]) {
+  return {
+    feet: { left: [y, Math.max(0, x - 15)], right: [y, Math.min(1000, x + 15)] },
+    feetEstimated: true,
+    goal: scene.goal,
+    forward: scene.ahead,
+    obstacles: scene.obstacles.map(({box, point}) => ({
+      box, point: box ? [Math.round((box[0] + box[2]) / 2), Math.round((box[1] + box[3]) / 2)] : point,
+    })),
+    pose: scene.pose === 'stumbling' ? 'stumbling' : 'upright',
+  };
+}
+
 // Genie trains movement and camera orientation as different native controls.
 export function trailInput(choice) {
   const key = choice.action.key;
