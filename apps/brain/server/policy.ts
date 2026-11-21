@@ -47,6 +47,9 @@ export const Policy = z.object({
     walkMs: ms.min(1).max(1500),
     stepAsideMs: ms.min(1).max(1500),
     arriveRadius: z.number().positive(),
+    headingX: z.number().min(0).max(1000),
+    turnDeadband: unit,
+    kTurn: z.number().positive(),
   }),
 });
 export type Policy = z.infer<typeof Policy>;

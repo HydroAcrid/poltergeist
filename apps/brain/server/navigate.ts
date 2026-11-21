@@ -1,5 +1,10 @@
 // Third-person navigation: the avatar's feet are in frame, and the goal is a
 // walkable threshold. Pure function, like the first-person controller.
+//
+// Two corridors run from the feet midpoint:
+//   - forward: toward the camera heading (W walks this way), and
+//   - to the goal: straight to the exit threshold.
+// Obstacles are placed by where they touch the floor (bottom of their box).
 import type { Point } from "@poltergeist/contracts/common.js";
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import type { Action } from "@poltergeist/contracts/tick-response.js";
@@ -8,37 +13,53 @@ import type { Scene } from "./perception/types.js";
 import type { Policy } from "./policy.js";
 
 const NOOP: Action = { key: "NOOP", holdMs: 0 };
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export const feetMidpoint = (s: Scene): Point => [
   Math.round((s.feet.left[0] + s.feet.right[0]) / 2),
   Math.round((s.feet.left[1] + s.feet.right[1]) / 2),
 ];
 
+/** Where an obstacle meets the floor: bottom-centre of its box, else its point. */
+const floorPoint = (o: Scene["obstacles"][number]): Point =>
+  o.box ? [o.box[2], Math.round((o.box[1] + o.box[3]) / 2)] : o.point;
+
+export interface Block {
+  point: Point;
+  /** Obstacle offset from the corridor centre, in frame units (negative = left). */
+  offset: number;
+  halfWidth: number;
+}
+
 /**
- * The first obstacle that sits on the straight walking corridor from the feet
- * to the goal. The corridor narrows toward the goal (perspective). Obstacles
- * behind the feet or beyond the goal don't count.
+ * The nearest obstacle on the corridor from the feet to `to`. The corridor
+ * narrows toward `to` (perspective). Obstacles touching the floor behind the
+ * feet or beyond `to` don't count.
  */
-export function blockingObstacle(scene: Scene, policy: Policy): { point: Point; side: "left" | "right" } | undefined {
+export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block | undefined {
   const n = policy.navigation;
-  const goal = scene.goal;
-  if (!goal) return undefined;
   const [fy, fx] = feetMidpoint(scene);
-  const span = fy - goal[0];
+  const span = fy - to[0];
   if (span <= 0) return undefined;
 
   const ahead = scene.obstacles
-    .filter((o) => o.point[0] < fy && o.point[0] > goal[0])
-    .sort((a, b) => b.point[0] - a.point[0]); // nearest first
-  for (const o of ahead) {
-    const f = (fy - o.point[0]) / span; // 0 at the feet, 1 at the goal
-    const pathX = fx + f * (goal[1] - fx);
+    .map((o) => ({ o, floor: floorPoint(o) }))
+    .filter(({ floor }) => floor[0] < fy && floor[0] > to[0])
+    .sort((a, b) => b.floor[0] - a.floor[0]); // nearest first
+  for (const { o, floor } of ahead) {
+    const f = (fy - floor[0]) / span; // 0 at the feet, 1 at `to`
+    const pathX = fx + f * (to[1] - fx);
     const halfPath = n.pathHalfWidth * (1 - f * (1 - n.farWidthRatio));
-    const halfObstacle = o.box ? (o.box[3] - o.box[1]) / 2 : n.defaultObstacleHalfWidth;
-    const offset = o.point[1] - pathX;
-    if (Math.abs(offset) < halfPath + halfObstacle) return { point: o.point, side: offset >= 0 ? "right" : "left" };
+    const halfWidth = o.box ? (o.box[3] - o.box[1]) / 2 : n.defaultObstacleHalfWidth;
+    const offset = floor[1] - pathX;
+    if (Math.abs(offset) < halfPath + halfWidth) return { point: o.point, offset, halfWidth };
   }
   return undefined;
+}
+
+function clock(e: number): string {
+  const h = Math.round(e * 3);
+  return `${h === 0 ? 12 : h > 0 ? h : 12 + h} o'clock`;
 }
 
 export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, policy: Policy): ControllerOutput {
@@ -58,14 +79,15 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
     return out(NOOP, "unstick", "stumbled, waiting to recover");
   }
 
-  if (!scene.goal) {
+  const goal = scene.goal;
+  if (!goal) {
     s.successTicks = 0;
     return out(NOOP, "search", "exit threshold not in view");
   }
 
   // Arrival: the feet themselves reach the threshold (seeing the sign is not enough).
   const mid = feetMidpoint(scene);
-  const gap = Math.round(Math.hypot(mid[0] - scene.goal[0], mid[1] - scene.goal[1]));
+  const gap = Math.round(Math.hypot(mid[0] - goal[0], mid[1] - goal[1]));
   if (gap <= n.arriveRadius) {
     s.successTicks += 1;
     if (s.successTicks >= policy.controller.successTicks) {
@@ -75,11 +97,23 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   }
   s.successTicks = 0;
 
-  const block = blockingObstacle(scene, policy);
-  if (block) {
-    // Step away from the side the obstacle sits on.
-    const key = block.side === "right" ? "A" : "D";
-    return out({ key, holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${key === "A" ? "left" : "right"}`);
+  const e = (goal[1] - n.headingX) / 500; // exit bearing relative to the camera heading
+  const forward = blockingObstacle(scene, [goal[0], n.headingX], policy);
+  const toGoal = blockingObstacle(scene, goal, policy);
+
+  // Exit is off to one side and the way there is clear: turn toward it.
+  if (Math.abs(e) > n.turnDeadband && !toGoal) {
+    const key = e > 0 ? "ArrowRight" : "ArrowLeft";
+    const why = forward ? "obstacle ahead, turning toward exit" : `exit ${clock(e)} → turning`;
+    return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, 600)) }, "track", why);
+  }
+
+  // Straight ahead is blocked: step aside. Roughly dead-centre → step toward the
+  // exit's side; otherwise step away from the obstacle.
+  if (forward) {
+    const centred = Math.abs(forward.offset) < forward.halfWidth / 2;
+    const left = centred ? e < 0 : forward.offset > 0;
+    return out({ key: left ? "A" : "D", holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${left ? "left" : "right"}`);
   }
 
   return out({ key: "W", holdMs: n.walkMs }, "track", `path clear, walking (gap ${gap})`);

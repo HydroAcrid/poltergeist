@@ -13,6 +13,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
 export const FIXTURE_ZERO = resolve(repoRoot, "fixtures/media/fixture-zero");
 /** World-owned third-person frames (read-only for Brain). */
 export const WORLD_HALLWAY = resolve(repoRoot, "apps/world/painted-door/haunting/fixtures");
+/** World-owned frames from a live flashlight round (read-only for Brain). */
+export const WORLD_FLASHLIGHT = resolve(repoRoot, "apps/world/robot-v1/fixtures");
 
 /** World's hallway labels (scoring data). Brain reads them; it never edits them. */
 export const HallwayLabels = z.object({
@@ -66,17 +68,18 @@ export class FixturePerception implements PerceptionAdapter {
   /** Which file answered the last call; for tests that the decoy frames never read ground truth. */
   lastSource: "observation" | "label" | "scene" | "none" = "none";
 
-  constructor(dir = FIXTURE_ZERO, hallwayDir: string | null = WORLD_HALLWAY) {
+  constructor(dir = FIXTURE_ZERO, sceneDirs: string[] = [WORLD_HALLWAY, WORLD_FLASHLIGHT]) {
     const observations = z.array(Observation).parse(JSON.parse(readFileSync(join(dir, "observations.json"), "utf8")));
     for (const o of observations) this.observations.set(sha256(readFileSync(join(dir, o.file))), o);
     for (const l of loadLabels(dir)) this.labels.set(sha256(readFileSync(join(dir, l.file))), l);
 
     // Third-person frames: report only what is visible (feet, obstacle, threshold,
-    // pose). World's `arrived` flag and the prototype's lane/depth are scoring data
-    // and are deliberately not passed on.
-    if (hallwayDir && existsSync(join(hallwayDir, "labels.json"))) {
-      for (const f of loadHallwayLabels(hallwayDir).frames) {
-        this.scenes.set(sha256(readFileSync(join(hallwayDir, f.file))), {
+    // pose). World's `arrived` flag, written observations and the prototype's
+    // lane/depth are scoring data and are deliberately not passed on.
+    for (const sceneDir of sceneDirs) {
+      if (!existsSync(join(sceneDir, "labels.json"))) continue;
+      for (const f of loadHallwayLabels(sceneDir).frames) {
+        this.scenes.set(sha256(readFileSync(join(sceneDir, f.file))), {
           feet: { left: f.feet.left, right: f.feet.right },
           obstacles: f.hazard ? [{ point: f.hazard.point, ...(f.hazard.box ? { box: f.hazard.box } : {}) }] : [],
           goal: f.goal,

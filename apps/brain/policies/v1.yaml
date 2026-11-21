@@ -32,4 +32,7 @@ navigation:
   walkMs: 600
   stepAsideMs: 600       # ≈ one lane in the prototype (calibrate live)
   arriveRadius: 25       # feet midpoint within this of the threshold = arrived
+  headingX: 500          # follow camera: W walks toward the frame's centre column
+  turnDeadband: 0.15     # exit bearing (|goalX − headingX| / 500) that triggers a turn
+  kTurn: 600             # ms of turn per unit bearing (calibrate live)
 
