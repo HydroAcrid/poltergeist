@@ -449,6 +449,7 @@ body:not(.projector) main {
     object-fit: contain;
   }
 }
+.viewport canvas.native-frame { object-fit: contain; }
 .viewport img.decode-source {
   position: absolute;
   inset: 0 auto auto -2px;

@@ -106,6 +106,7 @@ async function sync() {
   queue(s);
 
   const r = s.round;
+  canvas.classList.toggle('native-frame', !!r?.live);
   if (r?.live && r.phase === 'playing' && liveId !== r.id) {
     liveId = r.id;
     liveImage.src = '/rehearsal/video?round=' + encodeURIComponent(r.id);
