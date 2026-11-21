@@ -101,7 +101,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
           scareAt:ok && observation?.scare === true ? observation.reactedOffsetMs : null,
           reaction:observation?.reaction};
       });
-      const segment = {n,clip,receipts,title:batch.length ? 'The next haunting' : 'Follow the flashlight'};
+      const segment = {n,clip,receipts,title:batch[0]?.text || 'Follow the flashlight'};
       assets.set(n,clip);
       ready.push(segment);
       if (clip.evidence?.winner) terminalQueued = true;
@@ -113,7 +113,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
   }
   function advance(now) {
     if (stopped) return;
-    if (active) announce(active,Math.min(active.clip.durationMs,Math.max(0,now-active.start)));
+    if (active) announce(active,Math.min(active.clip.durationMs,Math.max(0,Math.min(now,deadline)-active.start)));
     if (now >= deadline) {
       end(hasPlayed ? 'time' : 'interrupted',hasPlayed ? 'audience' : null);
       return;

@@ -19,6 +19,12 @@ This checkout runs the three lanes together on one loopback server. Offline play
 
 Set `PG_STAGE_PORT` to use a different local port. Set `PG_VENUE_PHOTO` to show a local JPEG in the venue opening. The included sample is an empty version of the venue. In **Host** you can also capture or choose a new photo. A newly selected photo receives a local preview during an offline rehearsal.
 
+## Choose a show format
+
+**5-minute buffered live game** uses the room photo and freshly moderated crowd ideas. New guests can join while World generates. The host groups up to two ideas per segment. After the opening collection window, the projector plays the first available clip while the next one develops. Each new Genie session starts from the preceding segment’s final native JPEG. The lights flicker at the cut. If generation falls behind, the screen says the next scene is developing. The host report includes opening delay, time spent generating, playable duration and gaps. This mode uses paid generation and requires FFmpeg with libx264 on the live host. Set `PG_FFMPEG_PATH` if the executable is outside the system path.
+
+**5-minute audience screening** uses previously recorded venue scenes and a live audience queue. Use the venue photo, then let guests choose a gust of paper, a tipping chair or a rolling bucket. The phone offers available filmed alternatives for other ideas. This format needs no Genie session. Uploaded photos can be used with the buffered or direct live formats.
+
 ## On Kevin’s live World host
 
 Use the same setup above. Install the capture package once on the World laptop.

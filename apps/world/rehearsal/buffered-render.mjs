@@ -119,6 +119,8 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
         }
         if (selected) placement.tick(now);
       }
+      if (message.navigationMoved && message.encounter) placement.applied(message);
+      if (message.stepReview) placement.reviewed(message.stepReview);
       if (message.cameraMoved || message.navigationMoved) placement.moved(now);
       if (message.navigationMoved) {
         if (message.key === 'W') crossing.forwardAt = now;
@@ -150,7 +152,12 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
         const row = byId.get(prop.id);
         if (prop.seen && !row.visible) { row.visible = true; row.visibleFrame = observed; }
         if (prop.inPath && prop.confirmedFrame === observed && !row.inPath) { row.inPath = true; row.inPathFrame = observed; }
-        if (prop.reactedAt && !row.reacted) { row.reacted = true; row.reactedFrame = observed; }
+        if (prop.reactedAt && !row.reacted) {
+          row.reacted = true;
+          row.reactedFrame = observed;
+          row.reaction = prop.observedReaction;
+          row.scare = prop.observedReaction === 'scare';
+        }
       }
       const held = placement.navigationPaused(now);
       if ((!held && !message.trackingNavigationHeld && observedCrossing(crossing, scene, observedAt)) || round.fear >= 3) {
