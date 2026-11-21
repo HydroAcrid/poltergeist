@@ -26,7 +26,8 @@ function pickModeration(ctx: HubContext): ModerationAdapter {
   const mode = ctx.env.PG_MODERATION_ADAPTER ?? (key ? "hydrogen" : "rules-only");
   if (mode === "rules-only") return new RulesOnlyModeration();
   if (mode !== "hydrogen") throw Error("Unknown moderation adapter: " + mode);
-  return new GeminiModeration(key, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault));
+  return new GeminiModeration(key, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault),
+    Number(ctx.env.PG_MODERATION_CONCURRENCY || 4));
 }
 
 export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {

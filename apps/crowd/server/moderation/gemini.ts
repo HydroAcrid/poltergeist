@@ -33,13 +33,61 @@ const outputSchema = {
   }, required: ["decision"],
 };
 
+async function retryDelay(response: Response): Promise<number> {
+  const header = response.headers.get("retry-after")?.trim();
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+    const when = Date.parse(header);
+    if (Number.isFinite(when)) return Math.max(0, when - Date.now());
+  }
+  const body = await response.json().catch(() => null);
+  const details: unknown = body?.error?.details;
+  if (Array.isArray(details)) {
+    const retry = details.find(info => info?.["@type"] === "type.googleapis.com/google.rpc.RetryInfo");
+    const seconds = /^(\d+(?:\.\d+)?)s$/.exec(retry?.retryDelay);
+    if (seconds) return Math.ceil(Number(seconds[1]) * 1000);
+  }
+  return 1000;
+}
+
 export class GeminiModeration implements ModerationAdapter {
   readonly name: string;
   private readonly rules = new RulesOnlyModeration();
-  constructor(private readonly key: string, model = "gemini-4-hydrogen", private readonly request: typeof fetch = fetch, private readonly report?: (fault: string) => void) {
+  private readonly waiters: Array<() => void> = [];
+  private available: number;
+  private retryAt = 0;
+
+  constructor(private readonly key: string, model = "gemini-4-hydrogen", private readonly request: typeof fetch = fetch, private readonly report?: (fault: string) => void, concurrency = 4) {
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1)
+      throw Error("PG_MODERATION_CONCURRENCY must be a positive integer.");
+    this.available = concurrency;
     this.name = model;
   }
   nickname(value: string) { return this.rules.nickname(value); }
+
+  private async takeSlot() {
+    if (this.available > 0) { this.available--; return; }
+    await new Promise<void>(resume => this.waiters.push(resume));
+  }
+
+  // A provider cooldown applies across the room, including jobs already holding a slot.
+  private async send(url: string, body: string) {
+    for (let attempt = 0; ; attempt++) {
+      while (this.retryAt > Date.now())
+        await new Promise(resolve => setTimeout(resolve, Math.min(this.retryAt - Date.now(), 2_147_483_647)));
+      const response = await this.request(url, {
+        method: "POST", signal: AbortSignal.timeout(12000),
+        headers: { "content-type": "application/json", "x-goog-api-key": this.key }, body,
+      });
+      if (response.status !== 429) return response;
+      this.report?.("Gemini moderation HTTP 429");
+      const delayMs = await retryDelay(response);
+      this.retryAt = Math.max(this.retryAt, Date.now() + delayMs);
+      if (!response.bodyUsed) await response.body?.cancel();
+      if (attempt === 1) return response;
+    }
+  }
 
   async moderate(input: string): Promise<Moderated> {
     const idea = input.normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -47,20 +95,18 @@ export class GeminiModeration implements ModerationAdapter {
       ({ safe: false, text: "", tags: [], reason, suggestion, model: this.name });
     const blocked = blockedReason(idea);
     if (blocked) return reject(blocked);
+    if (!this.key) return reject("The idea check is unavailable. Try again or choose a preset.");
+    await this.takeSlot();
     try {
-      if (!this.key) throw Error("Missing moderation credential");
       const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(this.name) + ":generateContent";
-      const response = await this.request(url, {
-        method: "POST", signal: AbortSignal.timeout(12000),
-        headers: { "content-type": "application/json", "x-goog-api-key": this.key },
-        body: JSON.stringify({
+      const response = await this.send(url, JSON.stringify({
           systemInstruction: { parts: [{ text: instruction }] },
           contents: [{ role: "user", parts: [{ text: JSON.stringify({ idea }) }] }],
           generationConfig: { temperature: 0, maxOutputTokens: 512, ...(this.name === "gemini-4-hydrogen" ? { thinkingConfig: { thinkingLevel: "LOW" } } : {}), responseMimeType: "application/json", responseJsonSchema: outputSchema },
-        }),
-      });
+      }));
       if (!response.ok) {
-        this.report?.("Gemini moderation HTTP " + response.status);
+        if (response.status !== 429) this.report?.("Gemini moderation HTTP " + response.status);
+        if (!response.bodyUsed) await response.body?.cancel();
         return reject("The idea check is unavailable. Try again or choose a preset.");
       }
       const data = await response.json();
@@ -76,6 +122,10 @@ export class GeminiModeration implements ModerationAdapter {
     } catch (error) {
       this.report?.("Gemini moderation failed (" + (error instanceof Error ? error.name : "unknown") + ")");
       return reject("The idea check is unavailable. Try again or choose a preset.");
+    } finally {
+      const next = this.waiters.shift();
+      if (next) next();
+      else this.available++;
     }
   }
 }
