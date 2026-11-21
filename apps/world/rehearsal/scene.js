@@ -1,4 +1,5 @@
 import { createHallwayLighting } from './look.mjs';
+import { createGhostVeil, createMotionGate } from './veil.mjs';
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const smooth = (v) => {
   v = clamp(v);
@@ -12,9 +13,16 @@ const image = async (src) => {
 };
 
 export async function createScene(canvas) {
-  const ctx = canvas.getContext('2d'),
-    W = 1280,
-    H = 720;
+  const W = 1280, H = 720;
+  const screen = canvas.getContext('2d');
+  let ctx = screen;
+  const seedCanvas = document.createElement('canvas');
+  seedCanvas.width = W;
+  seedCanvas.height = H;
+  const seedContext = seedCanvas.getContext('2d');
+  const seedGrade = createHallwayLighting(seedContext, W, H);
+  const veil = createGhostVeil(W,H), motion = createMotionGate();
+  let presentingId, fullyCovered = false, revealedAt = null, hasShownWorld = false;
   const grade = createHallwayLighting(ctx, W, H);
   const [hall, robot, peel] = await Promise.all(
     ['/hall.webp', '/explorer.webp', '/peel.webp'].map(image),
@@ -78,6 +86,43 @@ export async function createScene(canvas) {
     // vanishing point aligned with the room without exposing an empty border.
     const align=(offset,span,screen)=>span<screen?(screen-span)/2:Math.min(0,Math.max(screen-span,offset));
     ctx.drawImage(source,align(x,width,W),align(y,height,H),width,height);
+  }
+  function presentLive(img, round, now) {
+    if (presentingId !== round.id) {
+      presentingId=round.id;fullyCovered=false;revealedAt=null;hasShownWorld=false;
+      motion.reset();
+    }
+    const elapsed=Math.max(0,now-round.openedAt), still=reduced.matches;
+    if (round.phase === 'ended') {
+      if (!hasShownWorld)veil(screen,'hold',1,0,true);
+      return hasShownWorld;
+    }
+    const coverFor=still?420:1550;
+    const drawPhoto=()=>{
+      screen.fillStyle='#0b0e0d';screen.fillRect(0,0,W,H);
+      openingPhoto(0);
+    };
+    if(elapsed<1250+coverFor) {
+      drawPhoto();
+      if(elapsed>1250)veil(screen,'cover',clamp((elapsed-1250)/coverFor),elapsed,still);
+      return false;
+    }
+    if(!fullyCovered){
+      veil(screen,'hold',1,elapsed,still);fullyCovered=true;
+      return false;
+    }
+    if(round.phase==='playing' && img?.naturalWidth && revealedAt==null &&
+       motion.ready(img,round.trackedBody,now))revealedAt=now;
+    if(revealedAt==null){
+      veil(screen,'hold',1,elapsed,still);
+      return false;
+    }
+    if(!img?.naturalWidth)return hasShownWorld;
+    followLive(img,round,now);
+    const progress=clamp((now-revealedAt)/(still?420:1450));
+    veil(screen,'reveal',progress,elapsed,still);
+    hasShownWorld ||= progress>0;
+    return hasShownWorld;
   }
   function cover(i, zoom = 1, cx = 0.5, cy = 0.5) {
     const scale = Math.max(W / i.width, H / i.height) * zoom,
@@ -270,7 +315,7 @@ export async function createScene(canvas) {
     grade(amount, now, forceGame);
   }
   return {
-    paint,drawLive:followLive,
+    paint,drawLive:followLive,presentLive,
     async setPlate(key) {
       preparedHall=key && key!=='venue' ? await image('/rehearsal/plate?key='+encodeURIComponent(key)) : null;
       roomAisle=preparedHall ? aislePoint(preparedHall,{x:.88,y:.45}) : hallAisle;
@@ -280,11 +325,17 @@ export async function createScene(canvas) {
       sourceAisle=aislePoint(source,{x:.52,y:.54});
     },
     seed(state) {
-      paint({ ...state, round: null }, Date.now(), true);
+      // Build the provider seed entirely offscreen. The host shares the same
+      // projector surface and must never briefly expose the composited sprite.
+      ctx=seedContext;
+      try {
+        render({ ...state, round: null }, Date.now(), true);
+        seedGrade(1,0,true);
+      } finally { ctx=screen; }
       const small = document.createElement('canvas');
       small.width = 960;
       small.height = 540;
-      small.getContext('2d').drawImage(canvas, 0, 0, 960, 540);
+      small.getContext('2d').drawImage(seedCanvas, 0, 0, 960, 540);
       for (const quality of [0.68, 0.55, 0.42, 0.3, 0.2]) {
         const encoded = small.toDataURL('image/jpeg', quality).split(',')[1];
         if (encoded.length <= 64000) return encoded;

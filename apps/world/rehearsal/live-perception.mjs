@@ -15,7 +15,7 @@ export async function inspectRoom(ai, image, signal) {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: image } },
           {
-            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return each boot touching the floor. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. The robot is filmed from a trailing diagonal chase camera. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
+            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return each boot touching the floor and a tight head-to-boots bodyBox [top,left,bottom,right]. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. The robot is filmed from a trailing diagonal chase camera. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
           },
         ],
       },
@@ -33,6 +33,7 @@ export async function inspectRoom(ai, image, signal) {
           robotVisible: { type: 'boolean' },
           goalVisible: { type: 'boolean' },
           rightFloorVisible: {type:'boolean'},
+          bodyBox: {type:'array',items:{type:'integer'},minItems:4,maxItems:4},
           threat: { type: 'string', enum: ['startling', 'ordinary', 'unclear'] },
           left: point,
           right: point,
@@ -61,6 +62,7 @@ export async function inspectRoom(ai, image, signal) {
           'robotVisible',
           'goalVisible',
           'rightFloorVisible',
+          'bodyBox',
           'threat',
           'left',
           'right',
@@ -83,6 +85,7 @@ export async function inspectRoom(ai, image, signal) {
     return { visible: false, obstacles: [] };
   return {
     visible: true,
+    ...(valid(v.bodyBox,4) && v.bodyBox[0]<v.bodyBox[2] && v.bodyBox[1]<v.bodyBox[3] ? {bodyBox:v.bodyBox} : {}),
     threat: ['startling','ordinary'].includes(v.threat) ? v.threat : 'unclear',
     rightFloorVisible: v.rightFloorVisible===true,
     feet: { left: v.left, right: v.right },

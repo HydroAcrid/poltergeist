@@ -245,6 +245,7 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
+              if (m.cameraMoved && r.phase === 'playing') placement?.moved();
               if (m.injected && r.phase === 'playing')
                 placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
               if (m.injectionFailed && r.phase === 'playing') placement?.failed(m.injectionFailed, m.attempt ?? 1);
@@ -525,6 +526,7 @@ export async function registerStage(
     ['/stage.js', 'stage.js', 'text/javascript'],
     ['/scene.js', 'scene.js', 'text/javascript'],
     ['/look.mjs', 'look.mjs', 'text/javascript'],
+    ['/veil.mjs', 'veil.mjs', 'text/javascript'],
     ['/photo.js', 'photo.mjs', 'text/javascript'],
     ['/phone.js', 'phone.js', 'text/javascript'],
     ['/hall.webp', 'long-hall.webp', 'image/webp'],
