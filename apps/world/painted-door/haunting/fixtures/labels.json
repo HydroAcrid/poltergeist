@@ -1,0 +1,215 @@
+{
+  "coordinates": "[y, x], normalized 0–1000 from the top left; boxes are [ymin, xmin, ymax, xmax].",
+  "goal": "Far end of the walkable aisle in this fixed-camera prototype.",
+  "frames": [
+    {
+      "file": "clear-aisle.jpg",
+      "feet": {
+        "left": [
+          944,
+          568
+        ],
+        "right": [
+          944,
+          592
+        ]
+      },
+      "hazard": null,
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": false,
+      "arrived": false,
+      "robot": {
+        "lane": 0,
+        "depth": 0
+      }
+    },
+    {
+      "file": "peel-in-path.jpg",
+      "feet": {
+        "left": [
+          944,
+          568
+        ],
+        "right": [
+          944,
+          592
+        ]
+      },
+      "hazard": {
+        "point": [
+          777,
+          537
+        ],
+        "box": [
+          734,
+          499,
+          809,
+          583
+        ],
+        "lane": 0,
+        "depth": 0.34
+      },
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": false,
+      "arrived": false,
+      "robot": {
+        "lane": 0,
+        "depth": 0
+      }
+    },
+    {
+      "file": "peel-off-path.jpg",
+      "feet": {
+        "left": [
+          944,
+          568
+        ],
+        "right": [
+          944,
+          592
+        ]
+      },
+      "hazard": {
+        "point": [
+          775,
+          639
+        ],
+        "box": [
+          732,
+          601,
+          807,
+          685
+        ],
+        "lane": 0.6816519498913411,
+        "depth": 0.34416181071681945
+      },
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": false,
+      "arrived": false,
+      "robot": {
+        "lane": 0,
+        "depth": 0
+      }
+    },
+    {
+      "file": "stumbling.jpg",
+      "feet": {
+        "left": [
+          821,
+          528
+        ],
+        "right": [
+          849,
+          572
+        ]
+      },
+      "hazard": {
+        "point": [
+          788,
+          537
+        ],
+        "box": [
+          761,
+          499,
+          809,
+          583
+        ],
+        "lane": 0,
+        "depth": 0.34
+      },
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": true,
+      "arrived": false,
+      "robot": {
+        "lane": 0,
+        "depth": 0.2907
+      }
+    },
+    {
+      "file": "recovered.jpg",
+      "feet": {
+        "left": [
+          740,
+          517
+        ],
+        "right": [
+          748,
+          533
+        ]
+      },
+      "hazard": {
+        "point": [
+          788,
+          537
+        ],
+        "box": [
+          761,
+          499,
+          809,
+          583
+        ],
+        "lane": 0,
+        "depth": 0.34
+      },
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": false,
+      "arrived": false,
+      "robot": {
+        "lane": 0,
+        "depth": 0.48127000000000003
+      }
+    },
+    {
+      "file": "arrived.jpg",
+      "feet": {
+        "left": [
+          538,
+          461
+        ],
+        "right": [
+          538,
+          470
+        ]
+      },
+      "hazard": {
+        "point": [
+          788,
+          537
+        ],
+        "box": [
+          761,
+          499,
+          809,
+          583
+        ],
+        "lane": 0,
+        "depth": 0.34
+      },
+      "goal": [
+        540,
+        465
+      ],
+      "stumbling": false,
+      "arrived": true,
+      "robot": {
+        "lane": 0,
+        "depth": 1
+      }
+    }
+  ]
+}
