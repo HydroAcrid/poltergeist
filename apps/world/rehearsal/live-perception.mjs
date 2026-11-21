@@ -44,7 +44,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
             playerMoves.guidance,
             ...(sent ? [`The last movement actually sent to the player was to ${sent}, then pause. ${outcomes[lastStep.outcome] || outcomes.unconfirmed} Compare boot contact, the obstacle, and fixed floor marks in the two images. Choose a new safe response based on visible movement and the route now available. The instruction itself is not evidence of a successful move.`] : []),
             ...(assessingEncounter ? ['With the explorer stopped, compare the next footsteps to the previous picture. Choose how to respond to what is visibly in its way, whether to wait for motion, look, back away, sidestep onto clear floor, or deliberately cross a harmless effect. For a sidestep or retreat, give target as the clear floor patch where both boots should LAND, beyond the obstacle on the chosen side or behind the current feet. Give the obstruction separately in obstacles. If the landing area or feet are hidden, inspect or wait. Mark avoiding true when this choice responds to what you see.'] : []),
-            'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame.',
+            'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame. If you can see a safe next move after this one, specify it in then; it is only a plan for an unchanged scene.',
           ].join(' ') },
           {text:'For every obstacle additionally return floorBox: [top,left,bottom,right] around only the visible footprint on the FLOOR from its backmost to nearest visible contact, in the same 0–1000 coordinates. For a wheeled or legged object use where its visible wheels or legs meet the floor. Exclude its handle, body, cast shadow and surrounding floor. For a flat effect use the visibly occupied floor. If contact is hidden or the effect is airborne, return an empty array. An object’s silhouette alone is not a footprint.'},
           {
@@ -64,6 +64,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
         type: 'object',
         properties: {
           intent: {type:'string', enum:playerMoves.intents},
+          then: {type:'string', enum:playerMoves.intents},
           change: {type:'string'}, reason: {type:'string'}, avoiding: {type:'boolean'}, target: point,
           playerCount: { type: 'integer', minimum: 0, maximum: 2 },
           robotVisible: { type: 'boolean' },
@@ -139,7 +140,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
   };
   return {
     move: playerMoves.intents.includes(v.intent) ? {
-      intent: v.intent, target: valid(v.target, 2) ? v.target : undefined,
+      intent: v.intent, ...(playerMoves.intents.includes(v.then) && {then:v.then}), target: valid(v.target, 2) ? v.target : undefined,
       reason: String(v.reason || '').slice(0, 60), observed: String(v.change || '').slice(0, 80),
       avoiding: v.avoiding === true, robotCount: v.playerCount,
     } : undefined,

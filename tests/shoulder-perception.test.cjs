@@ -47,12 +47,13 @@ test('each live player compares its own last frame and sends its chosen movement
     frames.push(contents[0].parts.filter(p=>p.inlineData).map(p=>p.inlineData.data));
     return {text:JSON.stringify({playerCount:1, playerMatch:true, robotVisible:true, shoulderView:'rear-right', aisleHeading:'diagonal-right',
       bodyBox:[291,54,1000,396],upperBodyBox:[291,54,888,382],obstacles:[{label:'barrier',relation:'crossing',box:[700,450,790,560],solid:true}],
-      intent:'step_right', change:'A barrier crossed the aisle',reason:'Clear floor to my right',avoiding:true,target:[760,610]})};
+      intent:'step_right', then:'hold', change:'A barrier crossed the aisle',reason:'Clear floor to my right',avoiding:true,target:[760,610]})};
   }}};
   await inspectRoom(ai,'first',undefined,'reference');
   const scene = await inspectRoom(ai,'next',undefined,'reference');
   assert.deepEqual(frames, [['reference','first'],['reference','first','next']]);
   assert.equal(scene.move.intent,'step_right');
+  assert.equal(scene.move.then,'hold');
   assert.equal(scene.move.avoiding,true);
   assert.equal(scene.obstacles[0].solid,true);
 });
