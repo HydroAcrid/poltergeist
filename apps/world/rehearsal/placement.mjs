@@ -198,7 +198,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     send({ pause: true });
   }
   function trySend(job, time) {
-    if (time < job.prop.selectedAt + cueLeadMs || !freshObservation(latest, time, lastMove) || time >= round.deadline)
+    if (time < job.prop.cueAt + cueLeadMs || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
     const prop = job.prop,
       retry = prop.attempt === 1;
@@ -234,6 +234,15 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
   function pump(time) {
     for (const job of jobs.values()) {
       if (job.closed) continue;
+      if (job.prop.cueAt === null) {
+        const reaction = round.lastReaction;
+        if (cueLeadMs && reaction && time - (reaction.presentedAt ?? reaction.at) < 3000) break;
+        job.prop.cueAt = time;
+        if (cueLeadMs > 0) {
+          pauseUntil = time + cueLeadMs;
+          send({ pause: true, settleCamera: true });
+        }
+      }
       if (
         job.prop.placement === 'waiting' ||
         job.prop.placement === 'correcting'
@@ -250,6 +259,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         name: text,
         by,
         selectedAt: time,
+        cueAt: null,
         attempt: 0,
         acked: false,
         seen: false,
@@ -258,10 +268,6 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       };
       round.props.push(prop);
       jobs.set(id, { prop, effect: describeEffect(text) });
-      if (cueLeadMs > 0 && [...jobs.values()].find((item) => !item.closed)?.prop === prop) {
-        pauseUntil = time + cueLeadMs;
-        send({ pause: true, settleCamera: true });
-      }
       pump(time);
     },
     tick(time = now()) { pump(time); },

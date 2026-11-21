@@ -317,3 +317,25 @@ test('slow vision still presents a fresh card while preserving the original evid
   assert.equal(hauntCue(r, 17800).label, 'The robot flinched');
   assert.equal(hauntCue(r, 21000), null);
 });
+
+test('a second committed haunting gets its own advance notice after the first encounter clears', async () => {
+  const {createPlacementController} = await moduleUnderTest;
+  const {hauntCue} = await import('../apps/world/rehearsal/haunt-cue.mjs');
+  const r = {phase:'playing', props:[], fear:0, deadline:60000};
+  const sent=[];
+  const q=createPlacementController(r, x=>sent.push(x), ()=>{}, {cueLeadMs:1800});
+  q.add('one','A chair tips','Moss',1000);
+  q.observe(scene(), 1, 2710, 2750);
+  q.tick(2800);
+  q.acknowledged('one',1,2900,2);
+  q.add('two','Marbles roll','Luna',13000);
+  q.observe(scene([chair(670,450)]), 3, 13800, 14000);
+  assert.equal(hauntCue(r,14000).text, 'A chair tips');
+  q.observe(scene(), 4, 15300, 15500);
+  assert.deepEqual(hauntCue(r,15500),{label:'Up next', text:'Marbles roll', by:'Luna'});
+  q.observe(scene(),5,16600,16700);
+  q.tick(17299);
+  assert.equal(sent.filter(x=>x.haunt).length,1);
+  q.tick(17300);
+  assert.equal(sent.filter(x=>x.haunt).length,2);
+});
