@@ -25,7 +25,8 @@ const effects = [
   [/fog|mist|smoke/i, /fog|mist|smoke/i],
   [/marble/i, /marble/i],
   [/balloon/i, /balloon/i],
-  [/bucket|pail/i, /bucket|pail/i],
+  [/bucket|pail/i, /bucket|pail|mopping cart/i,
+    'The rolling bucket cuts across the light on the next footstep and stops just ahead of the robot. Its rim comes only to the robot’s knees. Keep it beside the robot in depth as it crosses the aisle.'],
   [/flicker|blackout|lights out/i, /flicker|blackout|shadow|dark patch/i],
 ];
 const ignore = new Set(
@@ -198,7 +199,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     send({ pause: true });
   }
   function trySend(job, time) {
-    if (time < job.prop.selectedAt + cueLeadMs || !freshObservation(latest, time, lastMove) || time >= round.deadline)
+    if (time < Math.max(job.prop.cueAt + cueLeadMs, job.retryAfter || 0) || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
     const prop = job.prop,
       retry = prop.attempt === 1;
@@ -217,9 +218,14 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     job.previousPose = latest.scene.pose;
     job.lastChecked = null;
     pauseForAssessment(time);
-    const hint =
-      (retry ? 'Relocate the same haunting; keep a single instance. ' : '') +
-      job.effect.hint;
+    const body = latest.scene.bodyBox;
+    const bodyHint = box(body)
+      ? `In this shot the robot is ${Math.round((body[2] - body[0]) / 10)} percent of the picture height. Stage this beside its feet at that same depth and perspective scale. Keep the foreground between the camera and robot open.`
+      : 'Place it at the same distance from the viewer as the robot’s next footstep.';
+    const hint = [
+      retry ? 'Relocate the existing haunting into the walking line.' : '',
+      job.effect.hint, bodyHint,
+    ].filter(Boolean).join(' ');
     send({
       haunt: {
         id: prop.id,
@@ -234,6 +240,15 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
   function pump(time) {
     for (const job of jobs.values()) {
       if (job.closed) continue;
+      if (job.prop.cueAt === null) {
+        const reaction = round.lastReaction;
+        if (cueLeadMs && reaction && time - (reaction.presentedAt ?? reaction.at) < 3000) break;
+        job.prop.cueAt = time;
+        if (cueLeadMs > 0) {
+          pauseUntil = time + cueLeadMs;
+          send({ pause: true, settleCamera: true });
+        }
+      }
       if (
         job.prop.placement === 'waiting' ||
         job.prop.placement === 'correcting'
@@ -250,6 +265,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         name: text,
         by,
         selectedAt: time,
+        cueAt: null,
         attempt: 0,
         acked: false,
         seen: false,
@@ -258,10 +274,6 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       };
       round.props.push(prop);
       jobs.set(id, { prop, effect: describeEffect(text) });
-      if (cueLeadMs > 0 && [...jobs.values()].find((item) => !item.closed)?.prop === prop) {
-        pauseUntil = time + cueLeadMs;
-        send({ pause: true, settleCamera: true });
-      }
       pump(time);
     },
     tick(time = now()) { pump(time); },
@@ -372,12 +384,14 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               const feetX = (scene.feet.left[1] + scene.feet.right[1]) / 2;
               const toward = (nearby.box[1] + nearby.box[3]) / 2 < feetX ? 'left' : 'right';
               p.noticeRequestedAt = time;
+              job.retryAfter = time + 1400;
+              pauseUntil = Math.max(pauseUntil, job.retryAfter);
               send({ reaction: 'notice', toward });
             }
             if (p.attempt === 1 && round.deadline - time > 1800) {
               p.placement = 'correcting';
               job.ackTime = null;
-              if (cueLeadMs > 0) {
+              if (cueLeadMs > 0 && !nearby) {
                 pauseUntil = time + 1800;
                 send({ pause: true, settleCamera: true });
               }

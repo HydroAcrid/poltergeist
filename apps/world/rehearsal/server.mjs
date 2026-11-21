@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
 import { openLive } from './live.mjs';
+import { hauntCue } from './haunt-cue.mjs';
 import { createPlacementController } from './placement.mjs';
 import {
   newRound,
@@ -186,7 +187,7 @@ export async function registerStage(
     }
     const upcoming = round.upcoming ||= [];
     if (!upcoming.some((p) => p.id === h.hauntId) && !round.props.some((p) => p.id === h.hauntId)) {
-      upcoming.push({ id: h.hauntId, name: h.text, by: ghosts.get(h.hauntId), selectedAt: Date.now() });
+      upcoming.push({ id: h.hauntId, name: h.text, by: ghosts.get(h.hauntId), selectedAt: Date.now(), cueAt: null });
     }
   });
   function placeOffline(r, item, now) {
@@ -348,8 +349,10 @@ export async function registerStage(
       notifyEnd(r);
       return;
     }
-    if (r.upcoming?.length && now - r.upcoming[0].selectedAt >= 1800) {
-      placeOffline(r, r.upcoming.shift(), now);
+    const waiting = r.upcoming?.[0];
+    if (waiting) {
+      if (waiting.cueAt == null && !hauntCue({ ...r, upcoming: [] }, now)) waiting.cueAt = now;
+      if (waiting.cueAt != null && now - waiting.cueAt >= 1800) placeOffline(r, r.upcoming.shift(), now);
     }
     if (tickPending || now < nextStep) return;
     tickPending = true;

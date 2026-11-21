@@ -11,10 +11,10 @@ export function hauntCue(round, now) {
     };
   }
   const pending = round.upcoming?.[0];
-  const p = props.find((item) => item.selectedAt != null && !item.reactedAt &&
+  const p = props.find((item) => item.selectedAt != null && item.cueAt !== null && !item.reactedAt &&
     !['off-path', 'passed', 'failed', 'unverified'].includes(item.placement) &&
     (!item.seenAt || now - (item.inPathPresentedAt ?? item.seenPresentedAt ?? item.seenAt) < 4200 || item.placement === 'correcting'));
-  const item = p || pending;
+  const item = p || (pending?.cueAt !== null ? pending : null);
   if (!item) return null;
   let label = 'Up next';
   if (item.placement === 'correcting') label = 'Finding the path';
