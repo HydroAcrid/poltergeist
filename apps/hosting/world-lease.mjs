@@ -23,7 +23,7 @@ export function worldLeaseWarning({
     leaseEndsAt, requiredMs,
     error: 'This host has ' + (minutes === 0 ? 'less than a minute' : minutes + (minutes === 1 ? ' minute' : ' minutes'))
         + ' left before it renews. ' + (fitsShortShow ? 'The five-minute demo still fits. ' : '')
-        + 'For the full game, reopen the host link after ' + new Date(leaseEndsAt).toISOString().slice(11,16) + ' UTC.',
+        + 'For the full game, reopen the host link after ' + new Date(Math.ceil(leaseEndsAt / 1000) * 1000).toISOString().slice(11,19) + ' UTC.',
   };
 }
 
