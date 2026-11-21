@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "openingSequence": [
+    "walk",
+    "idle"
+  ],
+  "continuousSequence": [
+    "walk",
+    "idle",
+    "paper-gust"
+  ],
+  "attribution": "Recorded from Google Genie 4 sessions for Poltergeist on November 21, 2026, using the team’s hallway photograph.",
+  "timing": "Source frame numbers are one-based and inclusive. Each encoded frame corresponds to one source frame at the original 24 fps.",
+  "clips": [
+    {
+      "id": "walk",
+      "role": "walk",
+      "presetId": null,
+      "family": null,
+      "title": "Follow the flashlight",
+      "buttonLabel": "Approach",
+      "file": "walk.mp4",
+      "durationMs": 6250,
+      "fps": 24,
+      "frames": 150,
+      "outcome": "The robot approaches the counter with its flashlight raised.",
+      "source": {
+        "episodeId": "ep_01M7ZQ66BMGXCEVZ38SR1CQ5MQ",
+        "capture": "photo-round-0Ad7FU",
+        "captureFrames": 536,
+        "captureFps": 24,
+        "input": "native Genie JPEG frames",
+        "setting": "warm hallway",
+        "framesSha256": "09f6a0dd581d4e3c1d38a2481247aaa67c1be35e181a3f6e8532dffc9dbcd679",
+        "firstFrame": 1,
+        "lastFrame": 150
+      },
+      "sha256": "e55742d33a8f5000ac7f241c10e869c4bb9d9ae8ffcfde2211091a85d8fd9b55"
+    },
+    {
+      "id": "idle",
+      "role": "idle",
+      "presetId": null,
+      "family": null,
+      "title": "At the threshold",
+      "buttonLabel": "Wait",
+      "file": "idle.mp4",
+      "durationMs": 6000,
+      "fps": 24,
+      "frames": 144,
+      "outcome": "The robot waits beside the counter with its flashlight raised.",
+      "source": {
+        "episodeId": "ep_01M7ZQ66BMGXCEVZ38SR1CQ5MQ",
+        "capture": "photo-round-0Ad7FU",
+        "captureFrames": 536,
+        "captureFps": 24,
+        "input": "native Genie JPEG frames",
+        "setting": "warm hallway",
+        "framesSha256": "535c8ed7932d91f731efff8cae08ddd6fd42615332d4822dcfc5076fad6a61df",
+        "firstFrame": 151,
+        "lastFrame": 294
+      },
+      "sha256": "0665c8525b94f97ee8fc9c841f0614d92e8231ff889d565a8a03e5cfc9ccd7c1"
+    },
+    {
+      "id": "paper-gust",
+      "role": "effect",
+      "presetId": "paper-gust",
+      "family": "wind",
+      "title": "Paper gust",
+      "buttonLabel": "Send a paper gust",
+      "file": "paper-gust.mp4",
+      "durationMs": 8000,
+      "fps": 24,
+      "frames": 192,
+      "outcome": "Loose pages swirl across the foreground and pass the robot.",
+      "source": {
+        "episodeId": "ep_01M7ZQ66BMGXCEVZ38SR1CQ5MQ",
+        "capture": "photo-round-0Ad7FU",
+        "captureFrames": 536,
+        "captureFps": 24,
+        "input": "native Genie JPEG frames",
+        "setting": "warm hallway",
+        "framesSha256": "180768ed46de9a5ce607ec23dc1ab7a1280617ecceb439101c34d14e540a3177",
+        "firstFrame": 295,
+        "lastFrame": 486
+      },
+      "sha256": "6f64481baf80b8cbb49b7edcb0158b0c60d724d5c2878b0a5125daf00f16c33b",
+      "placement": "off-path",
+      "verifiedAvoidance": false,
+      "verifiedScare": false
+    },
+    {
+      "id": "chair-tips",
+      "role": "effect",
+      "presetId": "chair-tips",
+      "family": "barrier",
+      "title": "Toppling chair",
+      "buttonLabel": "Tip a chair",
+      "file": "chair-tips.mp4",
+      "durationMs": 8667,
+      "fps": 24,
+      "frames": 208,
+      "outcome": "A yellow chair tips over as the robot walks past.",
+      "source": {
+        "episodeId": "ep_01M7ZPGBM6YNXK4EE0MSFZ63JA",
+        "capture": "photo-round-n4DCkB",
+        "captureFrames": 704,
+        "captureFps": 24,
+        "input": "native Genie JPEG frames",
+        "setting": "warm hallway",
+        "framesSha256": "3634ab3273b3643f396bc156e6418bfe06e39eac7f40caac37d3ceea7326ed4d",
+        "firstFrame": 345,
+        "lastFrame": 552
+      },
+      "sha256": "62836303376a84f6f98ed61677f413c101cfb46893b5a0d73ba3254a8874e734",
+      "placement": "off-path",
+      "verifiedAvoidance": false,
+      "verifiedScare": false
+    },
+    {
+      "id": "mop-bucket",
+      "role": "effect",
+      "presetId": "mop-bucket",
+      "family": "barrier",
+      "title": "Rolling bucket",
+      "buttonLabel": "Roll a mop bucket",
+      "file": "mop-bucket.mp4",
+      "durationMs": 12000,
+      "fps": 24,
+      "frames": 288,
+      "outcome": "A metal mop bucket rolls toward the robot and stops beside it.",
+      "source": {
+        "episodeId": "ep_01M7ZX23SV17CSRAZPS6F79KTT",
+        "capture": "live-mop-bucket-native.mp4",
+        "captureFrames": 1084,
+        "captureFps": 24,
+        "input": "archived native-frame H.264 recording",
+        "setting": "dim venue hallway",
+        "captureSha256": "127c37d5e0a0067324a5f8a6ee234dd674a2c91567228792105b82437852bc1b",
+        "firstFrame": 217,
+        "lastFrame": 504
+      },
+      "sha256": "920d725b80c389fa4c559786994562652d7dedf774eeb4594626937e5ee32668",
+      "placement": "in-path",
+      "verifiedAvoidance": false,
+      "verifiedScare": false
+    }
+  ]
+}
