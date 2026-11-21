@@ -27,6 +27,7 @@ export async function registerStage(
     captureDir,
     makePilot,
     generatePlate,
+    launchLive = openLive,
     crowdPhone = false,
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
@@ -142,6 +143,7 @@ export async function registerStage(
     seed = null,
     pilot = null,
     pendingWinner = null,
+    providerRound = null,
     placement = null;
   const viewers = new Set();
   const liveMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
@@ -223,11 +225,24 @@ export async function registerStage(
           { time: 'timeout', exit: 'success_claim', fear: 'operator_stop' }[
             r.reason
           ] || 'error',
-        genieClosedCleanly: r.live ? r.terminal === 'completed' : null,
+        genieClosedCleanly: r.live && r.terminal ? r.terminal === 'completed' : null,
         artifacts: { eventsPath: 'rehearsal', framesDir: 'fixtures' },
       },
       r.id,
     );
+  }
+  function endLiveGame(r, winner) {
+    if (r.phase !== 'playing') return;
+    const reason = winner === 'robot' ? 'exit'
+      : winner === 'audience' ? (r.fear >= 3 ? 'fear' : 'time') : 'interrupted';
+    const now = Date.now();
+    const endedAt = reason === 'time' ? Math.max(r.startedAt, Math.min(r.deadline, now)) : now;
+    finish(r, winner, reason, endedAt);
+    placement?.finish();
+    notifyEnd(r);
+  }
+  function providerClosing() {
+    return providerRound?.phase === 'ended' && providerRound.providerClosedAt == null;
   }
   async function update() {
     const r = round,
@@ -238,10 +253,15 @@ export async function registerStage(
       if (r.phase === 'opening' && now >= r.deadline) {
         r.phase = 'preparing';
         try {
-          live = openLive({
+          live = launchLive({
             dir: captureDir,
             seed,
             onMessage: (m) => {
+              if (r.phase === 'ended' || r !== round) return;
+              if (m.winner === 'robot' || m.winner === 'audience') {
+                endLiveGame(r, m.winner);
+                return;
+              }
               if (m.frame) {
                 liveFrame = Buffer.from(m.frame, 'base64');
                 for (const stream of viewers) sendFrame(stream, liveFrame);
@@ -293,30 +313,20 @@ export async function registerStage(
               }
               if (m.observationFailed)
                 r.action = 'Waiting for a clear observation';
-              if (m.winner) pendingWinner = m.winner;
             },
             onClose: (terminal) => {
               live = null;
-              r.terminal = terminal;
-              const winner = terminal === 'completed' ? pendingWinner : null;
-              const wasPlaying = !!r.startedAt;
-              Object.assign(r, {
-                phase: 'ended',
-                finishedAt: Date.now(),
-                winner,
-                reason:
-                  winner === 'robot'
-                    ? 'exit'
-                    : winner === 'audience'
-                      ? r.fear >= 3
-                        ? 'fear'
-                        : 'time'
-                      : 'interrupted',
-              });
-              placement?.finish();
-              if (wasPlaying) notifyEnd(r);
+              r.terminal = terminal || 'unconfirmed';
+              const closedAt = Date.now();
+              if (['completed', 'canceled', 'cancelled', 'failed'].includes(terminal))
+                r.providerClosedAt = closedAt;
+              if (r.phase === 'playing') endLiveGame(r, null);
+              else if (r.phase === 'preparing') {
+                Object.assign(r, {phase: 'ended', finishedAt: closedAt, reason: 'interrupted'});
+              }
             },
           });
+          providerRound = r;
         } catch {
           r.phase = 'ended';
           r.reason = 'interrupted';
@@ -439,6 +449,7 @@ export async function registerStage(
     number,
     queue: [...queue.values()],
     canLive: !!captureDir,
+    providerClosing: !!providerClosing(),
     custom,
     revision,
     ...plateStatus(),
@@ -454,6 +465,7 @@ export async function registerStage(
       return reply.code(409).send({ error: 'A round is already open.' });
     const paid = req.body?.mode === 'genie';
     if (paid) {
+      if (providerClosing()) return reply.code(409).send({ error: 'The previous live hallway is still closing.' });
       if (custom && (!plateStatus().plateReady || req.body?.plateKey !== sourceKey))
         return reply.code(409).send({
           error: 'Prepare this photo for Genie before starting a live round.',

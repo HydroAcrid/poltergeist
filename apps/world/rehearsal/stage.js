@@ -88,7 +88,8 @@ function controls() {
   set('prepare', preparing ? 'Preparing photo…' : 'Prepare photo for Genie');
   el('go-live').hidden = !state?.canLive;
   el('go-live').disabled ||=
-    !!custom && (!ready || plateKey !== state.plateKey);
+    !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
+  set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start Genie round');
   el('default').hidden = !custom;
   if (host && lastBusy !== busy) {
     el('host').open = !busy;
