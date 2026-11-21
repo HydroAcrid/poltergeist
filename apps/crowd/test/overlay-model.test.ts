@@ -194,3 +194,14 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
     expect(M.resultText({ reason: "stream interrupted" })).toBe("Interrupted: no winner");
   });
 });
+
+it("reports the source receipt without assuming a projector decoded a frame", () => {
+  for (const [status, sceneReceipt, label] of [
+    ["dispatched", "filming", "Selected for generation"],
+    ["injected", "in-recording", "In this scene"],
+    ["injected", "generated-in-path", "Confirmed in the generated scene"],
+  ]) {
+    const h = {...pub("ht_A", status!, "Rolling bucket", "Blue Fog"), sceneReceipt};
+    expect(M.pickCard({hallway:[h]}, null)).toMatchObject({label});
+  }
+});

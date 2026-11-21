@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.11.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: paged waiting list and waitingReasons · 1.9.0: joined, lobbyPhase and holds
+export const VERSION = "1.12.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: paged waiting list and waitingReasons · 1.9.0: joined, lobbyPhase and holds
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed", "withdrawn"]); // withdrawn: replaced by the author's newer idea (1.7.0)
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -46,6 +46,7 @@ const hauntFields = {
   seeded: z.boolean(),
   episodeId: Id.optional(),
   injectedT: Ms.optional(),
+  sceneReceipt: z.enum(["filming", "film-selected", "in-recording", "generated-in-path"]).optional(),
   createdAt: EpochMs,
 };
 

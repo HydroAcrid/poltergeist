@@ -19,6 +19,10 @@ export const STAGE_LABEL = {
   seen: "Seen in the hallway",
   inPath: "In the robot's path",
   reacted: "Robot reacted",
+  "film-selected": "Selected for the next scene",
+  filming: "Selected for generation",
+  "in-recording": "In this scene",
+  "generated-in-path": "Confirmed in the generated scene",
 };
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -111,6 +115,8 @@ export function cardSide(world, now) {
 
 /** The furthest stage one haunting has reached, combining Crowd's status with World's evidence. */
 export function stageOf(crowdItem, worldProp) {
+  if (["dispatched", "injected"].includes(crowdItem?.status) && crowdItem.sceneReceipt)
+    return crowdItem.sceneReceipt;
   let stage = crowdItem?.status === "dispatched" ? "sending" : crowdItem?.status === "injected" ? "sent" : null;
   if (worldProp) {
     if (!stage && worldProp.selectedAt !== undefined) stage = "upnext";

@@ -11,6 +11,7 @@ export const HauntInjected = z.object({
   t: Ms,
   ok: z.boolean(),
   simulated: z.boolean(),
+  sceneEvidence: z.enum(["in-recording", "generated-in-path"]).optional(),
   error: z.string().optional(),
 });
 export type HauntInjected = z.infer<typeof HauntInjected>;

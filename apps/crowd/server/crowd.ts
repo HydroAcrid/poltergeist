@@ -421,7 +421,7 @@ export class CrowdService {
     if (film) {
       const history = this.hallwayIds.map(id => this.haunts.get(id)!);
       const pick = filmedPick(this.eligible(), film.options, history);
-      if (pick) this.sendPick(pick, ep, t);
+      if (pick) this.sendPick(pick, ep, t, "film-selected");
       return;
     }
     if (batch) this.reserve();
@@ -440,7 +440,7 @@ export class CrowdService {
     const reservedHaunt = this.reserved ? this.haunts.get(this.reserved.hauntId) : undefined;
     const pick = reservedHaunt ?? (!batch && this.eligible().length === 0 && this.config.seededFallback ? this.takeSeeded() : undefined);
     if (!pick) return; // the slot stays open until something feasible is eligible
-    this.sendPick(pick, ep, batch ? t : Math.max(ep.nextSlotT, t) + this.config.intervalMs);
+    this.sendPick(pick, ep, batch ? t : Math.max(ep.nextSlotT, t) + this.config.intervalMs, batch ? "filming" : undefined);
   }
 
   private recheckFilmedQueue(film: PreparedWindow): void {
@@ -464,7 +464,7 @@ export class CrowdService {
     }
   }
 
-  private sendPick(pick: Haunt, ep: ActiveEpisode, nextSlot: number): void {
+  private sendPick(pick: Haunt, ep: ActiveEpisode, nextSlot: number, selection?: "film-selected" | "filming"): void {
     this.reserved = null;
     this.waitingReasons.delete(pick.hauntId);
     this.sentAt.set(pick.hauntId, this.now());
@@ -475,7 +475,7 @@ export class CrowdService {
       this.hallwayIds.push(pick.hauntId);
       ep.dispatched++;
       ep.nextSlotT = nextSlot;
-      this.setStatus(pick, "dispatched", { episodeId: ep.episodeId });
+      this.setStatus(pick, "dispatched", { episodeId: ep.episodeId, ...(selection && { sceneReceipt: selection }) });
       const dispatch = HauntDispatch.parse({ hauntId: pick.hauntId, episodeId: ep.episodeId, text: pick.moderated!.text, tags: pick.moderated!.tags });
       this.deps.bus.publish("haunt.dispatch", "crowd", dispatch, ep.episodeId);
     } finally { this.sending = false; }
@@ -624,8 +624,12 @@ export class CrowdService {
         this.board = null;
         this.injectedLog.push({ hauntId: inj.hauntId, t: inj.t, ok: inj.ok, episodeId: inj.episodeId });
         const h = this.haunts.get(inj.hauntId);
-        if (!h || h.status !== "dispatched") return;
-        if (inj.ok) this.setStatus(h, "injected", { injectedT: inj.t });
+        if (!h || h.status !== "dispatched" || h.episodeId !== inj.episodeId) return;
+        const evidence = e.source === "world" && (
+          (h.sceneReceipt === "filming" && !inj.simulated && inj.sceneEvidence === "generated-in-path") ||
+          (h.sceneReceipt === "film-selected" && inj.simulated && inj.sceneEvidence === "in-recording")
+        ) ? inj.sceneEvidence : undefined;
+        if (inj.ok) this.setStatus(h, "injected", { injectedT: inj.t, ...(evidence && {sceneReceipt:evidence}) });
         else this.setStatus(h, "failed"); // never retried
         break;
       }

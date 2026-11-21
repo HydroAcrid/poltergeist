@@ -70,9 +70,11 @@ it("collects 30 independent choices then selects the crowd favourite with the fi
   film.canDispatch = true;hub.crowd.tick();hub.crowd.tick();
   expect(hub.dispatched()).toHaveLength(1);
   expect(hub.dispatched()[0]).toMatchObject({text:wind.text,episodeId:id});
-  expect(hub.crowd.state("observer").hallway?.[0]?.status).toBe("dispatched");
+  const pick = hub.crowd.state("observer").hallway![0]!;
+  expect(pick).toMatchObject({status:"dispatched",sceneReceipt:"film-selected"});
+  hub.bus.publish("haunt.injected","world",{hauntId:pick.hauntId,episodeId:id,t:15000,ok:true,simulated:true,sceneEvidence:"in-recording"},id);
   await hub.world.flush();
-  expect(hub.crowd.state("observer").hallway?.[0]?.status).toBe("injected");
+  expect(hub.crowd.state("observer").hallway?.[0]).toMatchObject({status:"injected",sceneReceipt:"in-recording"});
   hub.clock.advance(300000);film.canDispatch=true;hub.crowd.tick();
   expect(hub.dispatched()).toHaveLength(1);
   unsubscribe();
@@ -96,7 +98,15 @@ it("admits separate moderated ideas one tick apart while a buffered generation w
   expect(hub.dispatched()).toHaveLength(2);
   expect(hub.crowd.state("observer").hallway?.map(h=>h.status)).toEqual(["dispatched","dispatched"]);
   expect(hub.crowd.state("observer").upNext).toBeUndefined();
-  await hub.world.flush();
-  expect(hub.crowd.state("observer").hallway?.map(h=>h.status)).toEqual(["injected","injected"]);
+  const [first, second] = hub.crowd.state("observer").hallway!;
+  expect([first!.sceneReceipt,second!.sceneReceipt]).toEqual(["filming","filming"]);
+  const evidence = {hauntId:first!.hauntId,episodeId:first!.episodeId!,t:250,ok:true,simulated:false,sceneEvidence:"generated-in-path"};
+  hub.bus.publish("haunt.injected","world",evidence,evidence.episodeId);
+  await hub.world.flush(); // Generic simulated success for the other idea supplies no frame evidence.
+  expect(hub.crowd.state("observer").hallway).toMatchObject([
+    {status:"injected",sceneReceipt:"generated-in-path"},{status:"injected",sceneReceipt:"filming"},
+  ]);
+  hub.world.endEpisode("operator_stop");
+  expect(hub.crowd.state("observer").hallway?.[0]?.sceneReceipt).toBe("generated-in-path");
   unsubscribe();
 });

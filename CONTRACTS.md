@@ -224,6 +224,7 @@ export interface Haunt {
   seeded: boolean;               // pre-approved fallback pool
   episodeId?: Id;
   injectedT?: Ms;
+  sceneReceipt?: "filming" | "film-selected" | "in-recording" | "generated-in-path";
   createdAt: EpochMs;
 }
 export type HauntReceipt = Omit<Haunt, "raw" | "deviceId">; // author only; optional reason and suggestion ≤ 80 chars
@@ -243,9 +244,12 @@ export interface HauntInjected {
   t: Ms;                         // when the text event was sent to Genie (or shown as a dare in webcam mode)
   ok: boolean;
   simulated: boolean;            // true in replay mode and in fakes
+  sceneEvidence?: "in-recording" | "generated-in-path";
   error?: string;
 }
 ```
+
+World emits `in-recording` when the server schedules the selected recorded scene and `generated-in-path` at the verified frame offset in generated footage. These receipts describe the scene. Projector playback and decoding are local to each browser.
 
 ### C09 Verdict (`verdict.ts`, crowd)
 

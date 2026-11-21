@@ -891,7 +891,7 @@ export async function registerStage(
             const now=Date.now();
             if (ok) r.props.push({id:pick.id,name:pick.text,by:pick.by,seen:true,inPath:true,seenAt:now,shownAt:now});
             bus.publish('haunt.injected','world',{hauntId:pick.id,episodeId:r.id,t:now-r.startedAt,
-              ok,simulated:false,...(error && {error})},r.id);
+              ok,simulated:false,...(ok && {sceneEvidence:"generated-in-path"}),...(error && {error})},r.id);
           }, onScare:() => { r.fear++; }, onFinish:(reason,winner) => {
             if (reason==='interrupted') r.stopDetail=buffered.error || 'The hallway did not finish preparing.';
             finish(r,winner,reason,reason==='time' ? r.deadline : Date.now());
@@ -903,7 +903,7 @@ export async function registerStage(
         prepared = createPreparedShow(requestedAt, r.deadline, (guest,now) => {
           r.props.push({id:guest.id, name:guest.clip.title, by:guest.by, recorded:true, shownAt:now});
           bus.publish('haunt.injected','world',{hauntId:guest.id,episodeId:r.id,t:now-r.startedAt,
-            ok:true,simulated:true},r.id);
+            ok:true,simulated:true,sceneEvidence:"in-recording"},r.id);
         });
         r.prepared = prepared.state;
       }

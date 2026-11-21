@@ -407,10 +407,21 @@ ol,ul{list-style:none;margin:0;padding:0}
     return 4; // injected
   }
 
+  const clipLabels = {
+    "film-selected": "Selected for the next scene",
+    "filming": "Selected for generation",
+    "in-recording": "In this scene",
+    "generated-in-path": "Confirmed in the generated scene",
+  };
+  function clipReceipt(h) {
+    return ["dispatched", "injected"].includes(h.status) ? clipLabels[h.sceneReceipt] : undefined;
+  }
   function progress(card, h, head) {
-    const screenings = filmed() || buffered() || h.moderated?.model === "filmed";
-    const at = screenings && h.status === "dispatched" ? 2 : stepIndex(h, head?.hauntId === h.hauntId);
-    const labels = screenings ? ["Received", "In the queue", "Selected", "On screen"] : STEPS;
+    const pending = ["submitted", "approved", "queued"].includes(h.status);
+    const screenings = h.sceneReceipt || h.moderated?.model === "filmed" || (pending && (filmed() || buffered()));
+    const confirmed = h.sceneReceipt === "in-recording" || h.sceneReceipt === "generated-in-path";
+    const at = screenings && !pending ? (confirmed ? 4 : 2) : stepIndex(h, head?.hauntId === h.hauntId);
+    const labels = screenings ? ["Received", "In the queue", "Selected", "In the scene"] : STEPS;
     const steps = el("ol", "steps");
     steps.setAttribute("aria-label", "Progress: " + (labels[at] || labels[3]));
     labels.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
@@ -495,11 +506,9 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (h.status === "rejected") return revised[h.hauntId] ? "Revision sent." :
       h.moderated?.suggestion ? "The idea check has a suggested change." : "The idea check needs a change.";
     if (h.status === "submitted") return filmed() ? "Checking the filmed choices…" : "Checking whether your idea can work in the hallway…";
-    if (filmed() || buffered() || h.moderated?.model === "filmed") {
-      if (h.status === "injected") return "Your scene made it to the big screen.";
-      if (h.status === "dispatched") return buffered() ? "Selected for filming. Watch here for the screening." : "Selected for the next screening.";
-      if (h.status === "queued") return "Your idea is in the running for a scene on the big screen.";
-    }
+    const clip = clipReceipt(h);
+    if (clip) return h.sceneReceipt === "generated-in-path" ? "Confirmed in the generated scene, in the robot’s path." : clip + ".";
+    if ((filmed() || buffered()) && h.status === "queued") return "Your idea is in the running for the next scene.";
     if (h.status === "failed" || h.status === "withdrawn") return STATUS[h.status][0];
     if (state.verifiedPathHauntIds?.includes(h.hauntId)) return "Seen in the robot’s path.";
     if (h.status === "injected") return "Delivered to the hallway.";
@@ -560,7 +569,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     const live = state.mine.find((h) => h.status === "dispatched" || (h.status === "injected" && hall.some((x) => x.hauntId === h.hauntId)));
     hap.textContent = "";
     if (live) {
-      hap.append((filmed() || buffered() || live.moderated?.model === "filmed") ? receiptStatus(live, reserved) : state.verifiedPathHauntIds?.includes(live.hauntId) ? "Your haunting appeared in the robot’s path!" : live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
+      hap.append(clipReceipt(live) ? receiptStatus(live, reserved) : state.verifiedPathHauntIds?.includes(live.hauntId) ? "Your haunting appeared in the robot’s path!" : live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
       hap.href = "#hallway";
     } else if (reserved && mineIds.has(reserved.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
@@ -609,8 +618,9 @@ ol,ul{list-style:none;margin:0;padding:0}
     for (const h of hall) {
       const li = el("li");
       const b = el("div", "body");
-      const [label, cls] = (filmed() || buffered() || h.moderated?.model === "filmed") && ["dispatched", "injected"].includes(h.status)
-        ? [h.status === "injected" ? "Shown on screen" : "Selected", h.status === "injected" ? "p-ok" : "p-go"]
+      const clip = clipReceipt(h);
+      const [label, cls] = clip
+        ? [clip, ["in-recording", "generated-in-path"].includes(h.sceneReceipt) ? "p-ok" : "p-go"]
         : state.verifiedPathHauntIds?.includes(h.hauntId) ? ["Seen in the robot’s path", "p-ok"] : STATUS[h.status] || [h.status, ""];
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds), el("span", "pill " + cls, label));
       li.append(b);
@@ -684,7 +694,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       $("haunt-intro").textContent = filmed() ? "Choose which filmed haunting plays next. Your pick counts with the crowd’s." : "Change one thing in the hallway. The robot has to get past it.";
       $("h-presets").textContent = filmed() ? "Filmed hauntings" : "Or try one";
       $("ideas-intro").textContent = filmed() ? "Tap a filmed scene to put it in the running." : "Tap one to send it. Each idea is checked before it goes into the hallway.";
-      $("hallway-intro").textContent = filmed() || buffered() ? "See which audience ideas were selected and which reached the big screen." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
+      $("hallway-intro").textContent = filmed() || buffered() ? "Track which ideas were selected and confirmed in a scene." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
       $("text").placeholder = filmed() ? (body[0]?.label || "Suggest a scene") : "A banana peel lands in the aisle";
       const more = $("chips").querySelector(".more");
       $("chips").replaceChildren(more);
