@@ -1,3 +1,5 @@
+import moves from './player-moves.json' with { type: 'json' };
+import type { Intent } from '@poltergeist/contracts/tick-response.js';
 // `er2` PerceptionAdapter: Gemini Robotics-ER 2 (model from PG_MODEL_PERCEPTION).
 // Third-person scene perception: ER 2 reports what it sees (boots, facing,
 // obstacles, exit threshold, pose); Brain's controller decides the move.
@@ -55,7 +57,7 @@ export const SCENE_SCHEMA = {
   required: ["robotVisible", "obstacles", "exit", "pose"],
 } as const;
 
-export const INTENTS = ["walk", "step_left", "step_right", "turn_left", "turn_right", "hold", "back_up"] as const;
+export const INTENTS = moves.intents as Intent[];
 
 /**
  * Decision mode: the same perception plus the player's own choice. The wording
@@ -76,7 +78,7 @@ export function buildDecisionPrompt(input: PlayerInput, promptAddenda: string[] 
     "pose: 'stumbling' if the robot is visibly slipping, tipping, falling or thrown off balance; otherwise 'upright'.",
     "change: in a few words, what visibly changed near the robot or its route since the previous frame; 'nothing' if nothing did.",
     `Then choose the robot's next move from what actually happened in the images. intent: one of ${INTENTS.join(", ")}.`,
-    "If more than one robot body is visible, you cannot be sure which one you control: hold. Keep heading for the exit while the way is passable. Step around something solid in the next few steps. Something flat or harmless may be walked over. Something moving nearby but not in the way need not stop the robot. If the robot is off balance, hold. Turn only to bring the exit or a clear way into view. Back up only if something solid is right against it.",
+    moves.guidance,
     "target: the floor point [y, x] the move heads for. reason: why, at most 60 characters. avoiding: true only if the move responds to something in or near the way.",
     ...promptAddenda,
   ].join("\n");

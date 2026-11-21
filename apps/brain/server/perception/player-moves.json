@@ -1,0 +1,12 @@
+{
+  "intents": [
+    "walk",
+    "step_left",
+    "step_right",
+    "turn_left",
+    "turn_right",
+    "hold",
+    "back_up"
+  ],
+  "guidance": "If more than one robot body is visible, you cannot be sure which one you control: hold. Keep heading for the exit while the way is passable. Step around something solid in the next few steps. Something flat or harmless may be walked over. Something moving nearby but not in the way need not stop the robot. If the robot is off balance, hold. Turn only to bring the exit or a clear way into view. Back up only if something solid is right against it."
+}

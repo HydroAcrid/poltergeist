@@ -31,3 +31,20 @@ test('the shoulder pilot keeps native exit and obstacle coordinates and marks hi
   assert.deepEqual(view.obstacles[0].point,[626,536]);
   assert.equal(fromShoulderView({...scene,goal:undefined},[1000,220]).goal,undefined);
 });
+
+test('each live player compares its own last frame and sends its chosen movement to Brain', async () => {
+  const {inspectRoom} = await import('../apps/world/rehearsal/live-perception.mjs');
+  const frames = [];
+  const ai = {models:{generateContent:async ({contents}) => {
+    frames.push(contents[0].parts.filter(p=>p.inlineData).map(p=>p.inlineData.data));
+    return {text:JSON.stringify({playerCount:1, playerMatch:true, robotVisible:true, shoulderView:'rear-right',
+      bodyBox:[291,54,1000,396],upperBodyBox:[291,54,888,382],obstacles:[{label:'barrier',relation:'crossing',box:[700,450,790,560],solid:true}],
+      intent:'step_right', change:'A barrier crossed the aisle',reason:'Clear floor to my right',avoiding:true,target:[760,610]})};
+  }}};
+  await inspectRoom(ai,'first',undefined,'reference');
+  const scene = await inspectRoom(ai,'next',undefined,'reference');
+  assert.deepEqual(frames, [['reference','first'],['reference','first','next']]);
+  assert.equal(scene.move.intent,'step_right');
+  assert.equal(scene.move.avoiding,true);
+  assert.equal(scene.obstacles[0].solid,true);
+});

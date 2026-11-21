@@ -309,6 +309,7 @@ export async function registerStage(
                 const decision = pilot(m.scene);
                 r.seq++;
                 r.action = decision.rationale;
+                r.brainDecision = decision.decision ?? null;
                 r.observed = m.observed;
                 placement?.observe(m.scene, m.observed, m.observedAt);
                 const crossed = observedCrossing(crossing, m.scene, m.observedAt);
@@ -631,5 +632,5 @@ export async function registerStage(
     app.get(route, async (_, reply) =>
       reply.type(mime).send(readFileSync(resolve(root, file))),
     );
-  return () => round;
+  return Object.assign(() => round, {lobbyPhase: () => lobbyState().phase});
 }

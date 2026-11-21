@@ -5,6 +5,7 @@ import { MemoryBus } from '../../crowd/dev/memory-bus';
 import { createCrowdModule } from '../../crowd/server/index';
 import { sceneFromRehearsal } from '../../crowd/server/scene';
 import { newId } from '../../crowd/server/ids';
+import { stepReact } from '../../brain/server/react';
 import { stepNav } from '../../brain/server/navigate';
 import { initialState } from '../../brain/server/controller';
 import { loadPolicy, withRig } from '../../brain/server/policy';
@@ -54,14 +55,16 @@ const makePilot = () => {
         rationale: 'Robot out of view — holding still',
       };
     }
-    const decision = stepNav(
-      state,
-      policy.navigation.rig === 'shoulder' ? fromShoulderView(scene, policy.navigation.shoulder.anchor) : fromTrailView(scene),
-      { driver: 'brain' } as any,
-      policy,
-    );
+    const view = policy.navigation.rig === 'shoulder'
+      ? fromShoulderView(scene, policy.navigation.shoulder.anchor) : fromTrailView(scene);
+    const tick = { driver: 'brain' } as Parameters<typeof stepReact>[3];
+    if (process.env.PG_DECISION !== 'rules' && !scene.move)
+      return {action: {key: 'NOOP'}, rationale: 'Checking the path'};
+    const decision = process.env.PG_DECISION === 'rules'
+      ? stepNav(state, view, tick, policy)
+      : stepReact(state, view, scene.move, tick, policy);
     state = decision.state;
-    return trailInput(decision);
+    return decision.decision ? decision : trailInput(decision);
   };
 };
 const currentRound = await registerStage(app, {
@@ -79,6 +82,7 @@ const currentRound = await registerStage(app, {
     process.env.PG_BRAIN_URL || `http://127.0.0.1:${port}/api/brain/tick`,
 });
 const crowd = createCrowdModule({
+  lobbyPhase: currentRound.lobbyPhase,
   config: { firstDispatchMs: 1200, seededFallback: false, roundEveryMs: null },
   scene: process.env.PG_CROWD_SCENE_URL ? undefined : () => sceneFromRehearsal(currentRound(), Date.now()),
 });

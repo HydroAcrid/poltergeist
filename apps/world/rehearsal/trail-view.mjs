@@ -36,8 +36,8 @@ export function fromShoulderView(scene, [y, x]) {
     feetEstimated: true,
     goal: scene.goal,
     forward: scene.ahead,
-    obstacles: scene.obstacles.map(({box, point}) => ({
-      box, point: box ? [Math.round((box[0] + box[2]) / 2), Math.round((box[1] + box[3]) / 2)] : point,
+    obstacles: scene.obstacles.map(({box, point, solid}) => ({
+      solid, box, point: box ? [Math.round((box[0] + box[2]) / 2), Math.round((box[1] + box[3]) / 2)] : point,
     })),
     pose: scene.pose === 'stumbling' ? 'stumbling' : 'upright',
   };
