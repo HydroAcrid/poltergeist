@@ -1,5 +1,7 @@
 # Poltergeist: kickoff kit (read this first, humans)
 
+The [robot reference and haunted hallway](apps/world/robot-v1/README.md) define the character, right-shoulder camera, audience cues and round finish for all three lanes.
+
 Gemini has to reach an exit in a hallway photographed at the venue. Genie 4 turns that photo into the world. The audience is the poltergeist. Someone might drop a banana peel in Gemini’s path or send a gust through the hall. When the change happens, a stylized ghost briefly appears at that spot and fades. The projector shows how Gemini responds and whether it gets out.
 
 ## Try the prototype on your laptop

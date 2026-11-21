@@ -1,5 +1,7 @@
 # Poltergeist: rules for every agent
 
+All lanes use the [shared robot design and round rules](apps/world/robot-v1/README.md). Reuse the checked-in flashlight robot and hallway seed for the live game.
+
 You are one of **three autonomous Claude Code agents**, each running on a different laptop and each owning one lane: `world`, `brain` or `crowd`. Your lane is in the env var `PG_LANE`. Use the lane from your lead’s kickoff prompt. If neither the prompt nor the environment identifies it, ask which lane to take.
 
 **Read first, in this order:** `FEATURES.md`, `SPEC.md`, `CONTRACTS.md`, `apps/$PG_LANE/CLAUDE.md`, `apps/$PG_LANE/TODO.md`. Re-read `CONTRACTS.md` whenever a pull changes it.
