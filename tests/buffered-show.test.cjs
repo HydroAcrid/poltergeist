@@ -5,9 +5,9 @@ const settle = () => new Promise(done => setImmediate(done));
 async function room() {
   const {createBufferedShow} = await import('../apps/world/rehearsal/buffered-show.mjs');
   let now = 10000;
-  const requests=[], receipts=[], ended=[], disposed=[], seed=Buffer.from('opening');
+  const requests=[], receipts=[], ended=[], scares=[], disposed=[], seed=Buffer.from('opening');
   const show=createBufferedShow({id:'match',seed,start:now,deadline:now+300000,clock:()=>now,
-    onFinish:(...v)=>ended.push(v),onReceipt:(...v)=>receipts.push(v),render:opts=>
+    onScare:p=>scares.push(p.id),onFinish:(...v)=>ended.push(v),onReceipt:(...v)=>receipts.push(v),render:opts=>
       new Promise((resolve,reject)=>requests.push({opts,resolve,reject}))});
   async function step(ms=0){ now+=ms;show.advance(now);await settle(); }
   async function complete(i,extra={}){
@@ -19,7 +19,7 @@ async function room() {
     return finalFrame;
   }
   const pick = id => show.enqueue({hauntId:id,text:'A different audience idea '+id}, 'Velvet Ghost',now);
-  return {show,requests,receipts,ended,disposed,seed,step,complete,pick};
+  return {show,requests,receipts,ended,scares,disposed,seed,step,complete,pick};
 }
 
 test('two picks per batch, exact predecessor frames, real playback acknowledgments, and overlapping generation',async()=>{
@@ -77,4 +77,19 @@ test('waiting past the collection timer cannot open on only one finished render'
   await step(12000);await step(1250);
   assert.notEqual(show.state.clipUrl,first);assert.equal(show.metrics.playbackGaps,0);
   show.stop();await complete(2);await show.dispose();
+});
+
+test('fear stays live on the show clock and increases only once at the filmed scare', async()=>{
+  const {show,pick,requests,step,scares,complete}=await room();
+  pick('startle');pick('sidestep');await step();
+  await complete(0,{picks:[
+    {id:'startle',inPath:true,inPathOffsetMs:1500,scare:true,reactedOffsetMs:4500},
+    {id:'sidestep',inPath:true,inPathOffsetMs:2000,scare:false,reactedOffsetMs:3000},
+  ],finalFear:1});
+  await step();await complete(1);await step(30000);await step(1250);
+  assert.deepEqual(scares,[]);
+  await step(4499);assert.deepEqual(scares,[]);
+  await step(1);await step(150);
+  assert.deepEqual(scares,['startle']);
+  show.stop();if(requests[2])await complete(2);await show.dispose();
 });
