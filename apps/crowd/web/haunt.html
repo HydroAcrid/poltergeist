@@ -12,8 +12,8 @@
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:560px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
-header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 14px}
-h1{font-size:22px;margin:0;letter-spacing:-.01em}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:4px 0 14px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em;white-space:nowrap}
 h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .round{font-size:14px;color:var(--muted);white-space:nowrap}
 .round b{color:var(--ink);font-variant-numeric:tabular-nums}
@@ -25,12 +25,17 @@ textarea,input{width:100%;font:inherit;color:var(--ink);background:var(--bg);bor
 textarea{resize:none;height:76px}
 textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
 .count{position:absolute;right:10px;bottom:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.row{display:flex;gap:10px;margin-top:10px}
-.row input{flex:1;min-width:0}
+.row{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
+.you{background:var(--chip);border-radius:12px;padding:10px 12px;margin:-4px 0 14px;font-size:15px}
+.you b{color:var(--accent)}
+.happening{display:none;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px 14px;margin-bottom:14px;font-weight:600}
+.happening.on{display:block}
+.happening small{display:block;font-weight:400;opacity:.9;margin-top:2px}
 button{font:inherit;border:0;border-radius:12px;cursor:pointer}
 .send{background:var(--accent);color:var(--accent-ink);font-weight:600;padding:0 18px;min-height:46px}
 .send:disabled{opacity:.5;cursor:default}
-.msg{font-size:14px;margin:10px 0 0;min-height:1.4em}
+.msg{font-size:15px;margin:10px 0 0;min-height:1.4em;border-radius:10px}
+.msg.ok:not(:empty){background:var(--ok-bg);color:var(--ok);padding:8px 10px;font-weight:600}
 .msg.bad{color:var(--bad)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{background:var(--chip);color:var(--ink);padding:9px 12px;font-size:14px;min-height:40px}
@@ -65,6 +70,8 @@ li:first-child{border-top:0}
     <h1>Haunt the hallway 👻</h1>
     <div class="round" id="round" aria-live="polite">&nbsp;</div>
   </header>
+  <div class="you" id="you" aria-live="polite">Joining…</div>
+  <div class="happening" id="happening" role="status" aria-live="assertive"></div>
   <div class="offline" id="offline">Reconnecting…</div>
 
   <section aria-labelledby="send-h">
@@ -76,7 +83,6 @@ li:first-child{border-top:0}
         <span class="count" id="count">0/80</span>
       </div>
       <div class="row">
-        <input id="nick" maxlength="16" placeholder="Nickname (optional)" aria-label="Nickname (optional)">
         <button class="send" id="send" type="submit">Send</button>
       </div>
       <p class="msg" id="msg" role="status"></p>
@@ -99,7 +105,7 @@ li:first-child{border-top:0}
     <ul id="mine"></ul>
   </section>
 
-  <p class="consent">Approved hauntings may appear on the big screen with your nickname.</p>
+  <p class="consent">Approved hauntings may appear on the big screen with your ghost name.</p>
 </main>
 <script>
 (() => {
@@ -114,7 +120,6 @@ li:first-child{border-top:0}
   let pendingMine = [];
   let sending = false;
 
-  $("nick").value = store.get("pg_nick", "");
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -133,7 +138,7 @@ li:first-child{border-top:0}
   function say(text, bad) {
     const m = $("msg");
     m.textContent = text || "";
-    m.className = "msg" + (bad ? " bad" : "");
+    m.className = "msg" + (bad ? " bad" : " ok");
     clearTimeout(sayTimer);
     if (text) sayTimer = setTimeout(() => { m.textContent = ""; }, bad ? 8000 : 4000);
   }
@@ -142,9 +147,6 @@ li:first-child{border-top:0}
     if (sending) return;
     sending = true;
     $("send").disabled = true;
-    const nick = $("nick").value.trim();
-    store.set("pg_nick", nick);
-    if (nick) payload.displayName = nick;
     try {
       const { ok, body } = await api("/api/crowd/haunt", { method: "POST", body: JSON.stringify(payload) });
       if (!ok) { say(body.error?.message || "That didn't send. Try again.", true); return; }
@@ -152,7 +154,7 @@ li:first-child{border-top:0}
       store.set("pg_raw", rawById);
       pendingMine.push({ hauntId: body.hauntId, status: "submitted" });
       if (payload.text) { $("text").value = ""; updateCount(); }
-      say("Got it! Checking your idea…");
+      say("✓ Got it" + (state.you ? ", " + state.you.ghostName : "") + "! Checking your idea… (only you can see this)");
       render();
       refresh();
     } catch {
@@ -189,6 +191,27 @@ li:first-child{border-top:0}
     } else if (state.nextRoundAt) {
       r.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
     }
+
+    // Identity
+    if (state.you) {
+      const y = $("you");
+      y.textContent = "";
+      y.append("You are ", el("b", "", state.you.ghostName), " 👻");
+    }
+
+    // Your idea is happening (most recent of mine that is up next, sending or sent)
+    const hap = $("happening");
+    const myIds = new Set(state.mine.map((h) => h.hauntId));
+    const head = state.queue[0];
+    const live = state.mine.find((h) => h.status === "dispatched" || h.status === "injected");
+    hap.textContent = "";
+    if (live) {
+      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway!");
+      hap.append(el("small", "", live.moderated?.text || ""));
+    } else if (head && myIds.has(head.hauntId)) {
+      hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
+    }
+    hap.classList.toggle("on", hap.textContent.length > 0);
 
     // Queue
     const mineIds = new Set(state.mine.map((h) => h.hauntId));

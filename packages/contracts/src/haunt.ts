@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.1.0"; // 1.1.0: optional CrowdState.roundEndsAt
+export const VERSION = "1.2.0"; // 1.1.0: optional CrowdState.roundEndsAt · 1.2.0: CrowdState.you; client displayName ignored
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed"]);
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -33,7 +33,7 @@ export type Moderated = z.infer<typeof Moderated>;
 const hauntFields = {
   hauntId: Id,
   deviceId: z.string().min(1).max(64), // anonymous cookie id; never leaves crowd except to /operator
-  displayName: z.string().min(1).max(16).optional(), // moderated
+  displayName: z.string().min(1).max(16).optional(), // system-assigned ghost name (never client-supplied)
   raw: z.string().min(1).max(80), // NEVER rendered on /stage or /overlay
   preset: z.string().min(1).max(40).optional(),
   status: HauntStatus,
@@ -96,12 +96,11 @@ export const Preset = z
   .strict();
 export type Preset = z.infer<typeof Preset>;
 
-/** `POST /api/crowd/haunt` body. Unknown keys (e.g. a client-sent deviceId) are stripped. */
+/** `POST /api/crowd/haunt` body. Unknown keys (a client-sent deviceId or displayName) are stripped: names are assigned. */
 export const HauntSubmitRequest = z
   .object({
     text: z.string().trim().min(1).max(80).optional(),
     preset: z.string().min(1).max(40).optional(),
-    displayName: z.string().trim().max(16).optional(),
   })
   .refine((r) => (r.text === undefined) !== (r.preset === undefined), "send exactly one of text or preset");
 export type HauntSubmitRequest = z.infer<typeof HauntSubmitRequest>;
@@ -116,6 +115,7 @@ export const CrowdState = z
     round: z.number().int().nonnegative().optional(),
     nextRoundAt: EpochMs.optional(), // only between rounds
     roundEndsAt: EpochMs.optional(), // only during a round: Episode.startedAt + maxDurationMs
+    you: z.object({ ghostName: z.string().min(1).max(16) }).strict().optional(), // the caller's assigned ghost name
     mine: z.array(HauntPublic),
     queue: z.array(HauntPublic),
   })

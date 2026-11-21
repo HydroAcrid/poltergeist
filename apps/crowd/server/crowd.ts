@@ -6,6 +6,7 @@ import { HauntDispatch, HauntPublic, type CrowdState, type Haunt, type HauntSubm
 import type { HauntInjected } from "@poltergeist/contracts/haunt-injected.js";
 import type { Bus, Envelope } from "@poltergeist/contracts/hub-types.js";
 import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
+import { GhostNames } from "./ghost-names.js";
 import { newId } from "./ids.js";
 import type { ModerationAdapter } from "./moderation/types.js";
 
@@ -86,6 +87,7 @@ export class CrowdService {
   finalsApprovalMode = false;
 
   private haunts = new Map<Id, Haunt>();
+  private names = new GhostNames();
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, number[]>(); // deviceId → submit times
   private seenEnvelopes = new Set<string>();
@@ -136,11 +138,10 @@ export class CrowdService {
     const limited = this.rateLimit(deviceId, now);
     if (limited) return { ok: false, code: "RATE_LIMITED", message: limited };
 
-    const displayName = req.displayName ? this.deps.moderation.nickname(req.displayName) : undefined;
     const haunt: Haunt = {
       hauntId: newId("ht", now),
       deviceId,
-      ...(displayName ? { displayName } : {}),
+      displayName: this.ghostName(deviceId),
       raw: preset ? preset.label : req.text!,
       ...(preset ? { preset: preset.id } : {}),
       status: "submitted",
@@ -192,6 +193,11 @@ export class CrowdService {
     if (!this.finalsApprovalMode) this.setStatus(current, "queued");
   }
 
+  /** The device's assigned ghost name (stable, unique in the room). */
+  ghostName(deviceId: string): string {
+    return this.names.nameFor(deviceId);
+  }
+
   // ---------- views ----------
 
   /** Eligible proposals in dispatch order: FIFO by createdAt, ties by hauntId. */
@@ -209,6 +215,7 @@ export class CrowdService {
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
       ...(this.active ? { roundEndsAt: this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
+      you: { ghostName: this.ghostName(deviceId) },
       mine,
       queue: this.eligible().map((h) => toPublic(h)),
     };

@@ -60,10 +60,11 @@ describe("two-phone flow", () => {
     await a.submit({ text: "fog lol", displayName: "ana" });
     await hub.crowd.whenIdle();
 
+    const names = [(await b.state()).you?.ghostName, (await a.state()).you?.ghostName];
     for (const p of [a, b]) {
       const s = await p.state();
       expect(texts(s.queue)).toEqual(["A banana peel lands in the aisle", "Thick fog rolls down the hallway"]);
-      expect(s.queue.map((h) => h.displayName)).toEqual(["bo", "ana"]);
+      expect(s.queue.map((h) => h.displayName)).toEqual(names); // assigned ghost names, not the typed ones
       for (const h of s.queue) expect(h.moderated?.reason).toBeUndefined();
     }
     // "Mine" = queue items whose ids are in the caller's own list.
@@ -121,12 +122,12 @@ describe("two-phone flow", () => {
     expect((await a.submit({})).json()).toMatchObject({ error: { code: "INVALID" } });
   });
 
-  it("drops an unsafe nickname instead of showing it", async () => {
+  it("never shows a client-supplied nickname, even an unsafe one", async () => {
     const a = await phone();
     await a.submit({ text: "fog", displayName: "<SLUR>" });
     await hub.crowd.whenIdle();
     const s = await a.state();
-    expect(s.queue[0]?.displayName).toBeUndefined();
+    expect(s.queue[0]?.displayName).toBe(s.you?.ghostName);
   });
 });
 
@@ -287,6 +288,7 @@ describe("operator and page", () => {
     expect(page.headers["content-type"]).toMatch(/text\/html/);
     expect(page.body.length).toBeLessThan(30_000);
     expect(page.body).not.toMatch(/<script[^>]+src=|<link[^>]+stylesheet/);
-    expect(page.body).toContain("Approved hauntings may appear on the big screen with your nickname.");
+    expect(page.body).toContain("Approved hauntings may appear on the big screen with your ghost name.");
+    expect(page.body).not.toMatch(/id="nick"|payload\.displayName/); // names are assigned, never typed or sent
   });
 });
