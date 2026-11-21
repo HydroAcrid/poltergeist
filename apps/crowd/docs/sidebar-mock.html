@@ -44,6 +44,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
   .stage{grid-template-columns:1fr;padding:12px;gap:12px}
   .label{position:static;display:block;padding:6px 12px 0}
   .compose{display:block}
+  .hud{display:none} /* the phase bar carries goal, scares and time on phones */
 }
 </style>
 </head>
@@ -53,10 +54,10 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
   <div class="live">
     <img src="/world/robot-v1/hallway.webp" alt="Live hallway, robot with flashlight seen from over its right shoulder">
     <div class="ghost" aria-hidden="true">👻</div>
-    <div class="hud"><span>Goal: through the EXIT</span><span><b>0:36</b> left</span></div>
+    <div class="hud"><span>Goal: through the EXIT</span><span>👻 Scares <b>1</b>/3</span><span><b>0:36</b> left</span></div>
   </div>
   <div class="feed">
-    <div class="phase" id="phase"><span class="state">● Round 1 live</span><span><b>0:36</b> left</span></div>
+    <div class="phase" id="phase"><span class="state">● Round 1 live</span><span>👻 <b>1</b>/3 · <b>0:36</b> left</span></div>
     <section class="box compose" aria-label="Send a haunting (phone only)">
       <h2>Send a haunting</h2>
       <input placeholder="What happens in the hallway?" aria-label="Your idea">
@@ -69,7 +70,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
         <div class="text">Thick fog rolls down the hallway</div>
         <div class="by">bo</div>
         <span class="pill seen">Seen in the hallway</span>
-        <div class="resp">Robot slows and keeps to the left wall</div>
+        <div class="resp">Robot flinches and backs up · 👻 scare</div>
       </div>
       <div class="item">
         <div class="text">A chair tips over in the middle of the aisle</div>
@@ -99,13 +100,23 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 </div>
 <script>
 // ?phase=opening shows the 30 s submission window before the robot moves and the clock starts.
-if (new URLSearchParams(location.search).get("phase") === "opening") {
+const phase = new URLSearchParams(location.search).get("phase");
+if (phase === "over") {
+  document.title = "Audience sidebar mock (over)";
+  document.querySelector(".label").textContent = "MOCK · round over, audience fear win";
+  const ph = document.getElementById("phase");
+  ph.innerHTML = '<span class="state">👻 Audience wins: 3 scares</span><span>Next round in <b>4:12</b></span>';
+  document.querySelector(".hud").innerHTML = '<span>Round 1 over</span><span>👻 Scares <b>3</b>/3</span><span>0:21 left</span>';
+  document.querySelector(".ghost").remove();
+  document.querySelector('[aria-label="Up next"]').innerHTML = '<h2>Up next</h2><div class="empty">Round over. Pending ideas carry over to the next round.</div>';
+}
+if (phase === "opening") {
   document.title = "Audience sidebar mock (opening)";
   document.querySelector(".label").textContent = "MOCK · opening window, 0:24 before the robot moves";
   const ph = document.getElementById("phase");
   ph.className = "phase opening";
   ph.innerHTML = '<span class="state">● Ideas open</span><span>robot moves in <b>0:24</b></span>';
-  document.querySelector(".hud").innerHTML = '<span>Goal: through the EXIT</span><span>Clock starts in <b>0:24</b></span>';
+  document.querySelector(".hud").innerHTML = '<span>Goal: through the EXIT</span><span>👻 Scares <b>0</b>/3</span><span>Clock starts in <b>0:24</b></span>';
   document.querySelector(".ghost").remove();
   document.getElementById("hallway").innerHTML = '<h2>In the hallway</h2><div class="empty">Nothing yet. The first idea goes in 8 s after the robot starts.</div>';
   document.getElementById("receipt").textContent = "✓ Got it: “a chandelier crashes down” · checking (only you can see this)";
