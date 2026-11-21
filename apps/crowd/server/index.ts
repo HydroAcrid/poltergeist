@@ -4,6 +4,7 @@ import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
 import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
+import { loadCrowdGeminiKeys } from "./moderation/keys.js";
 import type { SceneObservation } from "./conductor.js";
 import { createRehearsalSceneSource } from "./scene.js";
 import type { ModerationAdapter } from "./moderation/types.js";
@@ -20,11 +21,14 @@ export interface CrowdModuleOptions {
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
-  const key = ctx.env.GEMINI_API_KEY ?? "";
-  const mode = ctx.env.PG_MODERATION_ADAPTER ?? (key ? "hydrogen" : "rules-only");
+  const { keys, source } = loadCrowdGeminiKeys(ctx.env, (msg) => ctx.log("crowd", msg));
+  const mode = ctx.env.PG_MODERATION_ADAPTER ?? (keys.length ? "hydrogen" : "rules-only");
   if (mode === "rules-only") return new RulesOnlyModeration();
   if (mode !== "hydrogen") throw Error("Unknown moderation adapter: " + mode);
-  return new GeminiModeration(key, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault));
+  // Logs how many keys and where from, never the keys themselves.
+  ctx.log("crowd", `Gemini moderation on with ${keys.length} key(s) from ${source}`);
+  const maxPerMinute = Number(ctx.env.PG_CROWD_GEMINI_MAX_PER_MIN) || undefined;
+  return new GeminiModeration(keys, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault), { maxPerMinute });
 }
 
 export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
