@@ -19,16 +19,13 @@ if (paidHost) {
   const capture =
     process.env.PG_CAPTURE_DIR || resolve(root, 'apps/world/painted-door');
   const envFile = process.env.PG_WORLD_ENV_FILE || resolve(capture, '../../../.env');
-  if (
-    !existsSync(resolve(capture, 'node_modules/@google/genai/package.json')) ||
-    !existsSync(envFile)
-  ) {
+  if (existsSync(envFile)) process.loadEnvFile(envFile);
+  if (!existsSync(resolve(capture, 'node_modules/@google/genai/package.json')) || !process.env.GEMINI_API_KEY) {
     console.error(
-      'The World host needs its local .env and capture dependencies. See apps/world/rehearsal/README.md.',
+      'The World host needs GEMINI_API_KEY and the capture dependencies. See apps/world/rehearsal/README.md.',
     );
     process.exit(1);
   }
-  process.loadEnvFile(envFile);
   process.env.PG_CAPTURE_DIR = capture;
 } else {
   process.env.PG_MODERATION_ADAPTER = 'rules-only';

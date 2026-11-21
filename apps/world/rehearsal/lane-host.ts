@@ -12,17 +12,20 @@ import { TickHandler } from '../../brain/server/tick';
 import type { PlayerTask } from '../../brain/server/perception/player-input';
 import { fromShoulderView, fromTrailView, trailInput } from './trail-view.mjs';
 import { registerStage } from './server.mjs';
+import { hostSettings, registerHostAccess } from './host-access.mjs';
 
 const requireCrowd = createRequire(
   new URL('../../crowd/package.json', import.meta.url),
 );
 const app = requireCrowd('fastify')();
+const access = hostSettings(process.env);
+registerHostAccess(app, access);
 const bus = new MemoryBus();
 const crowd = createCrowdModule({
   config: { firstDispatchMs: 1200, seededFallback: false },
 });
 const root = fileURLToPath(new URL('.', import.meta.url));
-const port = Number(process.env.PG_STAGE_PORT || 8914);
+const port = Number(process.env.PG_STAGE_PORT || process.env.PORT || 8914);
 const tasks = new Map<string, PlayerTask>();
 const ticks = new TickHandler({
   adapter: new FixturePerception(),
@@ -69,6 +72,8 @@ await registerStage(app, {
   newId,
   makePilot,
   crowdPhone: true,
+  hosted: Boolean(access.token),
+  internalBrainToken: process.env.PG_BRAIN_URL ? undefined : access.token,
   captureDir:
     process.env.PG_ALLOW_GENIE === '1' ? process.env.PG_CAPTURE_DIR : undefined,
   defaultPhoto: process.env.PG_VENUE_PHOTO,
@@ -88,9 +93,8 @@ app.addHook('onClose', async () => {
 });
 await app.listen({
   port,
-  host: '127.0.0.1',
+  host: access.host,
 });
 
-console.log(
-  `Host      http://127.0.0.1:${port}/team\nProjector http://127.0.0.1:${port}/stage\nAudience  http://127.0.0.1:${port}/haunt`,
-);
+const base = access.publicOrigin || `http://127.0.0.1:${port}`;
+console.log(`Host      ${base}/team\nProjector ${base}/stage\nAudience  ${base}/haunt`);

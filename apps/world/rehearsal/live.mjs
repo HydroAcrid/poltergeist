@@ -7,7 +7,7 @@ export function openLive({ dir, seed, episodeId, onMessage, onClose }) {
   if (!dir) throw Error('The local Genie broker is unavailable.');
   const capture = resolve(dir, 'capture.mjs'),
     envPath = process.env.PG_WORLD_ENV_FILE || resolve(dir, '../../../.env');
-  if (!existsSync(capture) || !existsSync(envPath))
+  if (!existsSync(capture) || (!process.env.GEMINI_API_KEY && !existsSync(envPath)))
     throw Error('The World broker is unavailable.');
   const work = mkdtempSync(join(tmpdir(), 'poltergeist-seed-')),
     file = join(work, 'hallway.jpg');
@@ -18,7 +18,7 @@ export function openLive({ dir, seed, episodeId, onMessage, onClose }) {
     {
       cwd: dir,
       env: { ...process.env, PG_WORLD_EPISODE_ID: episodeId },
-      execArgv: ['--env-file=' + envPath],
+      execArgv: existsSync(envPath) ? ['--env-file=' + envPath] : [],
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     },
   );

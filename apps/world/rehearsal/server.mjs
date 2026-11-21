@@ -29,6 +29,8 @@ export async function registerStage(
     generatePlate,
     launchLive = openLive,
     crowdPhone = false,
+    hosted = false,
+    internalBrainToken,
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
@@ -114,13 +116,11 @@ export async function registerStage(
     );
     return name;
   }
+  app.get('/', async (_req, reply) => reply.redirect('/haunt'));
   app.addHook('onRequest', async (req, reply) => {
-    if (
-      req.method === 'POST' &&
-      req.headers.origin &&
-      req.headers.origin !== 'http://' + req.headers.host
-    )
-      return reply.code(403).send({ error: 'Origin mismatch' });
+    if (hosted && captureDir && req.method === 'POST' && req.routeOptions.url === '/api/crowd/haunt' &&
+        (round ? round.phase === 'ended' : lobbyOpenedAt == null))
+      return reply.code(409).send({ error: { code: 'BUSY', message: 'The host will open submissions after choosing a photo.' } });
   });
   app.addHook('preValidation', async (req, reply) => {
     if (
@@ -292,6 +292,7 @@ export async function registerStage(
                   : null;
                 r.trackedAt = m.observedAt;
                 r.trackedBody = m.scene.visible ? m.scene.bodyBox ?? null : null;
+                r.trackedPose = m.scene.visible ? m.scene.pose ?? null : null;
                 r.trackedObstacles = m.scene.obstacles.map((obstacle) => obstacle.box);
                 const decision = pilot(m.scene);
                 r.seq++;
@@ -390,7 +391,7 @@ export async function registerStage(
         );
       const response = await fetch(brainUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(internalBrainToken ? { authorization: 'Bearer ' + internalBrainToken } : {}) },
         signal: AbortSignal.timeout(4500),
         body: JSON.stringify({
           episodeId: r.id,
@@ -573,6 +574,8 @@ export async function registerStage(
   );
   for (const [route, file, mime] of [
     ['/team', 'stage.html', 'text/html'],
+    ['/debug', 'stage.html', 'text/html'],
+    ['/host-debug.mjs', 'host-debug.mjs', 'text/javascript'],
     ['/stage', 'stage.html', 'text/html'],
     ['/phone', 'phone.html', 'text/html'],
     ['/stage.css', 'stage.css', 'text/css'],
