@@ -28,7 +28,7 @@ World's direction (#2): the projector is a full-bleed game view from the trailin
 
 | Phase | Phase bar and HUD | Phone | Conductor |
 |---|---|---|---|
-| **Opening** (30 s before the robot moves) | "● Ideas open · robot moves in 0:24" / "Clock starts in 0:24" | Submit box and presets open; private receipt immediately | Nothing is sent. "Up next" says "Picking in 0:14" until **10 s before the clock starts**, then reserves the first pick ("Up next · first slot") on the current shot and holds it. |
+| **Opening** (30 s before the robot moves) | "● Ideas open · robot moves in 0:24" / "Clock starts in 0:24" | Submit box and presets open; private receipt immediately | Nothing is sent and **nothing is reserved**, so guests can keep changing their waiting idea. The first pick is reserved once the round is playing (Courtney's call with World, 2026-11-21). |
 | **Live** | "● Round N live · 0:36 left" | Same, plus "In the hallway" fills in | First slot 8 s after the clock starts, then every 12 s (max 6). |
 | **Over** | One of: "Robot escaped" (feet crossed the signed exit) · "Audience wins: 3 scares" (three confirmed startles, one per distinct haunting) · "Audience wins: time's up" · "Interrupted: no winner" | Submissions carry over to the next round | Nothing reserved. |
 

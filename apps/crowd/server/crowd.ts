@@ -328,6 +328,7 @@ export class CrowdService {
     if (ep && this.now() >= ep.endsAt + this.config.endGraceMs) {
       this.deps.log?.("round passed its deadline without episode.ended; treating it as interrupted", { episodeId: ep.episodeId });
       this.active = null;
+      this.releaseReservation();
     }
   }
 
@@ -404,8 +405,16 @@ export class CrowdService {
     return conduct(candidates, scene, recent, this.now());
   }
 
+  private releaseReservation(): void {
+    this.reserved = null;
+    this.waitingReasons.clear();
+  }
+
   /** Keep exactly one reserved pick while ideas are eligible, and refresh the public waiting reasons. */
   private reserve(): void {
+    // Courtney's call (with World): no Up next in the lobby, so guests can keep changing their idea;
+    // the first pick is reserved once the round is playing.
+    if (!this.active) return this.releaseReservation();
     const eligible = this.eligible();
     const ids = new Set(eligible.map((h) => h.hauntId));
     for (const id of [...this.waitingReasons.keys()]) if (!ids.has(id)) this.waitingReasons.delete(id);
@@ -470,7 +479,10 @@ export class CrowdService {
       }
       case "episode.ended": {
         const ended = e.payload as EpisodeEnded;
-        if (this.active?.episodeId === ended.episodeId) this.active = null;
+        if (this.active?.episodeId === ended.episodeId) {
+          this.active = null;
+          this.releaseReservation();
+        }
         this.referee(ended);
         break;
       }
