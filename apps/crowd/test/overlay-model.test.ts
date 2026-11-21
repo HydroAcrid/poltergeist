@@ -176,6 +176,17 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
     expect(M.pickCard({ hallway: [], queue: [] }, M.normalizeRehearsal(body))).toMatchObject({ stage: "sent", label: "Taking effect" });
   });
 
+  it("waiting room: World's lobby phases show the lobby view with the big join QR", () => {
+    for (const [lp, text] of [["before-photo", "Setting up the hallway…"], ["lobby", "The waiting room is open"], ["starting", "Starting…"]]) {
+      const w = M.normalizeRehearsal({ round: null, lobby: { phase: lp, openedAt: 1, ready: true, preparing: false }, now: 2 });
+      expect(M.phaseOf(null, w)).toBe("lobby");
+      expect(M.bigJoin("lobby")).toBe(true);
+      expect(M.lobbyText(w)).toBe(text);
+    }
+    const ended = M.normalizeRehearsal({ round: { phase: "ended", props: [] }, lobby: { phase: "ended" }, now: 2 });
+    expect(M.phaseOf(null, ended)).toBe("result");
+  });
+
   it("result headlines", () => {
     expect(M.resultText({ winner: "robot" })).toBe("Robot escaped");
     expect(M.resultText({ winner: "audience", reason: "fear", fear: 3 })).toBe("👻 Audience wins: 3 scares");

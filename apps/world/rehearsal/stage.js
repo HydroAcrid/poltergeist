@@ -24,6 +24,7 @@ let state,
   connected = false,
   liveId = '',
   lastBusy;
+let nextHeadcountAt = 0;
 let lastQueue = '',
   previousCaption = '';
 let refreshTimer, syncing, refreshing = false, running = true, paintId = 0, paintedStill = '';
@@ -172,6 +173,31 @@ function sync() {
   if (!syncing) syncing = updateState().finally(() => { syncing = undefined; });
   return syncing;
 }
+async function refreshLobbyJoin(lobby) {
+  if (host) return;
+  const show = lobby?.phase === 'before-photo' || lobby?.phase === 'lobby';
+  const link = el('join-link'), qr = el('join-qr'), guests = el('guests');
+  if (!show) {
+    link.classList.remove('show-qr');
+    qr.hidden = guests.hidden = true;
+    set('join-label', 'Join the ghosts ↗');
+    nextHeadcountAt = 0;
+    return;
+  }
+  if (Date.now() < nextHeadcountAt) return;
+  nextHeadcountAt = Date.now() + 2000;
+  try {
+    const res = await fetch('/api/crowd/lobby', { cache: 'no-store', signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return;
+    const { here } = await res.json();
+    if (!Number.isInteger(here) || here < 0) return;
+    link.classList.add('show-qr');
+    if (!qr.hasAttribute('src')) qr.src = '/api/crowd/join.svg';
+    qr.hidden = guests.hidden = false;
+    set('join-label', 'Scan to join');
+    set('guests', here + (here === 1 ? ' ghost here' : ' ghosts here'));
+  } catch { /* Keep the join link available if the room count is unavailable. */ }
+}
 async function updateState() {
   const res = await fetch('/rehearsal/state', { cache: 'no-store' });
   if (!res.ok) throw Error();
@@ -202,7 +228,7 @@ async function updateState() {
   el('host').hidden = !host;
   controls();
   schedulePaint();
-  await refreshReceipt();
+  await Promise.all([refreshReceipt(), refreshLobbyJoin(s.lobby)]);
 }
 async function refresh() {
   if (refreshing || !running || document.hidden) return;

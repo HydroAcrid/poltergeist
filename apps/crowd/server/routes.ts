@@ -46,11 +46,11 @@ export interface RouteOptions {
 
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
-  let compressedPage: Buffer | undefined;
   // Phones are on venue Wi-Fi: serve the page without each line's leading indentation and blank
   // lines (the source stays readable). The page has no <pre> or multi-line strings, so this is safe.
   const compact = (html: string) => html.replace(/^[ \t]+/gm, "").replace(/\n{2,}/g, "\n");
   const loadPage = () => (page ??= compact(readFileSync(opts.hauntPagePath, "utf8")));
+  let compressedPage: Buffer | undefined;
 
   app.post("/api/crowd/haunt", { bodyLimit: 2048 }, async (req, reply) => {
     const deviceId = deviceOf(req, reply);
@@ -68,7 +68,9 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     if (page !== undefined && (typeof page !== "string" || !/^\d{1,8}$/.test(page))) {
       return fail(reply, 400, "INVALID", "Choose a valid waiting page.");
     }
-    const state = crowd.state(deviceOf(req, reply), page === undefined ? undefined : Number(page));
+    const deviceId = deviceOf(req, reply);
+    if (req.headers["x-pg-client"] === "phone") crowd.noteGuest(deviceId);
+    const state = crowd.state(deviceId, page === undefined ? undefined : Number(page));
     const checked = opts.validateResponses ? CrowdState.parse(state) : state;
     if (page === undefined) {
       reply.header("cache-control", "no-store");
@@ -82,6 +84,12 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     reply.header("vary", "Cookie").header("etag", tag);
     if (req.headers["if-none-match"] === tag) return reply.code(304).send();
     return reply.type("application/json").send(body);
+  });
+
+  // Waiting-room headcount for the projector and phones (no cookie, no device ids).
+  app.get("/api/crowd/lobby", async (_req, reply) => {
+    reply.header("cache-control", "no-store");
+    return crowd.joined();
   });
 
   app.get("/api/crowd/scoreboard", async (_req, reply) => {

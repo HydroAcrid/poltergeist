@@ -46,7 +46,7 @@ describe("conductor in the scheduler", () => {
     const s = await a.state();
     expect(s.upNext).toMatchObject({ reason: "It will roll right through the flashlight beam", mode: "conductor" });
     expect(s.queue[0]!.moderated?.text).toBe("Thick fog rolls down the hallway"); // the reserved pick leads the queue
-    expect(s.waiting).toContainEqual(expect.objectContaining({ reason: "A chair already fills the beam" }));
+    expect(s.holds).toContainEqual(expect.objectContaining({ reason: "A chair already fills the beam" }));
 
     const paged = await a.page();
     expect(paged.waiting).toMatchObject({ page: 0, size: 15, total: 1 });
@@ -69,10 +69,10 @@ describe("conductor in the scheduler", () => {
     hub.world.startEpisode();
     scene = mkScene({ obstacles: [chairInBeam] });
     hub.crowd.tick();
-    expect((await a.state()).waiting).toContainEqual(expect.objectContaining({ reason: "A chair already fills the beam" }));
+    expect((await a.state()).holds).toContainEqual(expect.objectContaining({ reason: "A chair already fills the beam" }));
     scene = mkScene({ robotProgress: 0.5, obstacles: [{ ...chairInBeam, inBeam: false }] }); // robot walked past it
     hub.crowd.tick();
-    expect((await a.state()).waiting ?? []).toEqual([]);
+    expect((await a.state()).holds ?? []).toEqual([]);
   });
 
   it("keeps Up next stable when newer ideas arrive", async () => {
@@ -109,7 +109,7 @@ describe("conductor in the scheduler", () => {
     hub.clock.advance(3_000);
     hub.crowd.tick();
     expect(sentTexts()).toEqual(["Thick fog rolls down the hallway"]);
-    expect((await a.state()).waiting).toContainEqual(expect.objectContaining({ reason: "Too close to the exit for this one" }));
+    expect((await a.state()).holds).toContainEqual(expect.objectContaining({ reason: "Too close to the exit for this one" }));
   });
 
   it("never sends an idea this camera can't show; it stays queued", async () => {

@@ -75,6 +75,7 @@ export interface CrowdDeps {
   log?: (msg: string, extra?: object) => void;
   /** Latest scene for the conductor (World's rehearsal state today). Missing or stale → FIFO. */
   scene?: () => SceneObservation | undefined;
+  lobbyPhase?: () => CrowdState["lobbyPhase"];
 }
 
 /** Display-safe copy. `forAuthor` keeps private moderation feedback. */
@@ -105,6 +106,8 @@ export class CrowdService {
   private waitingReasons = new Map<Id, string>();
   private skips = new Map<Id, number>();
   private sentAt = new Map<Id, number>();
+  // Waiting room: guest phones by device, last poll time. Projector and other polls never land here.
+  private guests = new Map<string, number>();
   private board: Scoreboard | null = null;
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, { time: number; hauntId: Id; revised: boolean }[]>();
@@ -241,6 +244,19 @@ export class CrowdService {
     if (!this.finalsApprovalMode) this.setStatus(current, "queued");
   }
 
+  /** A guest phone polled (the phone page marks its polls). */
+  noteGuest(deviceId: string): void {
+    this.guests.set(deviceId, this.now());
+  }
+
+  /** Guest phones seen in the last 30 s (`here`) and every guest phone that ever joined (`total`). */
+  joined(): { here: number; total: number } {
+    const since = this.now() - 30_000;
+    let here = 0;
+    for (const t of this.guests.values()) if (t >= since) here++;
+    return { here, total: this.guests.size };
+  }
+
   /** The device's assigned ghost name (stable, unique in the room). */
   ghostName(deviceId: string): string {
     return this.names.nameFor(deviceId);
@@ -286,7 +302,10 @@ export class CrowdService {
       mine,
       queue: queue.map((h) => toPublic(h)),
       slotsPerRound: this.config.maxPerEpisode,
+      joined: this.joined().here,
+      lobbyPhase: this.deps.lobbyPhase?.(),
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
+      ...(reasons.length ? { holds: reasons } : {}),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
     };
   }
@@ -455,7 +474,10 @@ export class CrowdService {
         };
         if (ep.round !== undefined) this.lastRound = ep.round;
         this.hallwayIds = []; // a new round starts with an empty hallway
-        if (ep.policyVersion) this.policyVersion = ep.policyVersion;
+        if (ep.policyVersion && ep.policyVersion !== this.policyVersion) {
+          this.policyVersion = ep.policyVersion;
+          this.board = null;
+        }
         break;
       }
       case "episode.ended": {
@@ -474,6 +496,7 @@ export class CrowdService {
       }
       case "haunt.injected": {
         const inj = e.payload as HauntInjected;
+        this.board = null;
         this.injectedLog.push({ hauntId: inj.hauntId, t: inj.t, ok: inj.ok, episodeId: inj.episodeId });
         const h = this.haunts.get(inj.hauntId);
         if (!h || h.status !== "dispatched") return;
@@ -561,6 +584,7 @@ export class CrowdService {
   }
 
   private publishPublic(h: Haunt): void {
+    this.board = null;
     this.deps.bus.publish("haunt.public", "crowd", toPublic(h), h.episodeId);
   }
 }

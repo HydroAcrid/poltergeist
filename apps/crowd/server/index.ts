@@ -1,6 +1,6 @@
 // Real crowd LaneModule (CONTRACTS C18). The hub picks it with PG_CROWD=real.
 import type { HubContext, LaneModule } from "@poltergeist/contracts/hub-types.js";
-import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
+import { configFromEnv, CrowdService, type CrowdConfig, type CrowdDeps } from "./crowd.js";
 import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
@@ -17,6 +17,7 @@ export interface CrowdModuleOptions {
   onService?: (service: CrowdService) => void;
   /** Scene for the conductor; defaults to polling PG_CROWD_SCENE_URL (World's /rehearsal/state) if set. */
   scene?: () => SceneObservation | undefined;
+  lobbyPhase?: CrowdDeps["lobbyPhase"];
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
@@ -38,6 +39,7 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
       const sceneUrl = ctx.env.PG_CROWD_SCENE_URL;
       if (!opts.scene && sceneUrl) sceneSource = createRehearsalSceneSource(sceneUrl, { now: opts.now });
       service = new CrowdService({
+        lobbyPhase: opts.lobbyPhase,
         scene: opts.scene ?? (sceneSource ? () => sceneSource!.scene() : undefined),
         bus: ctx.bus,
         moderation: pickModeration(ctx),

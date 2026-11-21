@@ -79,6 +79,7 @@ textarea::placeholder{color:#8f857c}
 .spot .text{font:normal 1.35rem/1.25 Georgia,serif;margin:6px 0 4px}
 .empty{color:var(--muted);font-size:15px;padding:6px 0}
 .why{font-size:13px;color:var(--muted);margin-top:3px}
+.lobby{margin:0 0 14px;border-color:var(--sage)}.lobby strong{color:var(--sage)}
 .switch{display:flex;gap:6px;margin:0 0 10px}
 .switch button{min-height:40px;padding:0 16px;border-radius:30px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
 .switch [aria-pressed=true]{background:var(--paper);color:#201a18;border-color:var(--paper)}
@@ -135,6 +136,10 @@ ol,ul{list-style:none;margin:0;padding:0}
   <section class="screen" id="screen-haunt" aria-labelledby="h-haunt">
     <h1 id="h-haunt" tabindex="-1">Haunt the hallway</h1>
     <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
+    <div class="card lobby" id="lobby" hidden>
+      <strong>👻 You're in the waiting room</strong>
+      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span> Send an idea now so it's ready.</div>
+    </div>
     <form class="card" id="form" autocomplete="off">
       <label for="text" class="by" id="composer-label">What happens in the hallway?</label>
       <div class="field">
@@ -305,7 +310,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     const requested = waitingPage;
     try {
       const headers = stateTag && loadedPage === requested ? { "if-none-match": stateTag } : {};
-      const res = await fetch("/api/crowd/state?waitingPage=" + requested, { credentials: "same-origin", headers });
+      const res = await fetch("/api/crowd/state?waitingPage=" + requested, { credentials: "same-origin", headers: { ...headers, "x-pg-client": "phone" } });
       if (res.status !== 304 && !res.ok) throw Error("Queue unavailable");
       $("offline").hidden = true;
       if (res.status !== 304 && requested === waitingPage) {
@@ -450,13 +455,30 @@ ol,ul{list-style:none;margin:0;padding:0}
   function renderPhase() {
     const ph = $("phase");
     ph.textContent = "";
-    if (state.episodeActive) {
+    // Follow World's phase; never invent a countdown while World waits for the host.
+    const lp = state.lobbyPhase;
+    const ghosts = state.joined > 1 ? " · " + state.joined + " ghosts here" : "";
+    if (lp === "playing" || (!lp && state.episodeActive)) {
       ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
+    } else if (lp === "before-photo") {
+      ph.append("Setting up the hallway…");
+    } else if (lp === "starting") {
+      ph.append(el("span", "live", "● Starting…"));
+    } else if (lp === "ended") {
+      ph.append("Round over" + ghosts);
+    } else if (lp === "lobby") {
+      ph.append(el("span", "live", "● Waiting room open"), ghosts);
     } else if (state.nextRoundAt) {
       ph.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
     } else if (state.you) {
       ph.textContent = "Waiting for the host";
+    }
+    const card = $("lobby");
+    card.hidden = !lp || lp === "playing";
+    if (!card.hidden) {
+      $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
+      $("lobby-next").textContent = lp === "before-photo" ? "The host is setting up the hallway." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "The host will start the round.";
     }
   }
 
@@ -487,7 +509,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (head) {
       const label = reserved ? (mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next") : "Waiting for a turn";
       up.append(el("div", "label", label), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
-      const why = reserved ? state.upNext.reason : state.waitingReasons?.find((w) => w.hauntId === head.hauntId)?.reason;
+      const why = reserved ? state.upNext.reason : (state.holds || state.waitingReasons)?.find((w) => w.hauntId === head.hauntId)?.reason;
       if (why) up.append(el("div", "why", why));
     } else {
       up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
@@ -508,7 +530,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       const li = el("li");
       const b = el("div", "body");
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds));
-      const why = (state.waitingReasons || []).find((w) => w.hauntId === h.hauntId);
+      const why = (state.holds || state.waitingReasons || []).find((w) => w.hauntId === h.hauntId);
       if (why) b.append(el("div", "why", why.reason));
       li.append(el("span", "pos", String(i)), b);
       q.append(li);

@@ -268,6 +268,9 @@ summary:hover,
 .join {
   color: var(--accent);
 }
+.join.show-qr { border-radius: 14px; padding: 10px; gap: 12px; }
+#join-qr { width: clamp(80px, 10vw, 156px); height: auto; background: #fff6e8; padding: 6px; }
+#guests { display: block; color: #fff5de; margin-top: .25em; }
 .panel {
   position: absolute;
   right: 0;
