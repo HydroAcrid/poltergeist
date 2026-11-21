@@ -145,6 +145,7 @@ ol,ul{list-style:none;margin:0;padding:0}
         <button class="btn" id="send" type="submit">Send</button>
       </div>
       <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      <p class="why" id="replace-hint" hidden>You have an idea waiting. Sending a new one replaces it.</p>
     </form>
     <h2 id="h-presets">Or try one</h2>
     <div class="chips" id="chips" role="group" aria-labelledby="h-presets"><a class="chip more" href="#ideas">+ More ideas</a></div>
@@ -357,6 +358,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     injected: ["Sent to the hallway", "p-ok"],
     failed: ["Didn't make it in", "p-bad"],
     rejected: ["Not approved", "p-bad"],
+    withdrawn: ["Replaced by your newer idea", ""],
   };
   const STEPS = ["Checking", "Approved", "Up next", "Sent to the hallway"];
 
@@ -375,6 +377,13 @@ ol,ul{list-style:none;margin:0;padding:0}
     steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
     STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
     card.append(steps);
+    // Where a waiting idea stands: carries over between rounds, about N rounds away.
+    if (h.status === "queued") {
+      const pos = state.queue.findIndex((q) => q.hauntId === h.hauntId) + 1;
+      const per = state.slotsPerRound || 6;
+      if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
+      else if (pos > per) card.append(el("div", "why", "#" + pos + " in line · may carry over to the next round"));
+    }
   }
 
   function byLine(h, mineIds) {
@@ -503,6 +512,8 @@ ol,ul{list-style:none;margin:0;padding:0}
         rejection(b, h, raw);
       } else if (h.status === "failed") {
         b.append(el("span", "pill p-bad", STATUS.failed[0]));
+      } else if (h.status === "withdrawn") {
+        b.append(el("span", "pill", STATUS.withdrawn[0]));
       } else {
         progress(b, h, head);
       }
@@ -528,6 +539,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       sc.append(el("div", "empty", "Send an idea and it will show up here."));
     }
 
+    $("replace-hint").hidden = !state.mine.some((h) => ["submitted", "approved", "queued"].includes(h.status) && h.hauntId !== state.upNext?.hauntId);
     badge("b-mine", screen === "mine" ? 0 : state.mine.filter((h) => seen.mine[h.hauntId] && seen.mine[h.hauntId] !== h.status).length);
     badge("b-hallway", screen === "hallway" ? 0 : hall.filter((h) => !seen.hallway.includes(h.hauntId + ":" + h.status)).length);
     badge("b-next", screen === "next" || !head || head.hauntId === seen.next ? 0 : 1);

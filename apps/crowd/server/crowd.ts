@@ -166,6 +166,15 @@ export class CrowdService {
       }
     }
 
+    // One waiting idea each: a new idea replaces the author's waiting one, except their reserved
+    // Up next, which stays put so the public pick never jumps.
+    const waiting = [...this.haunts.values()].filter(
+      (h) => h.deviceId === deviceId && !h.seeded && (h.status === "submitted" || h.status === "approved" || h.status === "queued"),
+    );
+    if (waiting.some((h) => h.hauntId === this.reserved?.hauntId)) {
+      return { ok: false, code: "INVALID", message: "Your idea is up next. Send another once it goes in." };
+    }
+
     const hauntId = newId("ht", now);
     const limited = this.rateLimit(deviceId, now, hauntId, req.revisionOf);
     if (limited) return { ok: false, code: "RATE_LIMITED", message: limited };
@@ -184,6 +193,10 @@ export class CrowdService {
     this.haunts.set(haunt.hauntId, haunt);
     if (req.revisionOf !== undefined) this.revisions.set(req.revisionOf, hauntId);
     this.publishPublic(haunt);
+    for (const old of waiting) {
+      this.setStatus(old, "withdrawn");
+      this.waitingReasons.delete(old.hauntId);
+    }
 
     const job = this.moderate(haunt, preset).finally(() => this.pending.delete(job));
     this.pending.add(job);
@@ -253,6 +266,7 @@ export class CrowdService {
       you: { ghostName: this.ghostName(deviceId) },
       mine,
       queue: this.orderedQueue().map((h) => toPublic(h)),
+      slotsPerRound: this.config.maxPerEpisode,
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
       ...(this.waitingReasons.size ? { waiting: [...this.waitingReasons].map(([hauntId, reason]) => ({ hauntId, reason })) } : {}),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
