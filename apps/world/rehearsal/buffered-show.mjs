@@ -8,7 +8,7 @@ const minimumTakeMs = 16000;
 const durationFor = count => minimumTakeMs + count * 8000;
 
 export function createBufferedShow({id, seed, start, deadline, render, onReceipt, onFinish, onScare = () => {}, clock = Date.now}) {
-  const state = {phase:'collecting', collectUntil:start+collectMs, upNext:null};
+  const state = {phase:'collecting', collectUntil:start+collectMs, upNext:null, preload:[]};
   const picks = [], ready = [], assets = new Map(), seen = new Set();
   const controller = new AbortController();
   let tail = seed, sequence = 0, worker = null, terminalQueued = false, stopped = false;
@@ -106,9 +106,10 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
       ready.push(segment);
       if (clip.evidence?.winner) terminalQueued = true;
       state.upNext = brief(ready[0]);
-    }).catch(() => {
+      state.preload = ready.slice(0,targetSegments).map(brief);
+    }).catch(cause => {
       for (const pick of batch) onReceipt(pick,false,'The next scene could not be generated.');
-      if (!stopped) error = 'The next hallway scene could not be generated.';
+      if (!stopped) error = cause?.code === 'HALLWAY_MISMATCH' ? 'The next scene opened in a different view of the hallway.' : 'The next hallway scene could not be generated.';
     }).finally(() => { worker = null; });
   }
   function advance(now) {
@@ -129,10 +130,14 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
       state.phase = 'handoff';
       state.cue = null;
     }
-    if (!active && !ready.length && error) { end('interrupted',null); return; }
+    const openingReady = ready.length >= targetSegments || (terminalQueued && ready.length > 0);
+    if (!active && error && (!ready.length || !hasPlayed && !openingReady)) {
+      end('interrupted',null);
+      return;
+    }
     generate(now);
     if (!active && handoffAt === null && now >= state.collectUntil &&
-        (ready.length >= targetSegments || ready.length && (worker || terminalQueued || error || !stillFits(now)))) {
+        openingReady) {
       state.phase = 'handoff';
       handoffAt = now + flickerMs;
     }
@@ -151,10 +156,10 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
       metrics.played++;
       Object.assign(state,{phase:'playing',clipUrl:url(active.n),clipStartedAt:now,
         clipDurationMs:active.clip.durationMs,sourceTitle:active.title,cue:null,
-        upNext:ready.length ? brief(ready[0]) : null});
+        upNext:ready.length ? brief(ready[0]) : null,preload:ready.slice(0,targetSegments).map(brief)});
       announce(active,0);
     }
-    if (!hasPlayed && !worker && !ready.length && !stillFits(now)) end('interrupted',null);
+    if (!hasPlayed && !worker && !openingReady && !stillFits(now)) end('interrupted',null);
   }
   async function dispose() {
     stop();

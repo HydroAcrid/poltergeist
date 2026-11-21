@@ -22,7 +22,7 @@ async function fixture(t) {
   t.after(() => rm(captureDir,{recursive:true,force:true}));
   const outputDir = join(captureDir,'private-output');
   await mkdir(outputDir);
-  return {captureDir, outputDir, episodeId:'episode-fixture', chapter:2, durationMs:1800, seed:picture(1), makePilot:pilot};
+  return {captureDir, outputDir, episodeId:'episode-fixture', chapter:1, durationMs:1800, seed:picture(1), makePilot:pilot};
 }
 
 test('encoder preflight fails before opening a paid session and pre-canceled renders never open', async t => {
@@ -119,4 +119,34 @@ test('early close and abort reject without publishing a movie and wait for nativ
   }}),/host stopped/);
   assert.equal(stopped,1);
   assert.deepEqual(await readdir(opts.outputDir),[]);
+});
+
+test('the reveal begins on the preceding image, then keeps every new native frame and returns the final one', async t=>{
+  const {renderSegment,bufferedEncoderReady}=await implementation;
+  if (!bufferedEncoderReady()) return t.skip('H.264 encoder required');
+  const opts=await fixture(t), first=picture(4), last=picture(12);
+  const sequence=Array.from({length:25},(_,i)=>i===24?last:first);
+  const launchLive=native=>{
+    setImmediate(async()=>{
+      const run=join(opts.captureDir,'runs','photo-round-next');
+      await mkdir(run,{recursive:true});
+      for (let i=0;i<sequence.length;i++) await writeFile(join(run,String(i+1).padStart(5,'0')+'.frame'),sequence[i]);
+      native.onMessage({frame:first.toString('base64')});
+      await writeFile(join(run,'session.json'),JSON.stringify({episodeId:opts.episodeId,chapter:2,
+        terminal:'completed',fps:24,frames:sequence.length,playMode:native.playMode}));
+      native.onClose('completed');
+    });
+    return {send(){},stop(){}};
+  };
+  const result=await renderSegment({...opts,seed:first,chapter:2,launchLive});
+  assert.equal(result.evidence.continuity.matches,true);
+  assert.equal(result.openingHoldFrames,16);
+  const decoded=execFileSync(encoder,['-v','error','-i',result.filePath,'-f','rawvideo','-pix_fmt','gray','-']);
+  const stride=64*36;
+  assert.equal(decoded.length,(sequence.length+16)*stride);
+  assert.ok(Math.abs(decoded[0]-jpeg.decode(first).data[0])<=3);
+  assert.ok(Math.abs(decoded[15*stride]-jpeg.decode(first).data[0])<=3);
+  assert.ok(Math.abs(decoded[(sequence.length+15)*stride]-jpeg.decode(last).data[0])<=3);
+  assert.deepEqual(result.finalFrame,last);
+  await result.dispose();
 });

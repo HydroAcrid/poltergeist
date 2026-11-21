@@ -1,5 +1,5 @@
 import { execFile, spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -212,32 +212,60 @@ export async function renderSegment({
     signal?.throwIfAborted();
     const {path, session} = await takeArchive(captureDir, previous, episodeId, chapter);
     const {frames:frameCount, fps} = session;
+    if (chapter > 1) {
+      const {compareOpening} = await import('../painted-door/scene-continuity.mjs');
+      const sampleNumbers = [...new Set([1, Math.min(12,frameCount), Math.min(24,frameCount)])];
+      const samples = await Promise.all(sampleNumbers.map(async frame => ({
+        frame, bytes:await readFile(join(path,String(frame).padStart(5,'0')+'.frame')),
+      })));
+      evidence.continuity = compareOpening(seed,samples);
+      if (!evidence.continuity.matches) {
+        const error=Error('The next scene opened in a different view of the hallway.');
+        error.code='HALLWAY_MISMATCH';
+        throw error;
+      }
+    }
     const finalFrame = await readFile(join(path, String(frameCount).padStart(5,'0') + '.frame'));
     if (!isJPEG(finalFrame)) throw Error('The final native frame was not a complete JPEG.');
     const partial = join(work,'encoding.mp4'), filePath = join(work,'segment.mp4');
-    await execute(encoder, ['-nostdin','-hide_banner','-loglevel','error','-xerror','-threads','1','-f','image2',
-      '-framerate',String(fps),'-start_number','1','-i',join(path,'%05d.frame'),'-frames:v',String(frameCount),
-      '-an','-c:v','libx264','-threads','2','-preset','veryfast','-crf','21','-pix_fmt','yuv420p',
-      '-movflags','+faststart','-progress','pipe:1',partial], {signal, maxBuffer:128_000}).then(({stdout}) => {
+    const openingHold = chapter > 1 ? Math.round(fps*2/3) : 0;
+    const outputFrames = frameCount + openingHold;
+    const inputs = ['-f','image2','-framerate',String(fps),'-start_number','1','-i',join(path,'%05d.frame')];
+    const selection = [];
+    if (openingHold) {
+      // Reveal the exact previous native image; the next generated second has
+      // already been checked against it. Keep all generated frames and events.
+      const anchor = join(work,'previous.jpg');
+      await writeFile(anchor,seed,{mode:0o600});
+      inputs.push('-loop','1','-framerate',String(fps),'-i',anchor);
+      selection.push('-filter_complex',
+        '[1:v]trim=end_frame='+openingHold+',setpts=PTS-STARTPTS,format=yuv420p[a];'+
+        '[0:v]setpts=PTS-STARTPTS,format=yuv420p[b];[a][b]concat=n=2:v=1:a=0[out]', '-map','[out]');
+    }
+    await execute(encoder, ['-nostdin','-hide_banner','-loglevel','error','-xerror','-threads','1',
+      ...inputs,...selection,'-frames:v',String(outputFrames),'-an','-c:v','libx264','-threads','2',
+      '-preset','veryfast','-crf','21','-pix_fmt','yuv420p','-movflags','+faststart','-progress','pipe:1',partial],
+    {signal,maxBuffer:128_000}).then(({stdout}) => {
       const written = [...stdout.matchAll(/^frame=(\d+)$/gm)].at(-1);
-      if (Number(written?.[1]) !== frameCount) throw Error('The playable segment did not contain every native frame.');
+      if (Number(written?.[1]) !== outputFrames) throw Error('The playable segment did not contain every native frame.');
     });
+    const presentationTime = frame => Math.round((openingHold+frame-1)*1000/fps);
     for (const pick of evidence.picks) for (const event of ['delivered','visible','inPath','reacted']) {
       const frame = pick[event+'Frame'];
-      if (frame != null) pick[event+'OffsetMs'] = Math.round((frame-1)*1000/fps);
+      if (frame != null) pick[event+'OffsetMs'] = presentationTime(frame);
     }
     for (const move of evidence.moves) {
       const event = session.events?.find(e => e.observed === move.observed && e.action === 'Player applied '+move.key);
       if (Number.isSafeInteger(event?.frame)) {
         move.appliedFrame = event.frame;
-        move.appliedOffsetMs = Math.round((event.frame-1)*1000/fps);
+        move.appliedOffsetMs = presentationTime(event.frame);
       }
     }
-    evidence.winnerOffsetMs = evidence.winnerFrame == null ? null : Math.round((evidence.winnerFrame-1)*1000/fps);
+    evidence.winnerOffsetMs = evidence.winnerFrame == null ? null : presentationTime(evidence.winnerFrame);
     await chmod(partial,0o400);
     await rename(partial,filePath);
     signal?.throwIfAborted();
-    return {filePath, finalFrame, fps, frameCount, durationMs:Math.round(frameCount*1000/fps), evidence, dispose};
+    return {filePath, finalFrame, fps, frameCount, openingHoldFrames:openingHold, durationMs:Math.round(outputFrames*1000/fps), evidence, dispose};
   } catch (error) {
     await dispose();
     throw error;

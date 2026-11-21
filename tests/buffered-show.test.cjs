@@ -61,3 +61,20 @@ test('canceling a generation discards its eventual clip and never starts another
   pick('A');await step(2200);show.stop();assert.equal(requests[0].opts.signal.aborted,true);
   await complete(0);await show.dispose();assert.deepEqual(disposed,[0]);assert.equal(receipts[0][1],false);assert.equal(show.file(1),undefined);
 });
+
+test('waiting past the collection timer cannot open on only one finished render',async()=>{
+  const {show,requests,step,complete}=await room();
+  await step(8000);await complete(0);await step();
+  await step(32000);
+  assert.equal(requests.length,2);
+  assert.equal(show.state.phase,'collecting','opening requires two playable segments');
+  assert.equal(show.metrics.played,0);
+  await complete(1);
+  assert.equal(show.state.preload.length,2);
+  await step();await step(1250);assert.equal(show.state.phase,'playing');
+  const first=show.state.clipUrl;await step();
+  assert.equal(requests.length,3,'refill starts while the first clip is playing');
+  await step(12000);await step(1250);
+  assert.notEqual(show.state.clipUrl,first);assert.equal(show.metrics.playbackGaps,0);
+  show.stop();await complete(2);await show.dispose();
+});
