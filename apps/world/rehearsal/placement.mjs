@@ -138,7 +138,6 @@ export function inspectPlacement(
   scene,
   effect,
   baseline,
-  { correction = false } = {},
 ) {
   const c = floorCorridor(scene);
   if (!c) return null;
@@ -157,7 +156,6 @@ export function inspectPlacement(
   }
   const candidates = matches.filter(
     (o) =>
-      correction ||
       (tipped(o) && !before.some(tipped)) ||
       (matches.length > before.length &&
         !before.some((prior) => sameFootprint(prior, o))),
@@ -213,7 +211,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     prop.attempt++;
     prop.sentAt = time;
     prop.placement = 'sent';
-    job.baseline = latest.scene.obstacles || [];
+    job.baseline ??= latest.scene.obstacles || [];
     job.ackFrame = null;
     job.ackTime = null;
     job.previousPose = latest.scene.pose;
@@ -313,9 +311,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         // Proof belongs to the frame's capture time. A slow response for a
         // pre-send frame cannot verify a send, even if it arrives afterward.
         const p = job.prop;
-        const result = inspectPlacement(scene, job.effect, job.baseline, {
-          correction: p.attempt === 2 && p.seen,
-        });
+        const result = inspectPlacement(scene, job.effect, job.baseline);
         if (result && freshObservation(latest, time)) {
           job.lastChecked = frame;
           if (result.visible && !p.seen) p.seenAt = at;
