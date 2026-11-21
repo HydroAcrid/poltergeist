@@ -70,13 +70,13 @@ export function buildDecisionPrompt(input: PlayerInput, promptAddenda: string[] 
       ? "The first image is the previous frame, about half a second ago; the second image is the current frame. Compare them."
       : "The image is the current frame; there is no earlier frame yet.",
     "Report what is visible in the CURRENT frame. Coordinates are integers [y, x] normalized to 0-1000, origin top-left; boxes are [ymin, xmin, ymax, xmax].",
-    "robotVisible: whether the robot is in frame. feet: where its boots touch the floor; omit if the boots are outside the frame.",
+    "robotVisible: whether the robot is in frame. robotCount: how many separate robot bodies of any kind are visible, counting each robot once even if it looks different from the player. feet: where its boots touch the floor; omit if the boots are outside the frame.",
     "obstacles: up to 5 things on or above the floor near the robot's route. Box each one down to where it meets the floor, give a short label, and set solid: true if the robot could not walk through or over it, false if it is flat, soft or would not stop a step.",
     "exit: whether the exit doorway is visible, and the floor point at the middle of its threshold.",
     "pose: 'stumbling' if the robot is visibly slipping, tipping, falling or thrown off balance; otherwise 'upright'.",
     "change: in a few words, what visibly changed near the robot or its route since the previous frame; 'nothing' if nothing did.",
     `Then choose the robot's next move from what actually happened in the images. intent: one of ${INTENTS.join(", ")}.`,
-    "Keep heading for the exit while the way is passable. Step around something solid in the next few steps. Something flat or harmless may be walked over. Something moving nearby but not in the way need not stop the robot. If the robot is off balance, hold. Turn only to bring the exit or a clear way into view. Back up only if something solid is right against it.",
+    "If more than one robot body is visible, you cannot be sure which one you control: hold. Keep heading for the exit while the way is passable. Step around something solid in the next few steps. Something flat or harmless may be walked over. Something moving nearby but not in the way need not stop the robot. If the robot is off balance, hold. Turn only to bring the exit or a clear way into view. Back up only if something solid is right against it.",
     "target: the floor point [y, x] the move heads for. reason: why, at most 60 characters. avoiding: true only if the move responds to something in or near the way.",
     ...promptAddenda,
   ].join("\n");
@@ -99,13 +99,14 @@ export const DECISION_SCHEMA = {
         required: ["label", "box", "solid"],
       },
     },
+    robotCount: { type: "integer" },
     change: { type: "string" },
     intent: { type: "string", enum: [...INTENTS] },
     target: pointSchema,
     reason: { type: "string" },
     avoiding: { type: "boolean" },
   },
-  required: ["robotVisible", "obstacles", "exit", "pose", "change", "intent", "reason", "avoiding"],
+  required: ["robotVisible", "robotCount", "obstacles", "exit", "pose", "change", "intent", "reason", "avoiding"],
 } as const;
 
 /** The decision part of a decision-mode reply, or undefined if missing or invalid. */
@@ -119,6 +120,7 @@ export function parseDecision(text: string): ModelDecision | undefined {
     observed: String(raw.change ?? "nothing").slice(0, 80) || "nothing",
     reason: String(raw.reason ?? "").slice(0, 60) || raw.intent,
     avoiding: raw.avoiding === true,
+    ...(Number.isInteger(raw.robotCount) && raw.robotCount >= 0 ? { robotCount: raw.robotCount } : {}),
   };
 }
 

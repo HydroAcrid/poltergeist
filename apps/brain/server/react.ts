@@ -32,7 +32,31 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
   // Geometry only sees what the model judged solid.
   const solid: Scene = { ...scene, obstacles: scene.obstacles.filter((o) => o.solid !== false) };
   const geo = stepNav(prev, solid, req, policy);
-  const meta = { intent: decision.intent, ...(decision.target ? { target: decision.target } : {}), observed: decision.observed };
+  const n = policy.navigation;
+  const facing = scene.goal ? facingFor(solid, policy)! : undefined;
+  const blockedAhead = (() => {
+    if (!facing) return false;
+    const b = blockingObstacle(solid, facing, policy);
+    return b !== undefined && b.along <= n.sidestepWithin;
+  })();
+  const meta = {
+    intent: decision.intent,
+    ...(decision.target ? { target: decision.target } : {}),
+    observed: decision.observed,
+    blocked: blockedAhead,
+  };
+
+  // More than one robot matching the player: can't tell which one is ours. Hold.
+  if ((decision.robotCount ?? 1) > 1) {
+    return {
+      state: geo.state,
+      action: { key: "NOOP", holdMs: 0 },
+      mode: "search",
+      rationale: `${decision.robotCount} robots visible, holding`,
+      successClaim: false,
+      decision: { ...meta, source: "geometry", intent: "hold" },
+    };
+  }
 
   // Fixed rules still own these: mid-stumble hold, arrival, exit not in view.
   if (scene.pose === "stumbling" || geo.mode === "success" || !scene.goal) {
@@ -40,17 +64,11 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
   }
 
   const chosen = motor(decision.intent, policy);
-  const facing = facingFor(solid, policy)!;
-  const n = policy.navigation;
   const key = chosen.action.key;
-  const blockedAhead = (() => {
-    const b = blockingObstacle(solid, facing, policy);
-    return b !== undefined && b.along <= n.sidestepWithin;
-  })();
   const vetoed =
     (key === "W" && blockedAhead) ||
-    (key === "A" && !sideClear(solid, facing, "left", policy)) ||
-    (key === "D" && !sideClear(solid, facing, "right", policy));
+    (key === "A" && !sideClear(solid, facing!, "left", policy)) ||
+    (key === "D" && !sideClear(solid, facing!, "right", policy));
   if (vetoed) {
     const said = decision.intent.replace("_", " ");
     return { ...geo, rationale: `${said} blocked, ${geo.rationale}`.slice(0, 60), reaction: "avoid", decision: { ...meta, source: "veto" } };

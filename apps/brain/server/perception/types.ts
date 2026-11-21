@@ -25,6 +25,8 @@ export interface ModelDecision {
   reason: string;
   /** True when the move responds to something in or near the way. */
   avoiding: boolean;
+  /** How many robots matching the player's description are visible (>1: can't tell which is the player). */
+  robotCount?: number;
 }
 
 /** A target-shaped thing the perceiver saw. It never says which one is real. */

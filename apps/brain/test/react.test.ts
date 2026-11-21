@@ -70,13 +70,14 @@ describe("decision mode through the tick handler", () => {
     const { res } = await second(reply({ obstacles: [{ label: "shiny strip", box: FOIL_ACROSS, solid: false }], change: "a flat shiny strip appeared across the floor", intent: "walk", reason: "flat strip, stepping over it", avoiding: false, target: [700, 520] }));
     expect(res.action.key).toBe("W");
     expect(res.rationale).toBe("flat strip, stepping over it");
-    expect(res.decision).toEqual({ source: "model", intent: "walk", target: [700, 520], observed: "a flat shiny strip appeared across the floor" });
+    expect(res.decision).toEqual({ source: "model", intent: "walk", target: [700, 520], observed: "a flat shiny strip appeared across the floor", blocked: false });
   });
 
   it("the same strip judged solid: walking is vetoed and geometry steps around it", async () => {
     const { res } = await second(reply({ obstacles: [{ label: "barrier", box: NEAR_SOLID, solid: true }], change: "a barrier appeared ahead", intent: "walk", reason: "keep going" }));
     expect(res.decision?.source).toBe("veto");
     expect(res.decision?.intent).toBe("walk");
+    expect(res.decision?.blocked).toBe(true);
     expect(["A", "D", "ArrowLeft", "ArrowRight"]).toContain(res.action.key);
   });
 
@@ -118,4 +119,11 @@ describe("decision mode through the tick handler", () => {
     expect(r.decision).toBeUndefined();
     expect(f.calls[1]!.contents[0].parts.filter((p: any) => p.inlineData)).toHaveLength(1);
   });
+
+  it("two robots matching the player: holds, whatever the model chose (can't tell which is ours)", async () => {
+    const { res } = await second(reply({ robotCount: 2, intent: "step_left", reason: "going around" }));
+    expect([res.action.key, res.decision?.source, res.decision?.intent]).toEqual(["NOOP", "geometry", "hold"]);
+    expect(res.rationale).toBe("2 robots visible, holding");
+  });
 });
+

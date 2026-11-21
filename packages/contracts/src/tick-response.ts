@@ -56,6 +56,7 @@ export const Decision = z.object({
   intent: Intent,
   target: Point.optional(), // floor point the chosen move heads for, in this frame
   observed: z.string().max(80).optional(), // what visibly changed, in the model's own words
+  blocked: z.boolean().optional(), // something solid on the route within the next steps (geometry)
 });
 export type Decision = z.infer<typeof Decision>;
 
