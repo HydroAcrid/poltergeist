@@ -83,3 +83,22 @@ test('fresh generation preserves the original room while waiting and retries a d
   const notice=preparedCue(h.prepared,player.show(h,5400),5400);
   assert.deepEqual(notice,{label:'Preparing the next scene',text:'A paper storm'});
 });
+
+test('both projector slots play at normal speed without jumping over reactions during a slow poll',async t=>{
+  const {createPreparedPlayer}=await moduleUnderTest;
+  const {videos,player}=display(createPreparedPlayer,t);
+  for (const v of videos) v.defaultPlaybackRate=v.playbackRate=1.5;
+  const first=part('playing',{upNext:{clipUrl:b}});
+  player.show(first,1000);player.show(first,1700);
+  assert.deepEqual(videos.map(v=>v.defaultPlaybackRate),[1,1]);
+  assert.equal(videos[0].playbackRate,1);
+  videos[0].currentTime=2;
+  player.show(first,5000);
+  assert.equal(videos[0].currentTime,2,'an on-screen reaction must play through');
+  player.suspend();
+  player.show(first,6000);player.show(first,6700);
+  assert.equal(videos[0].currentTime,5.7,'a returning viewer catches up behind the blackout');
+  const next=part('playing',{clipUrl:b,clipStartedAt:7200});
+  player.show(next,7200);player.show(next,7900);
+  assert.equal(videos[1].playbackRate,1);
+});

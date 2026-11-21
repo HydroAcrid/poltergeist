@@ -41,6 +41,7 @@ export function createPreparedPlayer(surface) {
     v.hidden = true;
     delete v.dataset.failed;
     delete v.dataset.retryAt;
+    v.defaultPlaybackRate = 1;
     v.src = url;
     v.load();
     return v;
@@ -122,8 +123,8 @@ export function createPreparedPlayer(surface) {
     if (now < part.clipStartedAt || (visible === v && surface.dataset.cover === 'closing')) return {};
     const target = preparedTime(Math.max(now,darkAt), part.clipStartedAt, part.clipDurationMs, v.duration);
     const switching = visible !== v || surface.dataset.cover !== 'open';
-    const tolerance = switching ? .35 : .9;
-    if (!v.seeking && Math.abs(v.currentTime - target) > tolerance && now - lastSeek >= 700) {
+    // Synchronize behind the blackout. Seeking a visible clip can skip the reaction.
+    if (switching && !v.seeking && Math.abs(v.currentTime - target) > .35 && now - lastSeek >= 700) {
       lastSeek = now;
       v.currentTime = target;
     }
@@ -131,6 +132,7 @@ export function createPreparedPlayer(surface) {
     if (switching) {
       if (visible && visible !== v) { visible.pause(); visible.hidden = true; }
       visible = v;
+      v.playbackRate = 1;
       v.hidden = false;
       cover('open');
     }
@@ -143,7 +145,10 @@ export function createPreparedPlayer(surface) {
     }
     return {playing:true};
   }
-  return {show, suspend() { for (const v of slots) v.pause(); }};
+  return {show, suspend() {
+    for (const v of slots) v.pause();
+    segment = undefined;
+  }};
 }
 
 export function preparedCue(part, display, now) {
