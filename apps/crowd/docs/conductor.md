@@ -73,4 +73,6 @@ interface HauntSeen { hauntId: Id; episodeId: Id; t: Ms; response?: string }   /
 type EffectKind = "floor_prop" | "airborne" | "lighting" | "visibility" | "sign" | "audio" | "overhead" | "other";
 ```
 
+**Interim option from Brain, needing no new contract:** until `haunt.seen` exists, Crowd can mark an idea "Seen in the hallway" at the first `tick` after `haunt.injected { ok: true }` whose `perception.hazards` gains a new label. The observed response can be that tick's display-safe `rationale` (≤ 60, e.g. "obstacle ahead, stepping left"). This is heuristic: a hazard the player notices isn't proof of what the audience sees. So `haunt.seen` from World's camera stays the target, and the tick rule is the fallback. With neither, the idea stays at "Sent to world".
+
 Crowd-side contract changes this would need (all minor under CONTRACTS §9): `HauntStatus` gains `reserved` (Up next) and `seen`, and `HauntPublic` gains an optional public `reason` (≤ 60).
