@@ -75,6 +75,33 @@ describe("one waiting idea each", () => {
     expect((await a.state()).mine.map((h) => h.status)).toEqual(["queued", "dispatched"]);
   });
 
+  it("in the lobby nothing is reserved, so a guest can keep changing their idea", async () => {
+    const a = await phone();
+    await a.submit({ preset: "fog" });
+    await hub.crowd.whenIdle();
+    hub.crowd.tick(); // no round yet
+    expect((await a.state()).upNext).toBeUndefined();
+    hub.clock.advance(20_000);
+    expect((await a.submit({ preset: "banana-peel" })).statusCode).toBe(200);
+    await hub.crowd.whenIdle();
+    expect(texts((await a.state()).queue)).toEqual(["A banana peel lands in the aisle"]);
+  });
+
+  it("Up next is reserved once the round is playing, and released when the round ends", async () => {
+    const a = await phone();
+    await a.submit({ preset: "fog" });
+    await hub.crowd.whenIdle();
+    hub.world.startEpisode();
+    hub.crowd.tick();
+    expect((await a.state()).upNext).toBeDefined();
+    hub.world.endEpisode();
+    expect((await a.state()).upNext).toBeUndefined();
+    hub.crowd.tick();
+    expect((await a.state()).upNext).toBeUndefined();
+    hub.clock.advance(20_000);
+    expect((await a.submit({ preset: "banana-peel" })).statusCode).toBe(200);
+  });
+
   it("a waiting idea carries over to the next round, and phones know how many go per round", async () => {
     const a = await phone();
     hub.world.startEpisode();
