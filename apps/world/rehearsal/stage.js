@@ -123,13 +123,7 @@ function controls() {
   set('lobby-invite',beforePhoto
     ? 'Join on your phone. When the hallway opens, send a haunting to stop the robot from reaching the exit.'
     : 'Send a haunting from your phone to stop the robot from reaching the exit.');
-  const photoChoice = el('photo-choice');
-  photoChoice.hidden = busy;
-  photoChoice.querySelector('summary').hidden = beforePhoto;
-  if (photoChoice.dataset.first !== String(beforePhoto)) {
-    photoChoice.open = beforePhoto;
-    photoChoice.dataset.first = String(beforePhoto);
-  }
+  el('photo-next-round').hidden = !busy;
   el('offline-primary').hidden = beforePhoto || busy || canLaunch || !state;
   el('offline-primary').disabled = loading || !connected;
   el('upload').classList.toggle('primary', beforePhoto);

@@ -80,14 +80,14 @@
             </header>
             <p id="host-readiness" class="host-readiness" role="status">Connecting to the room…</p>
             <p id="host-guests" hidden></p>
-            <details id="photo-choice" class="photo-choice" open>
-              <summary hidden>Change photo</summary>
+            <div id="photo-choice" class="photo-choice">
               <div id="photo-actions" class="photo-actions">
               <button id="upload" class="primary">Choose photo</button>
               <button id="capture">Take photo</button>
             </div>
             <button id="default" class="quiet" hidden>Use the venue photo</button>
-            </details>
+              <p id="photo-next-round" hidden>Choose a new hallway after this round ends.</p>
+            </div>
             <button id="prepare" hidden>Prepare photo</button>
             <label id="show-length" class="show-length" hidden>Show format
               <select id="show-minutes">
