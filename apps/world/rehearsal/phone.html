@@ -54,6 +54,10 @@
       flex-wrap: wrap;
       margin: 10px 0;
     }
+    #send-error {
+      color: var(--warm);
+      margin-bottom: 0;
+    }
     #receipt {
       margin: 0;
       color: var(--accent);
@@ -96,6 +100,7 @@
         ><button class="primary" id="submit">Send idea</button>
       </form>
       <div class="chips" id="presets"></div>
+      <p id="send-error" role="alert" hidden></p>
     </section>
     <section class="phonebox">
       <h2>Your hauntings</h2>

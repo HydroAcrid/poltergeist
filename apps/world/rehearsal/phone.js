@@ -11,9 +11,14 @@ function announce(text) {
     el('receipt').textContent = text;
   }
 }
+function setSendError(text) {
+  el('send-error').textContent = text;
+  el('send-error').hidden = !text;
+}
 async function send(body) {
   if (busy || !active) return;
   busy = true;
+  setSendError('');
   try {
     const res = await fetch('/api/crowd/haunt', {
       method: 'POST',
@@ -28,7 +33,7 @@ async function send(body) {
     announce('Your idea is being checked.');
     await refresh();
   } catch (e) {
-    announce(e.message);
+    setSendError(e.message);
   } finally {
     busy = false;
   }
@@ -52,7 +57,7 @@ document.querySelector('form').onsubmit = (e) => {
   e.preventDefault();
   const text = el('idea').value.trim();
   if (text) send({ text });
-  else announce('Write an idea or choose a preset.');
+  else setSendError('Write an idea or choose a preset.');
 };
 const status = {
   submitted: 'Checking your idea',

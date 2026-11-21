@@ -66,7 +66,11 @@ async function capture() {
   }
   if (autonomous) setup.world_prompt = { text: cameraPrompt };
   if (values.round) setup.world_prompt.text += ' Keep the same small cautious robot, orange twin-strap backpack and lit brass-rim flashlight in its RIGHT hand. Preserve the dark room and warm beam from the seed. It walks toward the signed exit with both feet on the floor.';
-  if (stagePilot) setup.world_prompt.text += ' Extend the photographed room into three successive long connected hallway bays of its own architecture. Elevated wider rear three-quarter view above the robot’s RIGHT shoulder, boots and floor in frame, avoid zooming in. An open signed exit is distant. The shy robot steadies its flashlight and steps cautiously. Moody, legible amber lighting.';
+  if (stagePilot) setup.world_prompt.text = [
+    "An explorer walks alongside a small sage robot carrying an orange backpack and a brass flashlight. Our eyes are the moving viewpoint, one stride behind its right shoulder. The original hall and the robot match the reference image.",
+    "Rule: When we move, the robot walks beside us at exactly our pace, always one stride ahead on our left. When we stop, it waits beside us. The backpack stays about a third of the picture height, with boots visible. It never runs ahead alone.",
+    "The exceptionally long path travels diagonally to the right through successive connected bays: the green arch, paired lamps, a row of booths, another long gallery, and only then the reachable exit. We pass each near doorway and plant while the distant exit stays in sight. The clear floor in front of the robot is visible. Objects landing across that path make the robot stop or step around them."
+  ].join(" ");
   const { trick, moves, endFrame } = sequenceFor(values);
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1beta' });
   const request = { retries: { strategy: 'none' }, timeout_ms: 10000 };
@@ -124,8 +128,33 @@ async function capture() {
       if (ending) return;
       try {
         if (stagePilot && command?.haunt) {
-          await session.send(command.haunt.text + ' Put this change on the walkable floor inside the flashlight beam, several strides ahead. Keep the avatar and the route toward the distant exit visible.');
-          publish({injected:command.haunt.id}); record('Audience intervention sent',{id:command.haunt.id,text:command.haunt.text});
+          const haunt = command.haunt;
+          const [y, x] = haunt.target || [];
+          const location = Number.isFinite(y) && Number.isFinite(x)
+            ? `The robot's planned next footfall is at ${Math.round(x/10)} percent across and ${Math.round(y/10)} percent down this view.`
+            : "Place it across the walking line joining the robot’s boots and the next stretch of walkable floor.";
+          const instruction = [haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
+            /chair/i.test(haunt.text) ? "One bright yellow tipped-over chair spans that path." : "",
+            "Keep the effect, its contact with the floor, and the approaching robot in view."].filter(Boolean).join(" ");
+          try {
+            await session.send(instruction);
+            publish({injected:haunt.id, attempt:haunt.attempt, injectedAt:Date.now(), injectedFrame:log.frames});
+            record('Audience intervention sent',{id:haunt.id,attempt:haunt.attempt,text:haunt.text,target:haunt.target});
+          } catch (error) {
+            publish({injectionFailed:haunt.id, attempt:haunt.attempt});
+            throw error;
+          }
+        } else if (stagePilot && command?.pause) {
+          if (heldStageKey) {
+            clearTimeout(releaseKey);
+            const key = heldStageKey;
+            await session.send({event_type:'user_action',action:'key_up',input:key});
+            heldStageKey = null;
+            record('Paused at the encounter');
+          }
+        } else if (stagePilot && command?.reaction === 'startle') {
+          await session.send("The same small robot jolts at the surprise in front of its boots, makes one short hop back and steadies its flashlight on the obstacle. Both boots land nearby. The camera eases to a stop beside it.");
+          record("Requested a visible startle");
         } else if (stagePilot && command?.key && !heldStageKey) {
           const keys={A:'key_a',D:'key_d',W:'key_w',S:'key_s',ArrowRight:'arrow_right',ArrowLeft:'arrow_left'};
           const key=keys[command.key]; if (!key) return;
@@ -188,16 +217,33 @@ async function capture() {
           publish({expiresAt: Date.now() + durationMs});
           gameClock = setTimeout(() => { finish('audience').catch(error => abort.abort(error)); }, durationMs);
         }
+        // Open on a real forward tracking move. Key-up gives control to the Brain.
+        // The move is part of the entrance, before the first navigation observation.
+        if (stagePilot && log.frames === 5) {
+          heldStageKey = 'key_w';
+          await session.send({event_type:'user_action',action:'key_down',input:'key_w'});
+          record('Entrance: native forward key down');
+        }
+        if (stagePilot && log.frames === 101 && heldStageKey === 'key_w') {
+          await session.send({event_type:'user_action',action:'key_up',input:'key_w'});
+          heldStageKey = null;
+          record('Entrance: native forward key up');
+        }
         if ((values.drive || values.round) && process.connected && (log.frames - 1) % (stagePilot ? 2 : 4) === 0) {
           process.send({ frame: delta.data }, error => { if (error) stop(); });
         }
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
         if(stagePilot && !ending && !looking && !heldStageKey && Date.now()>=nextLook && log.frames>12) {
           looking=true;
-          const observed=log.frames;
+          const observed=log.frames, observedAt=Date.now();
           inspectRoom(ai,delta.data,abort.signal).then(scene=>{
-            if(!ending){publish({scene,observed});record('Gemini observed live frame',{observed,scene});}
-          }).catch(()=>{if(!ending) publish({observationFailed:true});}).finally(()=>{looking=false;nextLook=Date.now()+1600;});
+            if(!ending){publish({scene,observed,observedAt});record('Gemini observed live frame',{observed,observedAt,scene});}
+          }).catch(error=>{
+            if (!ending) {
+              publish({observationFailed:true});
+              record('Observation unavailable', {observed, detail: error instanceof SyntaxError ? 'incomplete JSON' : error.name, elapsedMs: Date.now()-observedAt});
+            }
+          }).finally(()=>{looking=false;nextLook=Date.now()+450;});
         }
         if (pilot && !ending) await pilot(log.frames, delta.data);
         if (log.frames === 24 && trick) {

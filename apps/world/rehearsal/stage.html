@@ -1,121 +1,105 @@
 <!doctype html>
 <html lang="en">
-  <meta charset="utf-8" /><meta
-    name="viewport"
-    content="width=device-width,initial-scale=1"
-  /><title>Poltergeist · The hallway</title
-  ><link rel="stylesheet" href="/stage.css" />
-  <main>
-    <header class="mast">
-      <div class="wordmark"><i aria-hidden="true">ϟ</i>Poltergeist</div>
-      <span class="format" id="format">Hallway rehearsal</span>
-    </header>
-    <div class="heading">
-      <div>
-        <p class="eyebrow" id="phase">Before the round</p>
-        <h1 id="title">The long hallway</h1>
-      </div>
-      <div class="clockbox">
-        <span id="timer-label">Opening window</span
-        ><strong id="clock">0:30</strong>
-      </div>
-    </div>
-    <div class="layout">
-      <div class="screen-column">
-        <figure>
-          <canvas
-            width="1280"
-            height="720"
-            id="scene"
-            aria-label="Venue hallway with the flashlight robot and a distant exit"
-          ></canvas>
-          <img
-            id="live"
-            hidden
-            alt="Live Genie camera following the flashlight robot"
-          />
-          <figcaption>
-            <span class="cue" id="cue">Venue photo</span
-            ><strong id="caption">This is where it starts.</strong>
-          </figcaption>
-        </figure>
-        <div class="meters">
-          <div>
-            <div class="meter-title">
-              <span>Route to exit</span><b id="bay">Entrance</b>
-            </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>Poltergeist</title>
+    <link rel="stylesheet" href="/stage.css" />
+  </head>
+  <body class="projector">
+    <main class="world" aria-label="Poltergeist game">
+      <figure class="viewport">
+        <canvas
+          width="1280"
+          height="720"
+          id="scene"
+          aria-label="The venue transforms into the robot’s hallway"
+        ></canvas>
+        <img id="live" class="decode-source" aria-hidden="true" alt="" />
+      </figure>
+      <header class="hud">
+        <h1 id="title" class="brand">Poltergeist</h1>
+        <div class="score">
+          <div
+            class="fear-readout"
+            title="Three scares give the ghosts the win"
+          >
+            <span class="hud-label">Fear</span>
             <div
-              class="track route"
-              role="meter"
-              aria-label="Route to exit"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              aria-valuenow="0"
-            >
-              <i></i>
-            </div>
-          </div>
-          <div>
-            <div class="meter-title">
-              <span>Robot fear</span><b id="fear">0 / 3</b>
-            </div>
-            <div
-              class="track fear"
+              class="fear"
               role="meter"
               aria-label="Robot fear"
               aria-valuemin="0"
               aria-valuemax="3"
               aria-valuenow="0"
+              aria-valuetext="0 of 3 scares"
             >
               <i></i><i></i><i></i>
             </div>
+            <span id="fear" class="visually-hidden">0 / 3</span>
+          </div>
+          <div class="clockbox">
+            <span id="timer-label" class="hud-label">Starts in</span
+            ><strong id="clock">0:30</strong>
           </div>
         </div>
-      </div>
-      <aside>
-        <div class="queue-heading">
-          <h2>Hauntings</h2>
-          <span id="count">0</span>
-        </div>
-        <p class="eyebrow small">Up next</p>
-        <div id="next" class="next">Waiting for the first idea.</div>
-        <p class="eyebrow small">In the queue</p>
-        <ol id="queue"></ol>
-        <div class="aside-foot">
-          <p>
-            You’re the ghosts. Scare the robot three times or keep it from the
-            exit until time runs out.
-          </p>
-          <a href="/phone" target="_blank" rel="noopener" class="phone-link"
-            >Join the ghosts <span aria-hidden="true">↗</span></a
-          >
-        </div>
-      </aside>
-    </div>
-    <div id="host" hidden class="controls">
-      <button id="go-live" class="primary" disabled>Start Genie round</button
-      ><button id="start" disabled>Rehearse offline</button
-      ><button id="upload">Choose photo</button
-      ><button id="capture">Take photo</button
-      ><button id="default" hidden>Use venue hallway</button
-      ><a href="/stage" target="_blank" rel="noopener">Projector view ↗</a
-      ><input type="file" accept="image/*" id="file" hidden /><input
+      </header>
+      <section id="story" class="story" hidden aria-label="Hallway action">
+        <span id="cue"></span><strong id="caption"></strong>
+      </section>
+      <nav class="audience-dock" aria-label="Audience">
+        <details id="book" class="popover">
+          <summary>Queue <span id="count">0</span></summary>
+          <section class="panel queue-panel" aria-label="Haunting queue">
+            <h2>Up next</h2>
+            <div id="next" class="next">Waiting for an idea.</div>
+            <ol id="queue"></ol>
+          </section>
+        </details>
+        <a class="join" href="/haunt" target="_blank" rel="noopener"
+          >Join the ghosts <span aria-hidden="true">↗</span></a
+        >
+        <details id="host" class="popover" hidden>
+          <summary>Host</summary>
+          <section class="panel host-panel" aria-label="Host controls">
+            <header>
+              <h2>Set the stage</h2>
+              <a href="/stage" target="_blank" rel="noopener">Projector ↗</a>
+            </header>
+            <div class="photo-actions">
+              <button id="capture">Take photo</button
+              ><button id="upload">Choose photo</button>
+            </div>
+            <button id="prepare" hidden>Prepare photo for Genie</button>
+            <button id="go-live" class="primary" disabled>
+              Start Genie round</button
+            ><button id="start" disabled>Rehearse offline</button>
+            <button id="default" class="quiet" hidden>Use venue hallway</button>
+            <p id="message" role="status"></p>
+          </section>
+        </details>
+      </nav>
+      <input type="file" accept="image/*" id="file" hidden />
+      <input
         type="file"
         accept="image/*"
         capture="environment"
         id="camera-file"
         hidden
       />
-    </div>
-    <dialog id="camera">
-      <video autoplay playsinline muted></video>
-      <p class="controls">
-        <button id="shutter" class="primary">Capture photo</button
-        ><button id="cancel">Cancel</button>
-      </p>
-    </dialog>
-    <p id="message" role="status"></p>
-    <p class="visually-hidden" role="status" id="announce"></p>
-  </main>
-  <script type="module" src="/stage.js"></script>
+      <dialog id="camera" aria-label="Take a venue photo">
+        <video autoplay playsinline muted></video>
+        <div class="photo-actions">
+          <button id="shutter" class="primary">Capture photo</button
+          ><button id="cancel">Cancel</button>
+        </div>
+      </dialog>
+      <span id="phase" class="visually-hidden"></span>
+      <p id="announce" class="visually-hidden" role="status"></p>
+    </main>
+    <script type="module" src="/stage.js"></script>
+  </body>
 </html>
