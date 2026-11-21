@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.8.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: CrowdState.joined
+export const VERSION = "1.8.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/holds (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: CrowdState.joined
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed", "withdrawn"]); // withdrawn: replaced by the author's newer idea (1.7.0)
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -141,7 +141,7 @@ export const CrowdState = z
     slotsPerRound: z.number().int().positive().optional(), // ideas sent per round, for "about N rounds away"
     joined: z.number().int().nonnegative().optional(), // guest phones here now (projector polls excluded)
     upNext: z.object({ hauntId: Id, reason: z.string().max(60), mode: z.enum(["conductor", "fifo"]) }).strict().optional(), // the reserved pick
-    waiting: z.array(z.object({ hauntId: Id, reason: z.string().max(60) }).strict()).optional(), // public reasons the conductor is holding ideas
+    holds: z.array(z.object({ hauntId: Id, reason: z.string().max(60) }).strict()).optional(), // public reasons the conductor is holding ideas (named "holds"; Kevin's paging uses "waiting")
   })
   .strict();
 export type CrowdState = z.infer<typeof CrowdState>;
