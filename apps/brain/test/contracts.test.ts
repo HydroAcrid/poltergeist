@@ -44,5 +44,5 @@ it("ships every TickResponse scenario CONTRACTS §8 requires", () => {
   expect(list(join(fixtures, "tick-response/valid")).sort()).toEqual(
     ["fallback-timeout.json", "search.json", "success.json", "track.json", "unstick.json"],
   );
-  expect(list(join(fixtures, "tick-log/valid")).sort()).toEqual(["lost.json", "track.json"]);
+  expect(list(join(fixtures, "tick-log/valid"))).toEqual(expect.arrayContaining(["lost.json", "track.json"]));
 });

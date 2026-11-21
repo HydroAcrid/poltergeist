@@ -1,0 +1,35 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000003",
+  "seq": 19,
+  "t": 9500,
+  "driver": "brain",
+  "framePath": "data/episodes/ep_01JDPG00000000000000000003/frames/19.jpg",
+  "frameDiff": 0.06,
+  "perception": {
+    "visible": true,
+    "point": [
+      478,
+      716
+    ],
+    "conf": 0.9,
+    "hazards": [
+      {
+        "label": "chair",
+        "point": [
+          542,
+          470
+        ]
+      }
+    ],
+    "model": "fixture",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "ArrowRight",
+    "holdMs": 259
+  },
+  "mode": "track",
+  "rationale": "obstacle ahead, turning toward exit",
+  "successClaim": false,
+  "policyVersion": "v1"
+}
