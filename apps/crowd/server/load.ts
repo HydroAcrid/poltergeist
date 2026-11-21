@@ -9,6 +9,7 @@ export const REPO_ROOT = resolve(here, "../../..");
 export const HAUNT_PAGE = resolve(here, "../web/haunt.html");
 export const OVERLAY_PAGE = resolve(here, "../web/overlay.html");
 export const OVERLAY_MODEL = resolve(here, "../web/overlay-model.js");
+export const VEIL_DIR = resolve(here, "../web/veil");
 
 const read = (rel: string): unknown => JSON.parse(readFileSync(resolve(REPO_ROOT, rel), "utf8"));
 

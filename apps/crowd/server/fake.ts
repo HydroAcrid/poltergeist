@@ -7,7 +7,7 @@ import type { HubContext, LaneModule } from "@poltergeist/contracts/hub-types.js
 import { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import { Verdict } from "@poltergeist/contracts/verdict.js";
 import { configFromEnv, CrowdService } from "./crowd.js";
-import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE } from "./load.js";
+import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
 import { registerCrowdRoutes } from "./routes.js";
 
@@ -36,7 +36,7 @@ export function createFakeCrowdModule(
         operatorToken: ctx.env.PG_OPERATOR_TOKEN || undefined,
         hauntPagePath: HAUNT_PAGE,
         overlayPagePath: OVERLAY_PAGE,
-        overlayModelPath: OVERLAY_MODEL,
+        overlayModelPath: OVERLAY_MODEL, veilDir: VEIL_DIR,
         publicUrl: ctx.env.PG_PUBLIC_URL || undefined,
       });
 

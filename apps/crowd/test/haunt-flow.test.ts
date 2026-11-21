@@ -343,6 +343,11 @@ describe("operator and page", () => {
     expect(qr.statusCode).toBe(200);
     expect(qr.headers["content-type"]).toMatch(/image\/svg\+xml/);
     expect(qr.body).toMatch(/^<svg|<\?xml/);
+    for (const f of ["ghost-veil.js", "veil-machine.js"]) {
+      const v = await hub.app.inject({ method: "GET", url: "/veil/" + f });
+      expect(v.statusCode).toBe(200);
+      expect(v.headers["content-type"]).toMatch(/javascript/);
+    }
   });
 
   it("serves the raw queue only with the operator token", async () => {

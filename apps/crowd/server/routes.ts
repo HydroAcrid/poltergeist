@@ -37,6 +37,7 @@ export interface RouteOptions {
   hauntPagePath: string;
   overlayPagePath?: string;
   overlayModelPath?: string;
+  veilDir?: string;
   publicUrl?: string; // PG_PUBLIC_URL; the join QR points at <publicUrl>/haunt
   validateResponses?: boolean;
 }
@@ -80,6 +81,18 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
       reply.header("cache-control", "no-cache").type("text/javascript; charset=utf-8");
       return readFileSync(overlayModel, "utf8");
     });
+  }
+
+  // Ghost veil for World's opening transition (art direction: Crowd). World imports
+  // /veil/ghost-veil.js and calls cover()/part(); see apps/crowd/docs/veil.md.
+  if (opts.veilDir) {
+    const veilDir = opts.veilDir;
+    for (const file of ["ghost-veil.js", "veil-machine.js"]) {
+      app.get(`/veil/${file}`, async (_req, reply) => {
+        reply.header("cache-control", "no-cache").type("text/javascript; charset=utf-8");
+        return readFileSync(`${veilDir}/${file}`, "utf8");
+      });
+    }
   }
 
   // QR for the join link, rendered server-side so the overlay stays dependency-free.

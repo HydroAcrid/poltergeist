@@ -100,7 +100,7 @@ const serveFrom = (root: string) => async (req: { params: unknown }, reply: { co
   return reply.type(TYPES[extname(file)] ?? "application/octet-stream").send(readFileSync(file));
 };
 app.get("/dev/docs/*", serveFrom(resolve(here, "../docs")));
-app.get("/world/robot-v1/*", serveFrom(resolve(here, "../../world/robot-v1")));
+app.get("/world/*", serveFrom(resolve(here, "../../world")));
 
 await app.listen({ port, host: "0.0.0.0" });
 const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;
