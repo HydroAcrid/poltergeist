@@ -286,7 +286,9 @@ export async function registerStage(
         endedAt: r.finishedAt,
         hallway: {
           reason: r.reason,
-          reactions: r.props.filter(p => p.observedReaction && p.reactedAt).map(p => ({
+          // The shared scoreboard counts scares and sidesteps. A defensive hold is
+          // visible in World but earns neither of those scores.
+          reactions: r.props.filter(p => ['scare','sidestep'].includes(p.observedReaction) && p.reactedAt).map(p => ({
             hauntId: p.id, at: p.reactedAt, kind: p.observedReaction,
           })),
         },
@@ -550,7 +552,7 @@ export async function registerStage(
                 r.brainDecision = null;
                 r.observed = m.observed;
                 const now = Date.now();
-                placement?.observe(m.scene, m.observed, m.observedAt, now, m.trackingPlacementReady !== false);
+                placement?.observe(m.scene, m.observed, m.observedAt, now, m.trackingPlacementReady !== false, m.guardReview);
                 const proposed = m.proposedKey || proposedKey(m.scene);
                 if (proposed) r.lastMoveProposed = {observed:m.observed,key:proposed};
                 function holdMove(reason, key = proposed) {

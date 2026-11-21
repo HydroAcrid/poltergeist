@@ -42,7 +42,14 @@ export function reviewSegment(clip, picks, initialFear, continuation) {
     const scare = p.reacted === true && p.scare === true && p.reaction === 'scare' &&
       frame(p.reactedFrame) && p.reactedFrame > p.inPathFrame && tracked(observed.get(p.reactedFrame)) &&
       offset(p.reactedOffsetMs) && p.reactedOffsetMs > p.inPathOffsetMs;
-    if (!bypass && !retreat && !scare)
+    const guard=p.guardReview;
+    const defended=p.reaction==='defend' && p.reacted===true && p.scare!==true &&
+      guard?.encounter===p.id && ['duck','shield'].includes(guard.guard) &&
+      frame(guard.basis) && guard.basis>=p.inPathFrame && tracked(observed.get(guard.basis)) &&
+      frame(guard.appliedFrame) && guard.appliedFrame>=guard.basis &&
+      frame(guard.checkedFrame) && guard.checkedFrame>guard.appliedFrame && p.reactedFrame===guard.checkedFrame &&
+      compared(observed.get(guard.checkedFrame)) && offset(p.reactedOffsetMs) && p.reactedOffsetMs>p.inPathOffsetMs;
+    if (!bypass && !retreat && !scare && !defended)
       return reject('The camera did not confirm how the explorer reacted to the idea.');
     if (scare) fear++;
     receipts.push({pick,at:p.inPathOffsetMs,scareAt:scare ? p.reactedOffsetMs : null,reaction:p.reaction});

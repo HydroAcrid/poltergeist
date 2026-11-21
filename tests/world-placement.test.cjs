@@ -202,7 +202,15 @@ test('a scoped native pause waits for the sighting then a clear threat gets one 
   q.acknowledged('one', 1, 1200, 2);
   q.observe(scene([chair(700, 450)], { threat: 'startling', move:{intent:'hold'} }), 2, 1180, 1310);
   assert.equal(sent.filter((x) => x.reaction).length, 0);
-  q.observe(scene([chair(700, 450)], { threat: 'startling', move:{intent:'hold'} }), 4, 2100, 2250);
+  const view=scene([chair(700, 450)],{playerCount:1,playerMatch:true,shoulderView:'rear-right',feetVisible:true,
+    threat:'startling',guardPose:'none',move:{intent:'hold',guard:'recoil',avoiding:true}});
+  q.observe(view,4,2100,2250);
+  assert.equal(sent.filter(x=>x.reaction).length,0);
+  const hold={action:{key:'NOOP',holdMs:0},decision:{source:'model',intent:'hold'}};
+  assert.equal(q.characterCommand({...hold,decision:{source:'geometry',intent:'hold'}},2250),null);
+  const choice=q.characterCommand(hold,2250);
+  assert.deepEqual(choice,{reaction:'guard',guard:'recoil',encounter:'one',observed:4});
+  sent.push(choice);
   assert.ok(q.navigationPaused(2450));
   assert.equal(r.props[0].reactionRequestedAt, 2250);
   assert.equal(r.fear, 0);

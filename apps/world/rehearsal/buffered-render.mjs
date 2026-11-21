@@ -108,6 +108,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
       for (const prop of round.props) {
         const row = byId.get(prop.id);
         row.placement = prop.placement;
+        if (prop.guardReview) row.guardReview={...prop.guardReview};
         if (prop.response) {
           row.response = {...prop.response};
           if (row.response.outcome === 'awaiting-pixels') row.response.outcome = 'unconfirmed';
@@ -162,7 +163,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
       evidence.observations.push({
         frame:observed, playerCount:scene.playerCount, visible:scene.visible, ready,
         subjectTracked:message.trackingSubjectVerified === true,
-        subjectCompared:comparisonFrame === observed && scene.visible === true && scene.playerMatch === true,
+        subjectCompared:(comparisonFrame === observed || message.guardReview?.checkedFrame === observed) && scene.visible === true && scene.playerMatch === true,
         feetVisible:scene.feetVisible === true,
         shoulderView:scene.shoulderView ?? 'unclear', doorwayProgress:scene.doorwayProgress ?? 'unclear',
       });
@@ -170,7 +171,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
         selected = true;
         for (const pick of picks) placement.add(pick.id, pick.text, pick.by, now);
       }
-      placement.observe(scene, observed, observedAt, now, ready);
+      placement.observe(scene, observed, observedAt, now, ready, message.guardReview);
       for (const prop of round.props) {
         const row = byId.get(prop.id);
         if (prop.seen && !row.visible) { row.visible = true; row.visibleFrame = observed; }
@@ -253,6 +254,15 @@ export async function renderSegment({
     }
     const finalFrame = await readFile(join(path, String(frameCount).padStart(5,'0') + '.frame'));
     if (!isJPEG(finalFrame)) throw Error('The final native frame was not a complete JPEG.');
+    for (const pick of evidence.picks) {
+      const guard=pick.guardReview;
+      if (!guard) continue;
+      const records=session.events?.filter(e=>e.encounter===pick.id && e.guard===guard.guard &&
+        e.appliedFrame===guard.appliedFrame) ?? [];
+      const sent=records.some(e=>e.action==='Requested robot reaction' && e.reaction==='guard' && e.observed===guard.basis);
+      const checked=records.some(e=>e.action==='Checked defensive pose' && e.basis===guard.basis && e.checkedFrame===guard.checkedFrame);
+      if (!sent || !checked) throw Error('The recorded encounter did not contain both the native direction and its visual check.');
+    }
     const plan=selectReviewFrames(evidence,frameCount,fps);
     evidence.visualReview=await visualReviewer({plan,path,captureDir,signal});
     signal?.throwIfAborted();

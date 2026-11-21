@@ -5,7 +5,7 @@ import playerMoves from '../../brain/server/perception/player-moves.json' with {
 const previousFrames = new WeakMap();
 
 // This call receives only pixels and the navigation task. Audience submissions stay in World.
-export async function inspectRoom(ai, image, signal, playerReference, assessingEncounter = false, lastStep = null) {
+export async function inspectRoom(ai, image, signal, playerReference, assessingEncounter = false, lastStep = null, guardBasis = null) {
   const point = {
     type: 'array',
     items: { type: 'integer' },
@@ -22,7 +22,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
     unconfirmed:'The previous check could not confirm the result.',
   };
   const sent = lastStep && directions[lastStep.key];
-  const previous = sent ? lastStep.basisImage : previousFrames.get(ai);
+  const previous = guardBasis || (sent ? lastStep.basisImage : previousFrames.get(ai));
   const response = await ai.models.generateContent({
     model,
     contents: [
@@ -34,7 +34,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
             { inlineData: { mimeType: 'image/webp', data: playerReference } },
           ] : []),
           ...(previous ? [
-            { text: sent ? 'Live image used to choose the last step, before any instruction was sent.' : 'Previous live observation, for motion comparison only.' },
+            { text: guardBasis ? 'Unaltered frame of this same encounter before the explorer responded. Compare the boot contact, helmet, pack, knees and forearm to the current image.' : sent ? 'Live image used to choose the last step, before any instruction was sent.' : 'Previous live observation, for motion comparison only.' },
             { inlineData: {mimeType: 'image/jpeg', data: previous} },
           ] : []),
           { text: 'Live world frame. Inspect and count actors ONLY in the following picture.' },
@@ -46,6 +46,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
             ...(assessingEncounter ? ['With the explorer stopped, compare the next footsteps to the previous picture. Choose how to respond to what is visibly in its way, whether to wait for motion, look, back away, sidestep onto clear floor, or deliberately cross a harmless effect. For a sidestep or retreat, give target as the clear floor patch where both boots should LAND, beyond the obstacle on the chosen side or behind the current feet. Give the obstruction separately in obstacles. If the landing area or feet are hidden, inspect or wait. Mark avoiding true when this choice responds to what you see.'] : []),
             'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame. If you can see a safe next move after this one, specify it in then; it is only a plan for an unchanged scene.',
           ].join(' ') },
+          ...(assessingEncounter ? [{text:'When choosing to hold to avoid a sudden threat, choose guard from duck, shield, recoil, none. Duck under an airborne crossing at helmet height, shield with the free forearm against debris crossing the upper body, or recoil in place from a sudden directly obstructing hazard. Choose none to wait or for any travel choice. Separately classify guardPose from the current pixels only: duck needs deeply bent knees and a lowered head and pack; shield needs a raised forearm visibly covering the helmet; recoil needs a visible backward jolt. Otherwise return none. Do not infer the pose from your chosen action.'}] : []),
           {text:'For every obstacle additionally return floorBox: [top,left,bottom,right] around only the visible footprint on the FLOOR from its backmost to nearest visible contact, in the same 0–1000 coordinates. For a wheeled or legged object use where its visible wheels or legs meet the floor. Exclude its handle, body, cast shadow and surrounding floor. For a flat effect use the visibly occupied floor. If contact is hidden or the effect is airborne, return an empty array. An object’s silhouette alone is not a footprint.'},
           {
             text: 'Count all separate versions of the player in the live frame, including a second robot farther down the aisle. Check whether the visible foreground character matches the reference when provided. Classify the camera as rear-right only if the backpack and right flank are both visible from behind; a face-on or pure profile view is other. Independently classify the physical aisleHeading from floor seams and furniture: diagonal-right when the path leads into depth from the lower-left player toward the upper right; head-on for a centered straight-ahead tunnel, diagonal-left for the opposite diagonal, side-on for a horizontal side-scroller, or unclear if occluded. Use the hallway direction, even while the robot temporarily turns its flashlight to inspect something. If two separate matching robots are visible, report playerCount=2. Exclude unrelated toys, wall art and reflections. Locate the player and the passable signed exit. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; report left/right at the UNDERSIDE of each boot sole where it touches the floor, not the centre of the shoe or ankle. When cropped use [0,0] placeholders for left and right. In a wider diagonal trailing shot both boots can be visible. Measure them when visible; leave them unknown when either boot is obscured. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if floor for the next few steps is visible ahead of the player in the right-hand lane. An obstacle can occupy part of this visible lane. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
@@ -63,6 +64,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
       responseJsonSchema: {
         type: 'object',
         properties: {
+          ...(assessingEncounter && Object.fromEntries(['guard','guardPose'].map(k=>[k,{type:'string',enum:['none','duck','shield','recoil']}]))),
           intent: {type:'string', enum:playerMoves.intents},
           then: {type:'string', enum:playerMoves.intents},
           change: {type:'string'}, reason: {type:'string'}, avoiding: {type:'boolean'}, target: point,
@@ -105,6 +107,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
           },
         },
         required: [
+          ...(assessingEncounter ? ['guard','guardPose'] : []),
           'intent', 'change', 'reason', 'avoiding', 'playerCount', 'robotVisible', 'playerMatch', 'shoulderView', 'aisleHeading',
           'goalVisible',
           'rightFloorVisible',
@@ -140,7 +143,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
   };
   return {
     move: playerMoves.intents.includes(v.intent) ? {
-      intent: v.intent, ...(playerMoves.intents.includes(v.then) && {then:v.then}), target: valid(v.target, 2) ? v.target : undefined,
+      intent: v.intent, ...(assessingEncounter && ['duck','shield','recoil'].includes(v.guard) && {guard:v.guard}), ...(playerMoves.intents.includes(v.then) && {then:v.then}), target: valid(v.target, 2) ? v.target : undefined,
       reason: String(v.reason || '').slice(0, 60), observed: String(v.change || '').slice(0, 80),
       avoiding: v.avoiding === true, robotCount: v.playerCount,
     } : undefined,
@@ -154,6 +157,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
     ...(valid(v.ahead,2)?{ahead:v.ahead}:{}),
     ...(v.goalVisible && valid(v.goal, 2) ? { goal: v.goal } : {}),
     pose: v.pose,
+    ...(assessingEncounter && ['none','duck','shield','recoil'].includes(v.guardPose) && {guardPose:v.guardPose}),
     obstacles: v.obstacles
       .filter(
         (o) => valid(o.box, 4) && o.box[0] <= o.box[2] && o.box[1] <= o.box[3],

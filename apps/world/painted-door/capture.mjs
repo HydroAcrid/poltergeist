@@ -1,3 +1,4 @@
+import {createGuardPickup,guardInstruction} from './defensive-pickup.mjs';
 import { frameSink } from '../rehearsal/video-stream.mjs';
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { checkpointEligible } from '../rehearsal/chapters.mjs';
@@ -129,6 +130,7 @@ async function capture() {
   const moveWindow = createMoveWindow(log.fps);
   const placementView = createPlacementView();
   const encounter = createEncounterControls();
+  const guard = createGuardPickup(log.fps);
   let commands = Promise.resolve(), actorStepTimer;
   let closingOnResponse = false;
   let reviewing = null, lastSight = null, lastStepFeedback = null;
@@ -150,7 +152,7 @@ async function capture() {
   const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
   const noteMotion = () => placementView.moved(motionBoundary());
   let settlingChapter = false, holdChapterCamera = false;
-  const cameraAllowed = () => !holdChapterCamera && !ending && !encounter.held && Date.now()>=steadyUntil && !placementView.held(Date.now());
+  const cameraAllowed = () => !holdChapterCamera && !ending && !encounter.held && !guard.active && Date.now()>=steadyUntil && !placementView.held(Date.now());
   const moving = () => Boolean(cameraPress || actorMoving || actorStopping || actionPending);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
   async function releaseCamera(completing=false) {
@@ -209,7 +211,7 @@ async function capture() {
     const lock = follow.status();
     if (unsafeForwardPress(lock) || lock.distanceHeld && cameraPress && !cameraPress.recovery)
       await releaseCamera();
-    if (encounter.held) {
+    if (encounter.held || guard.active) {
       // A stationary camera stays held through the independent comparison.
       // Losing a moving texture between two semantic reads cannot identify a different actor.
       if (cameraPress) await releaseCamera();
@@ -301,7 +303,7 @@ async function capture() {
           const lock = follow.status();
           const targetValid=Array.isArray(haunt.target) && haunt.target.length===2 &&
             haunt.target.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
-          if (!targetValid || !encounter.canPlace(haunt.id, haunt.attempt, haunt.observed) || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
+          if (guard.active || !targetValid || !encounter.canPlace(haunt.id, haunt.attempt, haunt.observed) || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
             publish({injectionDeferred:haunt.id, attempt:haunt.attempt, observed:haunt.observed});
             record('Held placement for a current single-player view',{id:haunt.id,attempt:haunt.attempt,observed:haunt.observed,holdReason:lock.holdReason});
             return;
@@ -337,21 +339,29 @@ async function capture() {
             placementView.pause(now);
             noteMotion();
           }
-          await Promise.all([releaseCamera(),stopActor(force)]);
+          await Promise.all([releaseCamera(),guard.active ? undefined : stopActor(force)]);
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
-          const instruction=reactionInstruction(command);
+          const isGuard=command.reaction==='guard';
+          if (!isGuard && command.reaction!=='notice') return;
+          const instruction=isGuard ? guardInstruction(command.guard) : reactionInstruction(command);
           const authorized = () => encounter.permits(command) && follow.permitsPlacement(command.observed);
-          if (!instruction || !authorized()) return;
+          if (!instruction || guard.active || reviewing || !authorized()) return;
           moveWindow.settle(log.frames, Date.now(), 1);
           await releaseCamera();
           await stopActor();
-          if(!authorized()) return;
+          if(!authorized() || (isGuard && !guard.reserve(command,lastSight))) return;
           encounter.acted();
           actionPending=true;
-          try { noteMotion(); await session.send(instruction); lastStepFeedback=null; }
+          let guardFrame;
+          try {
+            noteMotion();
+            await session.send(instruction);
+            if (isGuard) { guardFrame=motionBoundary()-1; guard.applied(guardFrame,Date.now()); }
+            lastStepFeedback=null;
+          } catch(error) { if(isGuard) guard.cancel(); throw error; }
           finally { noteMotion(); actionPending=false; }
-          record('Requested robot reaction',{reaction:command.reaction,toward:command.toward});
+          record('Requested robot reaction',{reaction:command.reaction,guard:command.guard,encounter:command.encounter,toward:command.toward,observed:command.observed,appliedFrame:guardFrame});
         } else if(stagePilot && command?.key) {
           // A wider but grounded view can show a bounded sidestep, retreat or
           // flashlight turn. Keep the observer still, and reserve forward travel
@@ -369,6 +379,7 @@ async function capture() {
               ? 'Camera is held for a stationary placement view' : 'Camera is settling';
             return null;
           };
+          if (guard.active) return heldMove(command,'Waiting for the explorer to complete its defensive pose');
           if (reviewing) return heldMove(command,'Waiting for visual feedback from the previous step');
           let reason = reasonHeld();
           if (reason) return heldMove(command, reason);
@@ -469,11 +480,11 @@ async function capture() {
             finish(chapterNumber ? undefined : 'audience').catch(error => abort.abort(error));
           };
           gameClock = setTimeout(() => {
-            const tail = remainingReactionTail(lastStepFeedback, Date.now(), reactionTailMs);
+            const tail = Math.max(guard.tail(Date.now(),reactionTailMs),remainingReactionTail(lastStepFeedback, Date.now(), reactionTailMs));
             if (!tail) return endChapter();
             closingOnResponse = true;
             publish({reactionTailStarted:true});
-            record('Waiting for the encounter response before the cut', {appliedFrame:lastStepFeedback.appliedFrame, maximumMs:tail});
+            record('Waiting for the encounter response before the cut', {appliedFrame:lastStepFeedback?.appliedFrame, maximumMs:tail});
             gameClock = setTimeout(endChapter, tail);
           }, durationMs);
         }
@@ -481,6 +492,16 @@ async function capture() {
           previewFrames.offer({frame:delta.data,frameNumber:log.frames});
         }
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
+        if (stagePilot && !ending && guard.active) {
+          await guard.advance(log.frames,Date.now(),async instruction=>{
+            await session.send(instruction);
+            steadyUntil=Math.max(steadyUntil,Date.now()+1500);
+            moveWindow.settle(log.frames,Date.now(),1.5);
+            encounter.acted();
+            noteMotion();
+            record('Directed defensive recovery',{frame:log.frames});
+          });
+        }
         if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
           follow.push(bytes, log.frames);
           await updateShot(log.frames);
@@ -491,7 +512,7 @@ async function capture() {
           const observed=log.frames, observedAt=Date.now();
           const stepForRead=reviewing;
           if (lastStepFeedback && Date.now()-lastStepFeedback.at>14000) lastStepFeedback=null;
-          inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing,lastStepFeedback).then(async scene=>{
+          inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing || guard.active,lastStepFeedback,guard.basisImage).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
               if (settlingChapter) {
@@ -505,7 +526,9 @@ async function capture() {
               const current = lock.observed === observed;
               const tracked = follow.verified(observed);
               const reviewSubject = stepForRead && reviewing === stepForRead && sameReviewSubject(stepForRead.basisScene, scene);
-              const verifiedScene = tracked || reviewSubject ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
+              const guardReview=guard.observe(scene,observed);
+              if (guardReview) record('Checked defensive pose',guardReview);
+              const verifiedScene = tracked || reviewSubject || guardReview ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
               lastSight=tracked ? {observed,image:delta.data,scene} : null;
               const reviewed=finishReview(stepForRead,observed,verifiedScene.visible ? 'post-step pixels' : 'tracking lost');
               if (reviewed) await stopActor();
@@ -513,16 +536,16 @@ async function capture() {
               // The first purposeful step displacement establishes the new anchor.
               // A subsequent stationary frame can be used for the next command.
               const measurement=encounter.measure(verifiedScene, observed, reviewed ? verifiedScene.visible : settled);
-              const trackingPlacementReady=!reviewed && measurement.stable;
+              const trackingPlacementReady=!guard.active && !reviewed && measurement.stable;
               const drift=!reviewed && measurement.drift;
-              if (!reviewed && !reviewing && !closingOnResponse && encounter.restoreFeet(verifiedScene)) {
+              if (!guard.active && !reviewed && !reviewing && !closingOnResponse && encounter.restoreFeet(verifiedScene)) {
                 await releaseCamera();
                 await session.send("Keep the existing explorer and obstacle standing on their current floorboards. Move only the observer back until both boots, the entire obstacle and the landing floor are visible together. Maintain the over-right-shoulder angle and fixed focal length, then lock the observation point.");
                 noteMotion();
                 publish({cameraMoved:true});
                 record('Reframed to see both boots at the encounter', {observed});
               }
-              if (drift) {
+              if (drift && !guard.active) {
                 // The provider can animate uncommanded travel. Do not inject or
                 // verify from that moving view. Plant the feet and measure again.
                 await stopActor(true);
@@ -530,7 +553,7 @@ async function capture() {
               }
               if (trackingPlacementReady) placementView.offered(Date.now());
               if (!held && current) recoveryRequested = false;
-              if (held && current && !encounter.held && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
+              if (held && current && !guard.active && !encounter.held && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
                 recoveryRequested = true;
                 const instruction = scene.playerCount > 1
                   ? "Restore the original single-subject shot. Keep the existing closest orange backpack on the left, continuously in place. Clear the duplicate explorer farther down the hallway; the floor ahead belongs to the room and its obstacles."
@@ -538,9 +561,9 @@ async function capture() {
                 await session.send(instruction);
                 record('Requested single-subject recovery',{observed,holdReason:lock.holdReason});
               }
-              const checkpoint = chapterNumber && !reviewed && checkpointEligible(verifiedScene,held || !current)
+              const checkpoint = chapterNumber && !guard.active && !reviewed && checkpointEligible(verifiedScene,held || !current)
                 ? chapterSeed(delta.data) : null;
-              publish({scene:verifiedScene,trackingSubjectVerified:tracked,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:reviewed || held || !current,trackingPlacementReady,
+              publish({scene:verifiedScene,...(guardReview && {guardReview}),trackingSubjectVerified:tracked,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:guard.active || reviewed || held || !current,trackingPlacementReady,
                 ...(checkpoint ? {checkpoint} : {})});
               record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }

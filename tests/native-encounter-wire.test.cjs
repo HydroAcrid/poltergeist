@@ -21,7 +21,7 @@ function picture(placed) {
   for(let y=0;y<height;y++) for(let x=0;x<width;x++) {
     const i=(y*width+x)*4;
     const gray=38+(x*3+y*7+x*y)%100;
-    const obstacle=placed && x>=48 && x<=49 && y>=44 && y<=51;
+    const obstacle=(placed==='guard' && x>=13 && x<30 && y>=28 && y<=43) || placed && x>=48 && x<=49 && y>=44 && y<=51;
     data.set(obstacle ? [252,208,28,255] : [gray,gray,gray,255],i);
   }
   return jpeg.encode({width,height,data},70).data.toString('base64');
@@ -38,11 +38,13 @@ async function eventually(fn, ms=10_000) {
   throw Error('Timed out waiting for the local rehearsal');
 }
 
-test('the normal Crowd, Brain and World send one stationary encounter response through the SDK WebSocket', {timeout:40_000}, async t=>{
+test('the normal Crowd, Brain and World send one stationary encounter response through the SDK WebSocket', {timeout:40_000}, t=>wireEncounter(t,false));
+test('a visual hold at a crossing directs one duck and one later recovery through the current SDK WebSocket', {timeout:40_000}, t=>wireEncounter(t,true));
+async function wireEncounter(t,defensive) {
   const dir=await mkdtemp(join(tmpdir(),'pg-encounter-wire-'));
   await symlink(join(native,'capture.mjs'),join(dir,'capture.mjs'));
   await symlink(join(native,'node_modules'),join(dir,'node_modules'));
-  const empty=picture(false),blocked=picture(true);
+  const empty=picture(false),blocked=picture(true),crouching=picture('guard');
   const wire=[]; let current=empty, frames=0, timer;
   const visionReads=[];
   const provider=createServer(async(req,res)=>{
@@ -54,7 +56,7 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
       const parts=payload.contents.flatMap(c=>c.parts);
       const images=parts.filter(p=>p.inlineData);
       const input=images.at(-1).inlineData.data;
-      const placement=input===blocked;
+      const placement=input===blocked || input===crouching;
       let result;
       if(payload.generationConfig.responseJsonSchema.properties.view) {
         result={playerCount:1,view:'right-shoulder',routeVisible:true,diagonal:true,standingOnFloor:true,bodyBox:[270,65,950,355]};
@@ -68,13 +70,18 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
           leaked:instructions.includes('A small cart rolls across the aisle.')});
         // Sri measured 3.1–4.7 seconds between native observations. Include
         // delayed pixel reads instead of advancing World and Brain in lockstep.
-        await sleep(visionReads.length % 2 ? 2670 : 3150);
+        await sleep(defensive ? 550 : visionReads.length % 2 ? 2670 : 3150);
         result={intent:placement?'step_left':'hold',avoiding:placement,change:placement?'A small cart occupies the next step.':'The aisle is clear.',
           reason:placement?'Clear floor to the left.':'Look down the aisle.',target:[650,180],playerCount:1,robotVisible:true,
           playerMatch:true,shoulderView:'rear-right',aisleHeading:'diagonal-right',goalVisible:true,rightFloorVisible:true,
           feetVisible:true,doorwayProgress:'approaching',bodyBox:[270,65,950,355],upperBodyBox:[290,104,600,319],
           left:[935,186],right:[935,228],goal:[330,600],ahead:[660,400],pose:'upright',threat:'ordinary',
           obstacles:placement?[{label:'small cart',box:[610,376,715,393],relation:'ordinary',solid:true}]:[]};
+        if (defensive) {
+          Object.assign(result,{intent:placement?'hold':'walk',guard:placement?'duck':'none',guardPose:input===crouching?'duck':'none',
+            threat:placement?'startling':'ordinary',bodyBox:[input===crouching?400:270,65,950,355],
+            obstacles:placement?[{label:'flying papers',box:[280,100,830,770],relation:'crossing',solid:false}]:[]});
+        }
       }
       value={candidates:[{content:{role:'model',parts:[{text:JSON.stringify(result)}]},finishReason:'STOP'}]};
     } else {
@@ -93,6 +100,7 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
       },1000/24);
     }
     if(event.event_type==='input' && event.content[0].text.includes('planned next footfall')) current=blocked;
+    if(defensive && event.content?.[0]?.text.includes('Bend both knees deeply')) current=crouching;
     if(event.event_type==='interaction.complete' || event.event_type==='interaction.cancel') {
       clearInterval(timer);socket.send(JSON.stringify({event_type:'interaction.completed'}));
     }
@@ -130,8 +138,33 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   await eventually(async()=>((await state()).round?.phase==='playing'));
   const guest=await fetch(base+'/api/crowd/state');
   const cookie=guest.headers.get('set-cookie').split(';')[0];
-  const submit=await post('/api/crowd/haunt',{text:'A small cart rolls across the aisle.'},cookie);
+  const submit=await post('/api/crowd/haunt',{text:defensive ? 'A gust blows loose papers across the aisle' : 'A small cart rolls across the aisle.'},cookie);
   assert.ok(submit.ok,await submit.text());
+  if (defensive) {
+    const text=({event})=>event.content?.[0]?.text || '';
+    const observed=await eventually(async()=>{
+      const round=(await state()).round;
+      return round.props[0]?.guardReview && round;
+    },24000);
+    assert.equal(observed.fear,0);
+    assert.equal(observed.props[0].observedReaction,'defend');
+    const receipt=observed.props[0].guardReview;
+    await eventually(()=>wire.some(x=>text(x).includes('straighten its knees')));
+    const insert=wire.filter(x=>text(x).includes('planned next footfall'));
+    const action=wire.filter(x=>text(x).includes('Bend both knees deeply'));
+    const recovery=wire.filter(x=>text(x).includes('straighten its knees'));
+    assert.deepEqual([insert.length,action.length,recovery.length],[1,1,1]);
+    assert.ok(receipt.checkedFrame>receipt.appliedFrame && action[0].frame>insert[0].frame);
+    assert.ok(recovery[0].frame-action[0].frame>=96);
+    const between=wire.filter(x=>x.frame>action[0].frame && x.frame<recovery[0].frame);
+    assert.ok(between.every(x=>x.event.action!=='key_down' && !text(x).includes('Stop the existing explorer')));
+    assert.equal(wire.filter(x=>x.event.event_type==='world_setup').length,1);
+    t.diagnostic('Placement on wire '+insert[0].frame+', defensive direction '+action[0].frame+', checked pose '+receipt.checkedFrame+', recovery '+recovery[0].frame);
+    const stopped=await post('/rehearsal/stop');
+    assert.equal(stopped.status,200,await stopped.text());
+    await eventually(async()=>!(await state()).providerClosing);
+    return;
+  }
   let round;
   const sidestep=/clear patch on its left/i;
   try {
@@ -186,4 +219,4 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   t.diagnostic('The next picture at '+result.checkedFrame+' still showed the obstruction. The stop reached the wire at '+stop.frame+'.');
   await post('/rehearsal/stop');
   await eventually(async()=>!(await state()).providerClosing);
-});
+}

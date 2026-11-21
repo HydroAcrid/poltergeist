@@ -7,6 +7,7 @@ const timeoutMs = 18000;
 const outcomes = {
   sidestep:'The explorer visibly repositions its boots sideways around the same obstruction, increasing clearance relative to fixed floor landmarks.',
   retreat:'The explorer physically steps backward, increasing distance to the obstruction.',
+  defend:'The explorer physically ducks with bent knees and visibly lowered head and backpack, or raises its free forearm across its helmet to shield itself while its boots stay planted. A pause, flashlight glance or passing obstacle alone is insufficient.',
   scare:'The body visibly recoils, jumps or stumbles at the obstruction.',
   none:'No clear physical response. A moving object, moving camera, changed flashlight direction or ordinary forward stride alone belongs here.',
   unclear:'The frames do not show enough to distinguish the motions.',
@@ -25,8 +26,8 @@ export function selectReviewFrames(evidence,frameCount,fps) {
   const recent = Math.max(1,frameCount-Math.ceil(fps*2));
   const pairs = evidence.picks.map((p,index) => {
     const scare = p.scare === true && p.reaction === 'scare';
-    const before = [scare ? p.inPathFrame : p.response?.basis,p.inPathFrame,p.visibleFrame,p.deliveredFrame,recent].find(valid);
-    const after = [scare ? p.reactedFrame : p.response?.checkedFrame,p.reactedFrame,frameCount].find(n=>valid(n) && n>before) ?? frameCount;
+    const before = [p.guardReview?.basis ?? (scare ? p.inPathFrame : p.response?.basis),p.inPathFrame,p.visibleFrame,p.deliveredFrame,recent].find(valid);
+    const after = [p.guardReview?.checkedFrame ?? (scare ? p.reactedFrame : p.response?.checkedFrame),p.reactedFrame,frameCount].find(n=>valid(n) && n>before) ?? frameCount;
     return {index:index+1,before,after};
   });
   const frames = [...new Set([...(pairs.length ? pairs.flatMap(p=>[p.before,p.after]) : [recent]),frameCount])].sort((a,b)=>a-b);
@@ -104,7 +105,7 @@ export function filmedVeto(evidence,result) {
   for (const [i,p] of evidence.picks.entries()) {
     const event=result.events[i];
     if (event?.index!==i+1 || !validOutcome(event.argon) || !validOutcome(event.decisions)) throw unavailable();
-    const expected = p.scare && p.reaction==='scare' ? 'scare' : p.response?.outcome==='route-open' ? 'sidestep' :
+    const expected = p.reaction==='defend' && p.guardReview ? 'defend' : p.scare && p.reaction==='scare' ? 'scare' : p.response?.outcome==='route-open' ? 'sidestep' :
       p.response?.outcome==='backed-away' ? 'retreat' : null;
     if (expected && (event.argon!==expected || event.decisions!==expected))
       return 'The visual reviewers could not confirm the filmed reaction.';

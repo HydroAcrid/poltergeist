@@ -1,3 +1,4 @@
+import {guardMatchesView} from '../painted-door/defensive-pickup.mjs';
 // All public coordinates are [y,x] on the original, uncropped frame, 0–1000.
 const aspect = 16 / 9;
 const point = (p) =>
@@ -534,7 +535,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       if (!job || job.closed || job.prop.attempt !== attempt) return;
       closeJob(job, job.prop.acked ? 'unverified' : 'failed');
     },
-    observe(scene, frame, at, time = now(), placementReady = true) {
+    observe(scene, frame, at, time = now(), placementReady = true, guardReview = null) {
       if (!Number.isInteger(frame) || !Number.isFinite(at) || at > time || (latest && (frame <= latest.frame || at < latest.at))) return;
       expire(time);
       latest = { scene, frame, at, received: time, placementReady };
@@ -550,6 +551,21 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         // pre-send frame cannot verify a send, even if it arrives afterward.
         const p = job.prop;
         const result = inspectPlacement(scene, job.effect, job.baseline);
+        const directed=job.guard;
+        if (guardReview && directed && !p.reactedAt && guardReview.encounter===p.id &&
+            guardReview.guard===directed.guard && guardReview.basis===directed.basis &&
+            Number.isInteger(guardReview.appliedFrame) && guardReview.appliedFrame>=directed.basis &&
+            guardReview.checkedFrame===frame && frame>guardReview.appliedFrame &&
+            scene.guardPose===directed.guard && scene.visible && scene.playerCount===1 && scene.playerMatch &&
+            scene.shoulderView==='rear-right' && scene.feetVisible && freshObservation(latest,time,lastMove)) {
+          const scare=directed.guard==='recoil' && scene.pose==='startled';
+          p.guardReview={...guardReview};
+          p.reactedAt=at;
+          p.observedReaction=scare ? 'scare' : 'defend';
+          if (scare) round.fear++;
+          round.lastReaction={at,presentedAt:time,name:p.name,flinch:scare};
+          closeJob(job);
+        }
         if (job.step?.reviewFrame===frame) {
           const step=job.step;
           const outcome=freshObservation(latest,time,lastMove) ?
@@ -581,19 +597,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
             p.assessment = ['ordinary', 'startling'].includes(scene.threat)
               ? scene.threat
               : 'unclear';
-            if (
-              result.soleThreat &&
-              scene.threat === 'startling' && scene.move?.intent === 'hold' &&
-              scene.pose === 'upright' &&
-              !p.reactionRequestedAt && latest.placementReady &&
-              freshObservation(latest, time, lastMove)
-            ) {
-              // An animation request is an intention. Only a subsequent, independent
-              // visible change in pose can contribute to the fear meter.
-              p.reactionRequestedAt = time;
-              job.lastReactionFrame = frame;
-              send({ reaction: 'startle', encounter: p.id, observed: frame });
-            }
+            job.soleThreat=result.soleThreat;
             const visibleStumble = scene.feetVisible !== false && result.contact && scene.pose === 'stumbling';
             const visibleStartle =
               result.soleThreat &&
@@ -646,13 +650,22 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     },
     characterCommand(decision, at = now()) {
       const key = decision.action.key;
-      if (key === 'NOOP' || this.navigationPaused(at)) return null;
+      if (this.navigationPaused(at)) return null;
       const command = { key, ms: decision.action.holdMs };
       const job = active();
-      if (!job) return command;
+      if (!job) return key === 'NOOP' ? null : command;
       if (job.lastCommandFrame === latest.frame) return null;
       const { prop } = job;
       const scene = latest.scene;
+      if (key === 'NOOP') {
+        const matching = scene.obstacles.filter(o=>job.effect.matches(o.label));
+        if (job.guard || matching.length!==1 || !job.soleThreat || scene.guardPose!=='none' || decision.decision?.source!=='model' ||
+            decision.decision.intent!=='hold' || !guardMatchesView(scene,matching[0])) return null;
+        job.guard={guard:scene.move.guard,basis:latest.frame};
+        job.lastReactionFrame=latest.frame;
+        prop.reactionRequestedAt=at;
+        return {reaction:'guard',guard:scene.move.guard,encounter:prop.id,observed:latest.frame};
+      }
       if (key === 'W') {
         // A passable effect may be crossed deliberately. A routine walk, or a
         // walk into a solid obstruction, cannot serve as an encounter response.
