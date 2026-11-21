@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { HauntTag } from "@poltergeist/contracts/common.js";
 import { Verdict } from "@poltergeist/contracts/verdict.js";
 import { failureTime, ruleVerdict, type RefereeInput } from "../server/referee.js";
 
@@ -75,5 +76,89 @@ describe("rule details", () => {
       expect(v.evidence.length).toBeLessThanOrEqual(5);
       for (const e of v.evidence) expect(e.note.length).toBeLessThanOrEqual(80);
     }
+  });
+});
+
+// Synthetic edge cases (no Brain bundle needed). All have a non-empty lost run L, so none depend on
+// the open question of how to score a timeout where the target stayed visible.
+describe("rule edge cases (synthetic ticks)", () => {
+  const EP = "ep_01JDPG00000000000000000099";
+  type T = RefereeInput["ticks"][number];
+  const tk = (seq: number, visible: boolean, o: Partial<Omit<T, "perception">> & { conf?: number } = {}): T => ({
+    seq, t: seq * 500, perception: { visible, conf: o.conf ?? (visible ? 0.9 : 0.1) }, action: o.action ?? { key: "W", holdMs: 600 }, mode: o.mode ?? (visible ? "track" : "search"),
+  });
+  /** Visible for seq 0..lostAt-1 (last one customisable), lost from lostAt to 29. */
+  const ticks = (lostAt: number, last: Partial<Omit<T, "perception">> & { conf?: number } = {}) =>
+    Array.from({ length: 30 }, (_, s) => (s < lostAt ? tk(s, true, s === lostAt - 1 ? last : {}) : tk(s, false)));
+  const input = (o: Partial<RefereeInput>): RefereeInput => ({
+    episode: { episodeId: EP }, ended: { episodeId: EP, reason: "timeout", durationMs: 15000 }, ticks: ticks(18), injected: [], haunts: [], ...o,
+  });
+  const haunt = (id: string, tags: HauntTag[]) => ({ hauntId: id, moderated: { tags, text: `text of ${id}` } });
+
+  it("picks the latest visual haunting in the window as the culprit", () => {
+    const v = ruleVerdict(input({
+      injected: [{ hauntId: "ht_a", t: 3000, ok: true }, { hauntId: "ht_b", t: 7000, ok: true }, { hauntId: "ht_c", t: 8500, ok: true }],
+      haunts: [haunt("ht_a", ["visibility"]), haunt("ht_b", ["lighting"]), haunt("ht_c", ["occlusion"])],
+    }), NOW);
+    expect(v).toMatchObject({ blame: "adversary", culpritHauntId: "ht_c", failureT: 9000 });
+  });
+
+  it("skips a later non-visual (audio) haunting and blames the earlier visual one", () => {
+    const v = ruleVerdict(input({
+      injected: [{ hauntId: "ht_fog", t: 5000, ok: true }, { hauntId: "ht_alarm", t: 8500, ok: true }],
+      haunts: [haunt("ht_fog", ["visibility"]), haunt("ht_alarm", ["audio"])],
+    }), NOW);
+    expect(v).toMatchObject({ blame: "adversary", culpritHauntId: "ht_fog" });
+  });
+
+  it("never blames an audio/other-only haunting, or one with no known record", () => {
+    const audio = ruleVerdict(input({ injected: [{ hauntId: "ht_alarm", t: 8500, ok: true }], haunts: [haunt("ht_alarm", ["audio", "other"])] }), NOW);
+    expect(audio.blame).not.toBe("adversary");
+    const unknown = ruleVerdict(input({ injected: [{ hauntId: "ht_ghost", t: 8500, ok: true }] }), NOW);
+    expect(unknown.blame).not.toBe("adversary");
+    expect(unknown.culpritHauntId).toBeUndefined();
+  });
+
+  it("sorts ticks by seq, so out-of-order delivery gives the same verdict", () => {
+    const inOrder = input({ ticks: ticks(18, { action: { key: "NOOP", holdMs: 0 } }) });
+    const shuffled = { ...inOrder, ticks: [...inOrder.ticks].reverse() };
+    expect(ruleVerdict(shuffled, NOW)).toEqual(ruleVerdict(inOrder, NOW));
+    expect(ruleVerdict(shuffled, NOW)).toMatchObject({ blame: "world", failureT: 9000 });
+  });
+
+  it("counts search/unstick ticks as lost even while the target is visible", () => {
+    const t = ticks(18).map((k) => (k.seq >= 14 && k.seq < 18 ? { ...k, mode: k.seq % 2 ? "unstick" : "search" } : k));
+    expect(failureTime(t)).toBe(7000);
+  });
+
+  it("world vs agent: small-action and confidence boundaries on the tick before L", () => {
+    const blame = (last: Partial<Omit<T, "perception">> & { conf?: number }) => ruleVerdict(input({ ticks: ticks(18, last) }), NOW).blame;
+    expect(blame({ action: { key: "NOOP", holdMs: 0 } })).toBe("world");
+    expect(blame({ action: { key: "ArrowLeft", holdMs: 150 } })).toBe("world");
+    expect(blame({ action: { key: "ArrowRight", holdMs: 151 } })).toBe("agent");
+    expect(blame({ action: { key: "W", holdMs: 400 } })).toBe("world");
+    expect(blame({ action: { key: "S", holdMs: 401 } })).toBe("agent");
+    expect(blame({ action: { key: "NOOP", holdMs: 0 }, conf: 0.7 })).toBe("world");
+    expect(blame({ action: { key: "NOOP", holdMs: 0 }, conf: 0.69 })).toBe("agent");
+  });
+
+  it("a failure with no ticks at all is the agent's, at failureT 0", () => {
+    const v = ruleVerdict(input({ ticks: [] }), NOW);
+    expect(v).toMatchObject({ outcome: "failure", blame: "agent", failureT: 0 });
+    expect(Verdict.parse(v).evidence[0]?.note).toBe("Target never visible this round");
+  });
+
+  it("aborts only under 10 s: exactly 10 000 ms is a failure", () => {
+    expect(ruleVerdict(input({ ended: { episodeId: EP, reason: "operator_stop", durationMs: 10000 } }), NOW).outcome).toBe("failure");
+    expect(ruleVerdict(input({ ended: { episodeId: EP, reason: "timeout", durationMs: 3000 } }), NOW).outcome).toBe("failure");
+  });
+
+  it("clips long haunting text in evidence to 80 characters and stays a valid Verdict", () => {
+    const v = ruleVerdict(input({
+      injected: [{ hauntId: "ht_01JDPG00000000000000000099", t: 8000, ok: true }],
+      haunts: [{ hauntId: "ht_01JDPG00000000000000000099", moderated: { tags: ["visibility"], text: "x".repeat(120) } }],
+    }), NOW);
+    expect(v.evidence[0]!.note.length).toBeLessThanOrEqual(80);
+    Verdict.parse(v);
   });
 });
