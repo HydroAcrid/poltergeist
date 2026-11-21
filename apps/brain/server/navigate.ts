@@ -57,6 +57,18 @@ export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block
   return undefined;
 }
 
+/**
+ * Signed image-space angle from the robot's facing to the exit, as seen from
+ * the boots: −1 = 90° left … 0 = straight ahead … 1 = 90° right.
+ */
+export function bearing(feet: Point, facing: Point, goal: Point): number {
+  const angle = (p: Point) => Math.atan2(p[1] - feet[1], feet[0] - p[0]);
+  let d = angle(goal) - angle(facing);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  if (d < -Math.PI) d += 2 * Math.PI;
+  return clamp(d / (Math.PI / 2), -1, 1);
+}
+
 function clock(e: number): string {
   const h = Math.round(e * 3);
   return `${h === 0 ? 12 : h > 0 ? h : 12 + h} o'clock`;
@@ -97,8 +109,11 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   }
   s.successTicks = 0;
 
-  const e = (goal[1] - n.headingX) / 500; // exit bearing relative to the camera heading
-  const forward = blockingObstacle(scene, [goal[0], n.headingX], policy);
+  // Facing: ER 2's forward floor point when it reports one (trailing camera);
+  // otherwise assume the follow camera looks along the robot (headingX).
+  const facing: Point = scene.forward ?? [goal[0], n.headingX];
+  const e = bearing(mid, facing, goal);
+  const forward = blockingObstacle(scene, facing, policy);
   const toGoal = blockingObstacle(scene, goal, policy);
 
   // Exit is off to one side and the way there is clear: turn toward it.

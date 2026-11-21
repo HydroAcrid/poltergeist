@@ -38,12 +38,16 @@ function contractsFallback(): Plugin {
   };
 }
 
-export default defineConfig({
+// `vitest run --mode live` (pnpm probe:live) runs only test/live, which calls the
+// real Gemini API with GEMINI_API_KEY from the repo's git-ignored .env.
+// Every other run excludes it, so ordinary tests never make paid calls.
+export default defineConfig(({ mode }) => ({
   plugins: [contractsFallback()],
   resolve: {
     alias: [{ find: /^zod$/, replacement: fileURLToPath(import.meta.resolve("zod")) }],
   },
-  test: {
-    include: ["test/**/*.test.ts"],
-  },
-});
+  test:
+    mode === "live"
+      ? { include: ["test/live/**/*.test.ts"], env: { PG_LIVE: "1" }, testTimeout: 180_000 }
+      : { include: ["test/**/*.test.ts"], exclude: ["test/live/**", "node_modules/**"] },
+}));

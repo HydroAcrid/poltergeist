@@ -30,6 +30,8 @@ export interface Scene {
   feet: { left: Point; right: Point };
   obstacles: { point: Point; box?: Box }[];
   goal?: Point;
+  /** Floor point about two strides straight ahead of the boots (the robot's facing). */
+  forward?: Point;
   pose: "upright" | "stumbling";
 }
 
