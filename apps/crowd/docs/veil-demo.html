@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost veil demo</title>
+<style>
+html,body{margin:0;height:100%;background:#000;color:#fff6e8;font:16px system-ui,sans-serif;overflow:hidden}
+.scene{position:fixed;inset:0;background:#000 center/cover no-repeat}
+.hud{position:fixed;top:1.4vw;right:1.6vw;z-index:10;display:flex;gap:.7vw}
+.pill{background:rgba(18,16,14,.8);border:1px solid rgba(255,246,232,.16);border-radius:3vw;padding:.55vw 1.05vw;font-size:1.2vw}
+.pill b{font:700 1.5vw ui-monospace,monospace;color:#ffc08d}
+.controls{position:fixed;left:1.6vw;bottom:1.4vw;z-index:10;display:flex;gap:.5vw}
+.controls button{font:inherit;font-size:.9vw;padding:.4vw .8vw;border-radius:2vw;border:1px solid rgba(255,246,232,.3);background:rgba(18,16,14,.8);color:#fff6e8;cursor:pointer}
+.tag{position:fixed;left:50%;bottom:.4vw;transform:translateX(-50%);z-index:10;font-size:.7vw;color:rgba(255,246,232,.45)}
+</style>
+</head>
+<body>
+<div class="scene" id="scene"></div>
+<div class="hud"><span class="pill" id="phase">Ideas open</span><span class="pill">Robot moves in <b id="clock">0:30</b></span></div>
+<div class="controls">
+  <button id="cover">1 · Opening: cover</button>
+  <button id="part">2 · Live motion: part</button>
+  <button id="reset">Reset</button>
+  <button id="auto">Auto demo</button>
+</div>
+<div class="tag" id="tag">DEMO · ghost veil · state: idle</div>
+<script type="module">
+// The veil sits under the HUD (zIndex 5 < 10), so the countdown stays readable.
+import { createGhostVeil } from "/veil/ghost-veil.js";
+const VENUE = "/world/painted-door/haunting/aisle.jpg"; // the empty venue photo
+const LIVE = "/world/robot-v1/hallway.webp";             // stands in for the live Genie feed
+const scene = document.getElementById("scene");
+const veil = createGhostVeil(document.body, { zIndex: 5, reducedMotion: new URLSearchParams(location.search).has("still") });
+const show = (src) => (scene.style.backgroundImage = `url(${src})`);
+const tag = () => (document.getElementById("tag").textContent = "DEMO · ghost veil · state: " + veil.state);
+setInterval(tag, 100);
+show(VENUE);
+async function cover() {
+  show(VENUE);
+  await veil.cover();
+  show(LIVE); // swapped while fully covered, so the swap is never seen
+  document.getElementById("phase").textContent = "Genie is preparing…";
+}
+async function part() {
+  await veil.part();
+  document.getElementById("phase").textContent = "Round 1 live";
+}
+document.getElementById("cover").onclick = cover;
+document.getElementById("part").onclick = part;
+document.getElementById("reset").onclick = () => location.reload();
+document.getElementById("auto").onclick = async () => {
+  setTimeout(cover, 600);
+  setTimeout(part, 6000); // a slow start: the veil keeps breathing until motion arrives
+};
+if (new URLSearchParams(location.search).has("auto")) document.getElementById("auto").click();
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 // Real crowd LaneModule (CONTRACTS C18). The hub picks it with PG_CROWD=real.
 import type { HubContext, LaneModule } from "@poltergeist/contracts/hub-types.js";
 import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
-import { HAUNT_PAGE, loadPresets, loadSeededPool } from "./load.js";
+import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
 import type { ModerationAdapter } from "./moderation/types.js";
@@ -41,7 +41,7 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
       opts.onService?.(service);
       await registerCrowdRoutes(app, service, {
         operatorToken: ctx.env.PG_OPERATOR_TOKEN || undefined,
-        hauntPagePath: HAUNT_PAGE,
+        hauntPagePath: HAUNT_PAGE, overlayPagePath: OVERLAY_PAGE, overlayModelPath: OVERLAY_MODEL, veilDir: VEIL_DIR, publicUrl: ctx.env.PG_PUBLIC_URL || undefined,
         validateResponses: ctx.instance !== "prod",
       });
       if (opts.autoTick !== false) service.start();

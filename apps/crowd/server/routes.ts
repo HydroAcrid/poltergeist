@@ -1,6 +1,7 @@
 // Crowd HTTP surface (CONTRACTS C17) and the /haunt page.
 import { readFileSync } from "node:fs";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import QRCode from "qrcode";
 import { CrowdState, HauntSubmitRequest, type ErrorCode } from "@poltergeist/contracts/haunt.js";
 import type { CrowdService } from "./crowd.js";
 import { DEVICE_ID_RE, newDeviceId } from "./ids.js";
@@ -34,6 +35,10 @@ function fail(reply: FastifyReply, http: number, code: ErrorCode, message: strin
 export interface RouteOptions {
   operatorToken?: string;
   hauntPagePath: string;
+  overlayPagePath?: string;
+  overlayModelPath?: string;
+  veilDir?: string;
+  publicUrl?: string; // PG_PUBLIC_URL; the join QR points at <publicUrl>/haunt
   validateResponses?: boolean;
 }
 
@@ -62,6 +67,46 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     const token = req.headers["x-pg-token"];
     if (!opts.operatorToken || token !== opts.operatorToken) return fail(reply, 401, "UNAUTHORIZED", "Operator token required.");
     return crowd.allHaunts();
+  });
+
+  // Projector overlay (transparent; World layers it over /stage) and its pure logic module.
+  if (opts.overlayPagePath && opts.overlayModelPath) {
+    const overlayPage = opts.overlayPagePath;
+    const overlayModel = opts.overlayModelPath;
+    app.get("/overlay", async (_req, reply) => {
+      reply.header("cache-control", "no-cache").type("text/html; charset=utf-8");
+      return readFileSync(overlayPage, "utf8");
+    });
+    app.get("/overlay-model.js", async (_req, reply) => {
+      reply.header("cache-control", "no-cache").type("text/javascript; charset=utf-8");
+      return readFileSync(overlayModel, "utf8");
+    });
+  }
+
+  // Ghost veil for World's opening transition (art direction: Crowd). World imports
+  // /veil/ghost-veil.js and calls cover()/part(); see apps/crowd/docs/veil.md.
+  if (opts.veilDir) {
+    const veilDir = opts.veilDir;
+    for (const file of ["ghost-veil.js", "veil-machine.js"]) {
+      app.get(`/veil/${file}`, async (_req, reply) => {
+        reply.header("cache-control", "no-cache").type("text/javascript; charset=utf-8");
+        return readFileSync(`${veilDir}/${file}`, "utf8");
+      });
+    }
+  }
+
+  // QR for the join link, rendered server-side so the overlay stays dependency-free.
+  const qrCache = new Map<string, string>();
+  app.get("/api/crowd/join.svg", async (req, reply) => {
+    const host = String(req.headers.host ?? "localhost").replace(/[^A-Za-z0-9.:\-\[\]]/g, "");
+    const url = (opts.publicUrl || `${req.protocol}://${host}`).replace(/\/$/, "") + "/haunt";
+    let svg = qrCache.get(url);
+    if (!svg) {
+      svg = await QRCode.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#171614", light: "#fff6e8" } });
+      qrCache.set(url, svg);
+    }
+    reply.header("cache-control", "no-cache").type("image/svg+xml");
+    return svg;
   });
 
   app.get("/haunt", async (_req, reply) => {

@@ -8,6 +8,22 @@ Crowd's answer to World's [conductor brief](../../../FEATURES.md#the-audience-co
 | **Live, t = 24 s** | ![Projector, live](sidebar-projector.jpg) | ![Phone, live](sidebar-phone.jpg) |
 | **Over: fear win** | ![Projector, round over](sidebar-projector-over.jpg) | (same phase bar on the phone) |
 
+## Projector overlay (supersedes the sidebar mocks above)
+
+World's direction (#2): the projector is a full-bleed game view from the trailing camera behind the robot's right shoulder, with the action first. The field ahead of the flashlight stays clear and captions stay at the edge. No heading, host controls or full queue on the field by default. Mock: [`projector-mock.html`](projector-mock.html) (`?state=opening|upnext|sent|seen|drawer|over`), served by `pnpm dev` at `/dev/docs/projector-mock.html`.
+
+| Opening | Up next | Sent to the hallway |
+|---|---|---|
+| ![](projector-1-opening.jpg) | ![](projector-2-up-next.jpg) | ![](projector-3-sent.jpg) |
+| **In the hallway** (camera evidence) | **Operator drawer** (opened from /operator) | **Result** |
+| ![](projector-4-seen.jpg) | ![](projector-5-drawer.jpg) | ![](projector-6-over.jpg) |
+
+- **One compact card, top-left edge.** It walks one idea through the stages: "Up next · in 0:08" → **"Sent to the hallway"** on `haunt.injected` (watching for it…) → **"In the hallway"** plus the robot's reaction, only with separate camera evidence (`haunt.seen`).
+- **Top-right pills:** round, time left and scares. At the **bottom-left**, a small goal line. At the **bottom-right**, the QR code: large during the opening and on the result screen, small during play.
+- **Operator drawer:** shows Up next, Pending with the conductor's reasons, and what was sent this round. It's operator-only, closed by default, and the pills shift left so the timer stays visible.
+- **The ghost cue is World's,** drawn at the site of the change. Crowd draws nothing in the field.
+- Sizes are in `vw`, so the same layout scales from a laptop to a 1080p or 4K projector.
+
 ## Round phases (matching on both screens)
 
 | Phase | Phase bar and HUD | Phone | Conductor |

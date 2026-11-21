@@ -1,0 +1,1 @@
+`rehearsal-*.json` are World's actual `GET /rehearsal/state` bodies, posted on #2 (issuecomment-7067537422) from a no-key rehearsal on `codex/team-world-rehearsal` (`776a686`). `rehearsal-native-selected.json` is World's "selected fields" excerpt from a live Genie round. Crowd only reads them; if World's shape changes, replace them with fresh captures.

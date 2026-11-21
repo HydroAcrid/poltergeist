@@ -45,6 +45,51 @@ app.get("/dev", async (_req, reply) =>
 <p id=out></p><p><a href="/haunt">Open /haunt</a></p></body>`),
 );
 
+// DEV-ONLY stand-in for World's GET /rehearsal/state, shaped like World's description on #2
+// (Unix-ms timestamps, trackedAt, integer `observed` frame, trackedFeet [y,x] 0–1000, props with
+// acked/seen/inPath/reactedAt). The real route comes from World's rehearsal host. Each injected
+// haunting is walked through seen (+1.5 s), in path (+3 s) and reacted (+5 s) so the overlay can
+// be demoed; the robot drifts left to right across the round.
+const injectedAt = new Map<string, number>();
+bus.subscribe(["haunt.injected"], (e) => {
+  const p = e.payload as { hauntId: string; ok: boolean };
+  if (p.ok) injectedAt.set(p.hauntId, Date.now());
+});
+bus.subscribe(["episode.started"], () => injectedAt.clear());
+app.get("/rehearsal/state", async () => {
+  const now = Date.now();
+  const ep = world.current;
+  const frac = ep ? Math.min(1, (now - ep.startedAt) / ep.maxDurationMs) : 0;
+  // Same field conventions as World's real bodies (apps/crowd/test/fixtures/rehearsal-*.json):
+  // id/placedAt/acked/seen/inPath booleans, reactedAt 0 until it happens, response "flinch".
+  const props = [...injectedAt].map(([id, at]) => ({
+    id,
+    placedAt: at,
+    acked: true,
+    seen: now - at > 1500,
+    inPath: now - at > 3000,
+    response: "flinch",
+    reactedAt: now - at > 5000 ? at + 5000 : 0,
+  }));
+  return {
+    round: {
+      phase: ep ? "playing" : "opening",
+      deadline: ep ? ep.startedAt + ep.maxDurationMs : now + 24_000,
+      startedAt: ep ? ep.startedAt : 0,
+      fear: Math.min(3, props.filter((p) => p.reactedAt).length),
+      props,
+      winner: null,
+      finishedAt: 0,
+      live: false,
+    },
+    trackedFeet: [740, Math.round(250 + frac * 550)],
+    trackedAt: now - 300,
+    observed: Math.round(frac * 1440),
+    queue: [],
+    now,
+  };
+});
+
 // Design mocks (apps/crowd/docs) and World's shared art (apps/world/robot-v1), read-only.
 const here = dirname(fileURLToPath(import.meta.url));
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png" };
@@ -55,7 +100,7 @@ const serveFrom = (root: string) => async (req: { params: unknown }, reply: { co
   return reply.type(TYPES[extname(file)] ?? "application/octet-stream").send(readFileSync(file));
 };
 app.get("/dev/docs/*", serveFrom(resolve(here, "../docs")));
-app.get("/world/robot-v1/*", serveFrom(resolve(here, "../../world/robot-v1")));
+app.get("/world/*", serveFrom(resolve(here, "../../world")));
 
 await app.listen({ port, host: "0.0.0.0" });
 const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;

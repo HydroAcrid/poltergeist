@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poltergeist overlay</title>
+<style>
+/* Transparent projector overlay that World layers over /stage. Action first: Crowd draws only
+   at the edges. One transient card goes opposite the robot; with no reliable robot position it
+   folds into a short status line in the top margin. Sizes in vw scale to any projector.
+   Query: ?world=<origin> (where /rehearsal/state lives; default same origin) · ?drawer=1
+   (operator queue) · ?bg=1 (preview with the hallway still behind it). */
+:root{--paper:#fff6e8;--muted:#c1b7ae;--amber:#ffc08d;--sage:#a9bfa2;--glass:rgba(18,16,14,.8);--line:rgba(255,246,232,.16)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:transparent;color:var(--paper);font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+body.bg{background:#000 url(/world/robot-v1/hallway.webp) center/cover no-repeat}
+[hidden]{display:none!important}
+
+.pills{position:fixed;top:1.4vw;right:1.6vw;display:flex;gap:.7vw;z-index:3}
+.pill{background:var(--glass);border:1px solid var(--line);border-radius:3vw;padding:.55vw 1.05vw;font-size:1.2vw;white-space:nowrap;backdrop-filter:blur(6px)}
+.pill b{font:700 1.5vw ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--amber)}
+.pill.live{color:var(--sage);font-weight:700}
+
+.status{position:fixed;top:1.4vw;left:1.6vw;max-width:56vw;z-index:3;background:var(--glass);border:1px solid var(--line);border-radius:3vw;padding:.55vw 1.2vw;font-size:1.15vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(6px)}
+.status .k{font:700 .85vw ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);margin-right:.6vw}
+
+.card{position:fixed;top:5.4vw;max-width:34vw;z-index:3;display:flex;gap:1vw;align-items:center;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:.9vw 1.2vw;backdrop-filter:blur(6px);transition:opacity .25s ease}
+.card.left{left:1.6vw}
+.card.right{right:1.6vw}
+.card .icon{font-size:2.4vw;line-height:1}
+.card .k{font:700 .95vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.card .t{font:normal 1.95vw/1.2 Georgia,serif;margin:.15vw 0}
+.card .w{font-size:1.15vw;color:var(--muted)}
+.card .r{font-size:1.4vw;margin-top:.25vw;color:var(--sage);font-weight:600}
+.card .r::before{content:"→ ";color:var(--muted)}
+.card.reacted,.card.inPath,.card.seen{border-color:rgba(169,191,162,.55)}
+.card.reacted .k,.card.inPath .k,.card.seen .k{color:var(--sage)}
+
+.join{position:fixed;right:1.6vw;bottom:1.4vw;z-index:3;display:flex;align-items:center;gap:.8vw;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:.6vw .8vw}
+.join img{width:9vw;height:9vw;border-radius:.3vw;display:block;background:var(--paper)}
+.join b{display:block;font-size:1.4vw}
+.join span{font-size:.9vw;color:var(--muted)}
+.join.small{border-radius:3vw;padding:.45vw .9vw}
+.join.small img{width:2.6vw;height:2.6vw}
+.join.small b{font-size:1vw}
+.join.small span{display:none}
+
+.result{position:fixed;left:50%;top:1.4vw;transform:translateX(-50%);z-index:4;text-align:center;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1vw 2vw}
+.result .k{font:700 .85vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+.result .h{font:normal 2.4vw/1.1 Georgia,serif;margin-top:.3vw}
+
+.drawer{position:fixed;top:0;right:0;bottom:0;width:26vw;z-index:5;background:rgba(18,16,14,.93);border-left:1px solid var(--line);padding:1.6vw 1.4vw;overflow:auto}
+.drawer h2{font:700 .8vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:1.2vw 0 .5vw}
+.drawer h2:first-child{margin-top:0}
+.drawer .it{padding:.6vw 0;border-top:1px solid var(--line);font-size:1.05vw}
+.drawer .it div{font-size:.8vw;color:var(--muted)}
+body.drawer-open .pills{right:27.6vw}
+body.drawer-open .join{display:none}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style>
+</head>
+<body>
+<div class="pills" id="pills" aria-live="polite"></div>
+<div class="status" id="status" role="status" hidden></div>
+<div class="card" id="card" role="status" aria-live="polite" hidden></div>
+<div class="join" id="join"><img id="qr" src="/api/crowd/join.svg" alt="QR code to join"><div><b>Haunt the robot</b><span>scan to join</span></div></div>
+<aside class="drawer" id="drawer" aria-label="Queue (operator)" hidden></aside>
+
+<script type="module">
+import * as M from "/overlay-model.js";
+
+const q = new URLSearchParams(location.search);
+const worldBase = (q.get("world") || "").replace(/\/$/, "");
+if (q.get("bg") === "1") document.body.classList.add("bg");
+if (q.get("drawer") === "1") { document.body.classList.add("drawer-open"); document.getElementById("drawer").hidden = false; }
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+let crowd = null;
+let world = null;
+let skew = 0; // World server time minus ours
+let shownKey = "";
+let shownAt = 0;
+
+async function getJson(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+async function pollCrowd() {
+  try { crowd = await getJson("/api/crowd/state"); } catch { /* keep last */ }
+}
+async function pollWorld() {
+  try {
+    world = M.normalizeRehearsal(await getJson(worldBase + "/rehearsal/state"));
+    if (world?.serverNow !== undefined) skew = world.serverNow - Date.now();
+  } catch { world = null; } // no rehearsal route: Crowd-only mode
+}
+
+function render() {
+  const now = Date.now() + skew;
+  const phase = M.phaseOf(crowd, world);
+
+  // Pills: round, time left, scares
+  const pills = $("pills");
+  pills.textContent = "";
+  const left = M.secondsLeft(crowd, world, now);
+  if (phase === "live") {
+    pills.append(el("span", "pill live", "● Round " + (crowd?.round ?? "")));
+    if (left !== undefined) { const p = el("span", "pill"); p.append(el("b", "", M.clock(left)), " left"); pills.append(p); }
+  } else if (phase === "opening" && left !== undefined) {
+    const p = el("span", "pill"); p.append("Robot moves in ", el("b", "", M.clock(left))); pills.append(p);
+  }
+  if (world?.fear !== undefined) { const p = el("span", "pill"); p.append("👻 Scares ", el("b", "", String(world.fear)), "/3"); pills.append(p); }
+
+  // Result banner
+  document.querySelector(".result")?.remove();
+  if (phase === "result") {
+    const r = el("div", "result");
+    r.append(el("div", "k", "Round over"), el("div", "h", M.resultText(world)));
+    document.body.append(r);
+  }
+
+  // Join: big QR in the opening/result/between rounds, a small Join pill during play
+  $("join").classList.toggle("small", !M.bigJoin(phase));
+
+  // One card, or a short status line in the top margin
+  const card = M.pickCard(crowd, world);
+  if (card && card.key !== shownKey) { shownKey = card.key; shownAt = now; }
+  const side = M.cardSide(world, now);
+  const fresh = card && now - shownAt < M.CARD_MS;
+  const c = $("card");
+  const s = $("status");
+  if (card && fresh && side && phase !== "result") {
+    c.className = "card " + side + " " + card.stage;
+    c.textContent = "";
+    const body = el("div");
+    body.append(el("div", "k", card.label), el("div", "t", card.text), el("div", "w", "from " + card.who));
+    if (card.reaction) body.append(el("div", "r", card.reaction));
+    c.append(el("span", "icon", card.stage === "upnext" ? "⏭️" : "👻"), body);
+    c.hidden = false;
+    s.hidden = true;
+  } else if (card && phase !== "result") {
+    s.textContent = "";
+    s.append(el("span", "k", card.label), card.text + " · " + card.who + (card.reaction ? " → " + card.reaction : ""));
+    s.hidden = false;
+    c.hidden = true;
+  } else {
+    s.hidden = true;
+    c.hidden = true;
+  }
+
+  // Operator drawer
+  if (!$("drawer").hidden) {
+    const d = $("drawer");
+    d.textContent = "";
+    const section = (title, list, note) => {
+      d.append(el("h2", "", title));
+      if (!list.length) d.append(el("div", "it", "Nothing yet"));
+      for (const h of list) { const it = el("div", "it", h.moderated?.text ?? ""); it.append(el("div", "", (h.displayName ?? "anon") + (note ? note(h) : ""))); d.append(it); }
+    };
+    section("Up next", (crowd?.queue ?? []).slice(0, 1));
+    section("Pending", (crowd?.queue ?? []).slice(1));
+    const props = new Map((world?.props ?? []).map((p) => [p.hauntId, p]));
+    section("Sent this round", crowd?.hallway ?? [], (h) => " · " + (M.STAGE_LABEL[M.stageOf(h, props.get(h.hauntId))] ?? h.status));
+  }
+}
+
+await Promise.all([pollCrowd(), pollWorld()]);
+render();
+setInterval(pollCrowd, 2000);
+setInterval(pollWorld, 1000);
+setInterval(render, 250);
+</script>
+</body>
+</html>
