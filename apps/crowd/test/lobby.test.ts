@@ -138,7 +138,7 @@ describe("phone page follows World's phase", () => {
     clock = { id, phase: "playing", durationMs: 600_000, remainingMs: 600_000, deadline: startedAt + 600_000 };
     for (let i = 0; i < 8; i++) {
       const a = await guest();
-      await hub.app.inject({ method: "POST", url: "/api/crowd/haunt", headers: { cookie: a.cookie }, payload: { preset: "fog" } });
+      await hub.app.inject({ method: "POST", url: "/api/crowd/haunt", headers: { cookie: a.cookie }, payload: { preset: i % 2 ? "fog" : "banana-peel" } });
     }
     hub.clock.advance(8_000);
     hub.crowd.tick();

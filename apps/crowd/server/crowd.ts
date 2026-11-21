@@ -9,7 +9,7 @@ import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import type { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import type { Verdict } from "@poltergeist/contracts/verdict.js";
 import { GhostNames } from "./ghost-names.js";
-import { conduct, kindOf, POLICY, type Candidate, type Decision, type RecentHaunt, type SceneObservation } from "./conductor.js";
+import { conduct, familyOf, kindOf, POLICY, type Candidate, type Decision, type RecentHaunt, type SceneObservation, type Staging } from "./conductor.js";
 import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
 import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
@@ -115,8 +115,10 @@ export class CrowdService {
   // Conductor: one reserved pick, stable until it's sent or becomes impossible.
   private reserved: { hauntId: Id; reason: string; mode: "conductor" | "fifo" } | null = null;
   private waitingReasons = new Map<Id, string>();
+  private reservedWithScene = false;
   private skips = new Map<Id, number>();
   private sentAt = new Map<Id, number>();
+  private staging = new Map<Id, Staging>(); // server-only judgments from the existing moderation call
   // Waiting room: guest phones by device, last poll time. Projector and other polls never land here.
   private guests = new Map<string, number>();
   private board: Scoreboard | null = null;
@@ -236,11 +238,14 @@ export class CrowdService {
   }
 
   private async moderate(haunt: Haunt, preset: Preset | undefined): Promise<void> {
-    let moderated: Haunt["moderated"];
+    let moderated: NonNullable<Haunt["moderated"]>;
+    let staging: Staging | undefined;
     try {
-      moderated = preset
-        ? { safe: true, text: preset.text, tags: preset.tags, model: "preset" }
-        : await this.deps.moderation.moderate(haunt.raw);
+      if (preset) moderated = { safe: true, text: preset.text, tags: preset.tags, model: "preset" };
+      else {
+        const checked = await this.deps.moderation.moderate(haunt.raw);
+        ({ staging, ...moderated } = checked);
+      }
     } catch (err) {
       this.deps.log?.("moderation failed", { hauntId: haunt.hauntId, err: String(err) });
       moderated = { safe: false, text: "", tags: [], reason: "We couldn't check that one. Try again.", model: this.deps.moderation.name };
@@ -252,6 +257,7 @@ export class CrowdService {
       return;
     }
     this.setStatus(current, "approved", { moderated });
+    if (staging) this.staging.set(current.hauntId, staging);
     if (!this.finalsApprovalMode) this.setStatus(current, "queued");
   }
 
@@ -410,8 +416,7 @@ export class CrowdService {
     return head ? [head, ...list.filter((h) => h !== head)] : list;
   }
 
-  private decide(list: Haunt[]): Decision {
-    const scene = this.deps.scene?.();
+  private decide(list: Haunt[], scene = this.deps.scene?.()): Decision {
     const round = new Set(this.hallwayIds);
     const picksBy = new Map<string, number>();
     for (const id of round) {
@@ -427,14 +432,17 @@ export class CrowdService {
       skips: this.skips.get(h.hauntId) ?? 0,
       authorPicksThisRound: picksBy.get(h.deviceId) ?? 0,
     }));
-    const recent: RecentHaunt[] = this.hallwayIds.slice(-4).map((id) => {
+    const recent: RecentHaunt[] = this.hallwayIds.map((id) => {
       const h = this.haunts.get(id);
       return {
+      staging: this.staging.get(h.hauntId),
         hauntId: id,
-        kind: kindOf({ preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "" }),
+        kind: kindOf(idea),
+        family: familyOf(idea),
         primaryTag: h?.moderated?.tags?.[0] ?? "other",
         sentAt: this.sentAt.get(id) ?? 0,
         seen: scene?.seenHauntIds.includes(id) ?? false,
+      const idea = { preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "", staging: this.staging.get(id) };
       };
     });
     return conduct(candidates, scene, recent, this.now());
@@ -454,18 +462,16 @@ export class CrowdService {
     const ids = new Set(eligible.map((h) => h.hauntId));
     for (const id of [...this.waitingReasons.keys()]) if (!ids.has(id)) this.waitingReasons.delete(id);
     if (this.reserved && !ids.has(this.reserved.hauntId)) this.reserved = null;
-    // Changing camera availability changes the basis for the pick shown to the room.
-    if (this.reserved) {
-      const scene = this.deps.scene?.();
-      const mode = scene && this.now() - scene.observedAt <= POLICY.sceneMaxAgeMs ? "conductor" : "fifo";
-      if (this.reserved.mode !== mode) this.reserved = null;
+    if (!eligible.length) return;
+    const scene = this.deps.scene?.();
+    const freshScene = !!scene && this.now() - scene.observedAt <= POLICY.sceneMaxAgeMs;
+    const d = this.decide(eligible, scene);
+    if (this.reserved && (this.reserved.mode !== d.mode || this.reservedWithScene !== freshScene ||
+      d.waiting.some(w => w.hauntId === this.reserved?.hauntId && w.code === "similar"))) {
+      this.reserved = null;
     }
-    const others = eligible.filter((h) => h.hauntId !== this.reserved?.hauntId);
-    if (!others.length && this.reserved) return;
-    const d = this.decide(others);
     for (const w of d.waiting) {
-      if (d.mode === "conductor") this.waitingReasons.set(w.hauntId, w.reason);
-      else this.waitingReasons.delete(w.hauntId);
+      if (w.code !== "ranked_lower") this.waitingReasons.set(w.hauntId, w.reason);
     }
     // A feasible idea behind the reserved pick has no hold reason any more.
     if (d.pick) this.waitingReasons.delete(d.pick.hauntId);
@@ -478,6 +484,7 @@ export class CrowdService {
     }
   }
 
+      this.reservedWithScene = freshScene;
   private takeSeeded(): Haunt | undefined {
     const pool = this.deps.seededPool;
     if (pool.length === 0) return undefined;

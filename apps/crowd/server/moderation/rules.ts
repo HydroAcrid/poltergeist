@@ -84,6 +84,7 @@ export function blockedReason(text: string): string | undefined {
 
 /** A private, prewritten way to keep the harmless part of a rejected idea. */
 export function alternativeFor(text: string): string {
+  if (/hurricane|cyclone|tornado/i.test(text) && /\b(?:two|twin|double|pair|2)\b/i.test(text)) return "Two tight wind funnels sweep leaves across the aisle";
   if (/wind|hurricane|storm|cyclone|tornado|weather|roof/i.test(text)) return "A gust sweeps loose papers across the aisle";
   if (/water|rain|flood|wave|tsunami|spill/i.test(text)) return "A shallow puddle spreads across the aisle";
   if (/light|fire|flash|laser|explod|blast|bomb/i.test(text)) return "The lamps flash once and cast long shadows";
@@ -139,7 +140,7 @@ export class RulesOnlyModeration implements ModerationAdapter {
     const text = normalizeInput(input);
     const reason = blockedReason(text);
     if (reason) return rejected(reason, text);
-    if (/\b(hurricane|tornado|tsunami|cyclone)\b/i.test(text)) return rejected("Give the storm one visible effect inside the hallway.", text);
+    if (/\b(hurricanes?|tornad(?:o|oes)|tsunamis?|cyclones?)\b/i.test(text)) return rejected("Give the storm one visible effect inside the hallway.", text);
 
     const matches = EVENTS.filter((e) => e.re.test(text));
     if (matches.length === 0) return rejected(REASONS.notEvent, text);
@@ -148,7 +149,8 @@ export class RulesOnlyModeration implements ModerationAdapter {
     const cleaned = clean(text);
     const words = cleaned.split(" ").filter(Boolean);
     const useCanonical = words.length <= 3 || IMPERATIVE.test(cleaned);
-    const sentence = useCanonical ? matches[0]!.canonical : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    const breeze = /\bbreezes?\b/i.test(cleaned);
+    const sentence = useCanonical && breeze ? "A breeze passes through the hallway" : useCanonical ? matches[0]!.canonical : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
     return { safe: true, text: truncate60(sentence), tags, model: "rules-only" };
   }
 
