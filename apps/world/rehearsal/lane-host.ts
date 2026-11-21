@@ -83,7 +83,7 @@ await registerStage(app, {
 await crowd.register(app, {
   bus,
   dataDir: './data-test',
-  env: { ...process.env },
+  env: { ...process.env, PG_PUBLIC_URL: process.env.PG_JOIN_URL || process.env.PG_PUBLIC_URL },
   instance: 'local',
   log: () => {},
 });

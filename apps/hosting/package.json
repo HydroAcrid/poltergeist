@@ -1,0 +1,6 @@
+{
+  "name": "poltergeist-demo-entry",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@vercel/sandbox": "3.3.0" }
+}
