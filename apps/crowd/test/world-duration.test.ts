@@ -34,7 +34,7 @@ async function world(badId = false, library?: unknown, renderBuffered?: (input: 
   });
   const crowd = createCrowdModule({lobbyPhase:round.lobbyPhase,prepared:round.prepared,renderWindow:round.renderWindow,matchClock:()=>{
     const r=round();return (r?.chapters || r?.playMode === "prepared-show" || r?.playMode === "buffered-live") && ["playing","handoff"].includes(r.phase) ? r : undefined;
-  },config:{roundEveryMs:null,seededFallback:false}});
+  },config:{firstDispatchMs:1200,roundEveryMs:null,seededFallback:false}});
   await crowd.register(app,{bus,env:{PG_MODERATION_ADAPTER:"rules-only"},instance:"local",dataDir:"./data-test",log:()=>{}});
   app.addHook("onClose",async()=>{await crowd.close?.();});
   const seed = Buffer.alloc(200);seed.writeUInt16BE(0xffd8);
@@ -187,34 +187,64 @@ it("refuses a screening with no verified library entry before publishing a round
   expect(h.bus.history({types:["episode.started"]})).toHaveLength(0);
 });
 
-it("films two actual guests' ideas behind the same native hallway and never credits either for the prerecorded opening", async () => {
-  const renderer = vi.fn((input: BufferedInput) => new Promise((_,reject) => {
-    input.signal.addEventListener("abort", () => reject(Error("Round closed")), {once:true});
-  }));
-  const h = await world(false,undefined,renderer);
-  const join = async () => String((await h.app.inject("/api/crowd/state")).headers["set-cookie"]).split(";")[0]!;
-  const guests = [await join(), await join()];
+it("keeps two guests submitting during live filming and starts five minutes only on the host’s separate Start", async () => {
+  const renders: Array<{input:BufferedInput,finish:()=>void}> = [];
+  const renderer = (input: BufferedInput) => new Promise((resolve,reject) => {
+    const last = Buffer.from("native-final-"+input.chapter);
+    const obs = (frame:number) => ({frame,playerCount:1,visible:true,subjectTracked:true,feetVisible:true,shoulderView:'rear-right'});
+    renders.push({input,finish:()=>resolve({filePath:"/tmp/episode-"+input.chapter+".mp4",finalFrame:last,
+      durationMs:12000,fps:24,frameCount:288,evidence:{continuity:{matches:true},finalFear:0,
+        picks:input.picks.map(p=>({id:p.id,delivered:true,visible:true,inPath:true,inPathFrame:25,inPathOffsetMs:1000,
+          reacted:true,reactedFrame:65,reactedOffsetMs:2667,reaction:'sidestep',response:{basis:25,appliedFrame:35,checkedFrame:65,key:'D',outcome:'route-open'}})),
+        observations:[obs(1),obs(25),obs(65),obs(280)],moves:[{observed:25,appliedFrame:35,key:'D'}]}})});
+    input.signal.addEventListener("abort",()=>reject(Error("Round closed")),{once:true});
+  });
+  const h=await world(false,undefined,renderer);
+  const open=()=>h.post("/rehearsal/start",{mode:"buffered",expectedPlayMode:"buffered-live",useVenueOpening:true});
+  expect((await open()).statusCode).toBe(200);
+  const id=h.round().id;
+  const play=()=>h.post("/rehearsal/play",{round:id});
+  expect((await play()).statusCode).toBe(409);
+  const join=async()=>String((await h.app.inject("/api/crowd/state")).headers["set-cookie"]).split(";")[0]!;
+  const guests=[await join(),await join()];
   expect(guests[0]).not.toBe(guests[1]);
-  const start = await h.post("/rehearsal/start",{mode:"buffered",expectedPlayMode:"buffered-live",useVenueOpening:true});
-  expect(start.statusCode, start.body).toBe(200);
-  const submits = await Promise.all(["bat-swarm","mop-bucket"].map((preset,i) => h.app.inject({
+  const submits=await Promise.all(["lights-flicker","mop-bucket"].map((preset,i)=>h.app.inject({
     method:"POST",url:"/api/crowd/haunt",headers:{cookie:guests[i]!},payload:{preset}
   })));
-  const ids = submits.map(r=>r.json().hauntId);
+  const ids=submits.map(r=>r.json().hauntId);
   expect(new Set(ids).size).toBe(2);
-  await h.tick(18000);
-  expect(renderer).toHaveBeenCalledTimes(1);
-  const [input] = renderer.mock.calls[0]!;
-  expect(new Set(input.picks.map(p=>p.id))).toEqual(new Set(ids));
-  expect(input.continuation).toBe(true);
-  expect(input.chapter).toBe(3);
-  expect(createHash("sha256").update(input.seed).digest("hex")).toBe("e10355627e68d4a98a83d0ba90a98edc7cf7b2e453a523822f5ceb9d46e0f1d5");
-  expect(h.round().prepared.phase).toBe("collecting");
-  expect(h.round().playbackMetrics.firstRenderMs).toBeLessThan(18000);
-  await h.tick(33500);
-  expect(h.round().prepared.clipUrl).toMatch(/\/2\.mp4$/);
-  expect(h.round().fear).toBe(0);
+  await h.tick(5000);
+  expect(renders).toHaveLength(1);
+  const first=renders[0]!.input;
+  expect(first.chapter).toBe(1);expect(first.continuation).toBe(false);
+  expect(first.picks).toHaveLength(1);
+  expect(createHash("sha256").update(first.seed).digest("hex")).toBe("7a47d68c3cc99e78ebc2ab3eebc3a162e6b1983e148f83b619d86ed4f787c755");
+  expect(h.round().prepared.preload).toEqual([]);
+  renders[0]!.finish();await h.tick(45000);
+  expect((await play()).statusCode).toBe(409);
+  expect(renders[1]!.input.seed.equals(Buffer.from("native-final-1"))).toBe(true);
+  expect(new Set([...first.picks,...renders[1]!.input.picks].map(p=>p.id))).toEqual(new Set(ids));
+  renders[1]!.finish();await h.tick(300000);
+  expect(h.round()).toMatchObject({phase:"preparing",startedAt:null,deadline:null,remainingMs:300000,prepared:{canStart:true}});
+  expect((await h.phone()).roundEndsAt).toBeUndefined();
+  expect((await h.phone()).lobbyPhase).toBe("lobby");
   expect(h.bus.history({types:["haunt.injected"]})).toHaveLength(0);
-  expect(h.providers).toHaveLength(0);
+  const expected=Date.now()+300000;
+  expect((await play()).json().deadline).toBe(expected);
+  expect((await play()).json().deadline).toBe(expected);
+  expect((await h.phone()).roundEndsAt).toBe(expected);
+  await h.tick(1500);
+  expect(h.round().prepared.clipUrl).toBe("/rehearsal/segments/"+id+"/1.mp4");
+  expect(renders).toHaveLength(2);
+  await h.tick(1200);
+  expect(h.bus.history({types:["haunt.injected"]})).toHaveLength(1);
+  const extra=await h.app.inject({method:"POST",url:"/api/crowd/haunt",headers:{cookie:guests[0]!},payload:{preset:"painted-door"}});
+  await h.tick(3500);
+  expect(renders[2]!.input.seed.equals(Buffer.from("native-final-2"))).toBe(true);
+  expect(renders[2]!.input.picks.map(p=>p.id)).toEqual([extra.json().hauntId]);
+  await h.end();await h.tick(150);
+  expect((await open()).statusCode).toBe(200);
+  expect(h.round().id).not.toBe(id);
+  expect(h.round().prepared.preload).toEqual([]);
   await h.end();
 });

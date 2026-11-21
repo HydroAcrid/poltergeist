@@ -1,7 +1,6 @@
 import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
 import {createPreparedShow, registerPreparedMedia, serveMovie, preparedLibrary} from './prepared-show.mjs';
 import {createBufferedShow} from './buffered-show.mjs';
-import {loadVenuePrologue} from './venue-prologue.mjs';
 import {renderSegment, bufferedEncoderReady} from './buffered-render.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -85,7 +84,6 @@ export async function registerStage(
   let sourceKey = 'venue';
   let checkingPlayer = false;
   const venueOpening = reviewedVenueOpening(root, stockPlate);
-  const venuePrologue = loadVenuePrologue(root,venueOpening?.digest);
   const seedReviews = new Map();
   function plateStatus() {
     const entry = custom ? plates.get(sourceKey) : null;
@@ -232,13 +230,13 @@ export async function registerStage(
     }
     if (
       e.type !== 'haunt.dispatch' ||
-      (round?.phase !== 'playing' && !(round?.chapters && round.phase==='handoff')) ||
+      (round?.phase !== 'playing' && !(round?.playMode === 'buffered-live' && round.phase === 'preparing') && !(round?.chapters && round.phase==='handoff')) ||
       h.episodeId !== round.id
     )
       return;
     if (round.playMode === 'buffered-live') {
       if (!buffered.enqueue(h,ghosts.get(h.hauntId),Date.now()))
-        bus.publish('haunt.injected','world',{hauntId:h.hauntId,episodeId:round.id,t:Date.now()-round.startedAt,
+        bus.publish('haunt.injected','world',{hauntId:h.hauntId,episodeId:round.id,t:round.startedAt ? Date.now()-round.startedAt : 0,
           ok:false,simulated:false,error:'The render queue has closed.'},round.id);
       return;
     }
@@ -292,7 +290,7 @@ export async function registerStage(
             hauntId: p.id, at: p.reactedAt, kind: p.observedReaction,
           })),
         },
-        durationMs: r.chapters && r.clockMode!=='wall' ? r.durationMs-r.remainingMs : r.finishedAt-r.startedAt,
+        durationMs: r.chapters && r.clockMode!=='wall' ? r.durationMs-r.remainingMs : r.startedAt == null ? 0 : r.finishedAt-r.startedAt,
         reason:
           { time: 'timeout', exit: 'success_claim', fear: 'operator_stop' }[
             r.reason
@@ -427,7 +425,7 @@ export async function registerStage(
       now = Date.now();
     if (!r || r.phase === 'ended') return;
     if (r.playMode === 'buffered-live') {
-      r.remainingMs = Math.max(0,r.deadline-now);
+      if (r.deadline != null) r.remainingMs = Math.max(0,r.deadline-now);
       buffered.advance(now);
       return;
     }
@@ -753,6 +751,7 @@ export async function registerStage(
   function lobbyState() {
     const plate = plateStatus();
     const phase = round?.phase === 'ended' ? 'ended'
+      : round?.playMode === 'buffered-live' && round.phase === 'preparing' ? 'lobby'
       : ['playing','handoff'].includes(round?.phase) ? 'playing'
       : round ? 'starting' : lobbyOpenedAt == null ? 'before-photo' : 'lobby';
     return {
@@ -775,7 +774,6 @@ export async function registerStage(
     canLive: !!captureDir,
     cameraTestDurationMs: liveMs,
     approvedVenueOpening: !custom && !!venueOpening,
-    venuePrologueReady: !custom && venuePrologue.length > 0,
     providerClosing: !!providerClosing(),
     custom,
     revision,
@@ -903,13 +901,13 @@ export async function registerStage(
         clockMode:'wall', durationMs:fiveMinuteShowMs, remainingMs:fiveMinuteShowMs,
         plannedDurationMs:fiveMinuteShowMs, showDeadline:requestedAt+fiveMinuteShowMs});
       if (rolling) {
-        buffered = createBufferedShow({id:r.id,seed,start:requestedAt,deadline:r.deadline,
-          opening:!custom && venueOpening && photoKey(seed) === venueOpening.digest ? venuePrologue : [],
+        Object.assign(r,{phase:'preparing',startedAt:null,deadline:null,showDeadline:null,clockMode:'active'});
+        buffered = createBufferedShow({id:r.id,seed,start:requestedAt,deadline:requestedAt+fiveMinuteShowMs,
           render:opts => renderBuffered({...opts, makePilot:() => pilot, captureDir}),
           onReceipt:(pick,ok,error) => {
             const now=Date.now();
             if (ok) r.props.push({id:pick.id,name:pick.text,by:pick.by,seen:true,inPath:true,seenAt:now,shownAt:now});
-            bus.publish('haunt.injected','world',{hauntId:pick.id,episodeId:r.id,t:now-r.startedAt,
+            bus.publish('haunt.injected','world',{hauntId:pick.id,episodeId:r.id,t:Math.max(0,now-(r.startedAt ?? now)),
               ok,simulated:false,...(ok && {sceneEvidence:"generated-in-path"}),...(error && {error})},r.id);
           }, onScare:() => { r.fear++; }, onFinish:(reason,winner) => {
             if (reason==='interrupted') r.stopDetail=buffered.error || 'The hallway did not finish preparing.';
@@ -955,6 +953,27 @@ export async function registerStage(
       }, { cueLeadMs: 1800 });
     }
     return { id: round.id, playMode, plannedDurationMs: round.plannedDurationMs, openingMs: lobbyOpenedAt == null ? openingMs : 0 };
+  });
+  app.post('/rehearsal/retry-render', async (req,reply) => {
+    if (req.headers['x-show-control'] !== '1') return reply.code(403).send();
+    if (round?.playMode !== 'buffered-live' || round?.phase !== 'preparing' || req.body?.round !== round.id || !buffered.resume())
+      return reply.code(409).send({error:'This live lobby has no paused render.'});
+    return {id:round.id};
+  });
+  app.post('/rehearsal/play', async (req,reply) => {
+    if (req.headers['x-show-control'] !== '1') return reply.code(403).send();
+    if (round?.playMode !== 'buffered-live' || req.body?.round !== round.id)
+      return reply.code(409).send({error:'This live lobby is no longer open.'});
+    if (round.phase === 'playing') return {id:round.id,deadline:round.deadline};
+    const now=Date.now();
+    const lease = worldLeaseWarning({mode:'five-minute-demo',requestedAt:now,now,durationMs:fiveMinuteShowMs,
+      openingMs:0,cutMs:chapterTiming.cutMs});
+    if (lease) return reply.code(409).send(lease);
+    if (round.phase !== 'preparing' || !buffered.play(now))
+      return reply.code(409).send({error:'The live opening is still being prepared. Guests can keep sending ideas.'});
+    Object.assign(round,{phase:'playing',clockMode:'wall',startedAt:now,showStartedAt:now,
+      deadline:now+fiveMinuteShowMs,showDeadline:now+fiveMinuteShowMs,remainingMs:fiveMinuteShowMs});
+    return {id:round.id,deadline:round.deadline};
   });
   app.post('/rehearsal/stop', async (req,reply)=>{
     if(req.headers['x-show-control']!=='1') return reply.code(403).send();
@@ -1064,6 +1083,6 @@ export async function registerStage(
       reply.type(mime).send(readFileSync(resolve(root, file))),
     );
   return Object.assign(() => round, {lobbyPhase: () => lobbyState().phase,
-    renderWindow: () => round?.phase === 'playing' && round.playMode === 'buffered-live' ? buffered.window(Date.now()) : null,
+    renderWindow: () => round?.playMode === 'buffered-live' && ['preparing','playing'].includes(round.phase) ? buffered.window(Date.now()) : null,
     prepared: () => round?.phase === 'playing' && round?.playMode === 'prepared-show' ? prepared.gate(Date.now()) : null});
 }

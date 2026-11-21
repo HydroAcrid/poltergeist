@@ -9,25 +9,20 @@ const targetSegments = 2;
 const minimumTakeMs = 16000;
 const durationFor = count => minimumTakeMs + count * 8000;
 
-export function createBufferedShow({id, seed, opening = [], start, deadline, render, onReceipt, onFinish, onScare = () => {}, clock = Date.now}) {
-  const state = {phase:'collecting', collectUntil:start+collectMs, upNext:null, preload:[]};
+export function createBufferedShow({id, seed, start, deadline, render, onReceipt, onFinish, onScare = () => {}, clock = Date.now}) {
+  const state = {phase:'collecting', collectUntil:start+collectMs, upNext:null, preload:[], canStart:false, renderPaused:false};
   const picks = [], ready = [], assets = new Map(), seen = new Set();
   const controller = new AbortController();
-  let tail = opening.at(-1)?.finalFrame ?? seed, sequence = opening.length, worker = null, terminalQueued = false, stopped = false;
+  let tail = seed, sequence = 0, worker = null, terminalQueued = false, stopped = false;
+  const durationMs = deadline-start;
+  deadline = Infinity; // The host starts the game clock after the two scenes have been filmed.
   let retry = null, inFlight = null;
   let active = null, handoffAt = null, firstPickAt = null, hasPlayed = false;
   let error = null, renderMs = 0, tailFear = 0, gapStartedAt = null;
-  const metrics = {preparedOpening:opening.length, firstPickMs:null, firstRenderMs:null, attempts:0, rejected:0, generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
+  const metrics = {firstPickMs:null, firstRenderMs:null, attempts:0, rejected:0, generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
     playbackGaps:0, playbackGapMs:0};
   const url = n => '/rehearsal/segments/'+encodeURIComponent(id)+'/'+n+'.mp4';
   const brief = segment => ({clipUrl:url(segment.n),title:segment.title});
-  for (const [index, clip] of opening.entries()) {
-    const n = index+1;
-    assets.set(n,clip);
-    ready.push({n,clip,receipts:[],title:clip.title});
-  }
-  state.preload = ready.map(brief);
-  state.upNext = state.preload[0] ?? null;
   function stillFits(now) {
     const activeLeft = active ? Math.max(0, active.start + active.clip.durationMs-now) : 0;
     const readyMs = ready.reduce((sum,s) => sum+s.clip.durationMs+flickerMs,0);
@@ -35,7 +30,7 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
   }
   function window(now) {
     const open = !stopped && !terminalQueued && !error && stillFits(now) && picks.length < maxPicks;
-    return {canDispatch:open, slots:open ? maxPicks-picks.length : 0};
+    return {warming:deadline === Infinity,canDispatch:open, slots:open ? maxPicks-picks.length : 0};
   }
   function enqueue(h, by, now) {
     if (seen.has(h.hauntId)) return true;
@@ -80,21 +75,18 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
   }
   function generate(now) {
     if (worker || terminalQueued || error || !stillFits(now)) return;
-    // A stock opening gives the renderer a head start. It never consumes a
-    // guest's reservation, nor occupies a slot for unplayed fresh footage.
-    const freshAhead = ready.filter(s => s.n > opening.length).length;
-    if (freshAhead >= targetSegments) return;
-    if (opening.length && !retry && !picks.length && ready.length) return;
-    // Allow two Crowd ticks to combine picks. If the lobby is quiet the first
-    // walking take can open while guests are still entering their ideas.
-    if (!sequence && !picks.length && now-start < 8000) return;
+    if (ready.length >= targetSegments) return;
+    // Leave an empty room open for submissions without spending on generic walking.
+    if (!retry && !picks.length) return;
     if (!retry && picks.length === 1 && now-firstPickAt < 2000) return;
     const repeated = retry !== null;
-    const batch = retry ?? picks.splice(0);
+    // Give each opening scene a real idea. Two guests can open the show;
+    // later arrivals can join the second scene as a compatible pair.
+    const batch = retry ?? picks.splice(0,assets.size ? maxPicks : 1);
     const attempt = ++sequence;
     metrics.attempts++;
     metrics.firstRenderMs ??= now-start;
-    if (!repeated) firstPickAt = null;
+    if (!repeated && !picks.length) firstPickAt = null;
     retry = null;
     inFlight = batch;
     const durationMs = Math.min(durationFor(batch.length), deadline-now-flickerMs);
@@ -125,7 +117,7 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
       renderMs = Math.max(0,clock()-began);
       metrics.renderMs += renderMs;
       metrics.footageMs += clip.durationMs;
-      const n = opening.length + ++metrics.generated;
+      const n = ++metrics.generated;
       const segment = {n,clip,receipts:review.receipts,winner:review.winner,winnerAt:review.winnerAt,
         title:review.receipts[0]?.pick.text || 'Follow the flashlight'};
       assets.set(n,clip);
@@ -147,8 +139,18 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
           return;
         }
       }
-      error = visual || cause?.code === 'VISUAL_REVIEW_UNAVAILABLE' ? cause.message : 'The next hallway scene could not be generated.';
-      for (const pick of batch) onReceipt(pick,false,error);
+      const reason = visual || cause?.code === 'VISUAL_REVIEW_UNAVAILABLE' ? cause.message : 'The next hallway scene could not be generated.';
+      if (deadline === Infinity) {
+        if (visual) {
+          for (const pick of batch) onReceipt(pick,false,reason);
+          return; // Keep checked scenes and let other audience ideas fill the opening.
+        }
+        retry = batch;
+        state.renderPaused = true; // Only a host retry may spend on this provider failure.
+      } else {
+        for (const pick of batch) onReceipt(pick,false,reason);
+      }
+      error = reason;
     }).finally(() => { worker = null; });
   }
   function advance(now) {
@@ -183,15 +185,17 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
       for (const pick of retry) onReceipt(pick,false,error);
       retry = null;
     }
-    const openingReady = ready.length >= targetSegments ||
-      (ready.length > 0 && (terminalQueued || error || (!worker && !stillFits(now))));
-    if (!active && error && (!ready.length || !hasPlayed && !openingReady)) {
+    const openingReady = ready.length >= targetSegments || (terminalQueued && ready.length > 0);
+    if (deadline !== Infinity && !active && error && (!ready.length || !hasPlayed && !openingReady)) {
       end('interrupted',null);
       return;
     }
     generate(now);
-    if (!active && handoffAt === null && now >= state.collectUntil &&
-        (hasPlayed ? ready.length > 0 : openingReady)) {
+    if (deadline === Infinity) {
+      state.canStart = now >= state.collectUntil && openingReady;
+      return;
+    }
+    if (!active && handoffAt === null && hasPlayed && ready.length) {
       state.phase = 'handoff';
       handoffAt = now + flickerMs;
     }
@@ -211,12 +215,26 @@ export function createBufferedShow({id, seed, opening = [], start, deadline, ren
     }
     if (!hasPlayed && !worker && !openingReady && !stillFits(now)) end('interrupted',null);
   }
+  function resume() {
+    if (stopped || !state.renderPaused) return false;
+    state.renderPaused = false;
+    error = null;
+    return true;
+  }
+  function play(now) {
+    if (stopped || deadline !== Infinity || !state.canStart) return false;
+    deadline = now + durationMs;
+    state.canStart = false;
+    handoffAt = now + flickerMs;
+    state.phase = 'handoff';
+    return true;
+  }
   async function dispose() {
     stop();
     await worker;
     await Promise.all([...assets.values()].map(clip => clip.dispose?.()));
     assets.clear();
   }
-  return {state, metrics, advance, window, enqueue, stop, dispose, get busy(){return !!worker;},
+  return {state, metrics, advance, play, resume, window, enqueue, stop, dispose, get busy(){return !!worker;},
     file(n){return assets.get(n)?.filePath;}, get error(){return error;}};
 }

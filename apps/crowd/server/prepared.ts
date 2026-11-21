@@ -4,7 +4,7 @@ import { blockedReason, normalizeInput } from "./moderation/rules.js";
 
 export type FilmedOption = Pick<Preset, "id" | "text" | "tags" | "label"> & { title: string };
 export type PreparedWindow = { options: FilmedOption[]; canDispatch: boolean };
-export type RenderWindow = { canDispatch: boolean; slots: number };
+export type RenderWindow = { canDispatch: boolean; slots: number; warming?: boolean };
 
 const normalized = (text: string) => normalizeInput(text).toLowerCase().replace(/[.!?]+$/, "").trim();
 const words = (text: string) => normalized(text).split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 2);

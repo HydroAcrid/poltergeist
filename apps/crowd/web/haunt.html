@@ -590,7 +590,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
       $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
-      $("lobby-next").textContent = lp === "before-photo" ? "Send your idea now while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "Send an idea while you wait for the host to start.";
+      $("lobby-next").textContent = lp === "before-photo" ? "Send your idea now while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : state.episodeActive && !filmed() ? "Send a haunting while the hallway is filmed. The host starts the game when it’s ready." : "Send an idea while you wait for the host to start.";
     }
   }
 

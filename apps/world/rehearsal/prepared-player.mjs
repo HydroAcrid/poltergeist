@@ -74,11 +74,18 @@ export function createPreparedPlayer(surface) {
       const opening = part.preload || [];
       const first = source(part.upNext?.clipUrl || opening[0]?.clipUrl);
       const second = opening.find(item => item.clipUrl && item.clipUrl !== first?.getAttribute('src'));
-      if (second) source(second.clipUrl, first);
+      const next = second ? source(second.clipUrl, first) : null;
+      for (const v of [first,next]) {
+        if (v?.error && now >= Number(v.dataset.retryAt || 0)) {
+          v.dataset.retryAt = String(now + 3000);
+          v.load();
+        }
+      }
       if (fresh && Number.isFinite(part.collectUntil) && now >= part.collectUntil) {
+        if (part.renderPaused) return {message:'Filming is paused. You can still send a haunting.'};
         if (round.playbackMetrics?.rejected > 0 && !first)
-          return {message:'Trying your haunting again. The hallway will open when it’s ready.'};
-        return {message:'Preparing the first scene…'};
+          return {message:'Send more hauntings while the next scene is filmed.'};
+        return {message:part.canStart ? 'The hallway is ready. Send an idea while the host gets started.' : 'Filming the opening. Keep sending ideas.'};
       }
       return {collecting:true};
     }
@@ -91,7 +98,12 @@ export function createPreparedPlayer(surface) {
     if (part.phase === 'waiting') return holdPicture();
     if (part.phase === 'handoff') {
       if (!segment && !visible) {
-        source(part.upNext?.clipUrl);
+        const first = source(part.upNext?.clipUrl);
+        if (fresh && Number.isFinite(round.showStartedAt) && first?.readyState >= 2 && !first.error) {
+          blackout(now);
+          if (now >= darkAt) cover('dark');
+          return {handoff:true,fresh};
+        }
         return {message:fresh ? 'Preparing the first scene…' : 'Loading the first scene…'};
       }
       const upcoming = source(part.upNext?.clipUrl);
@@ -161,7 +173,11 @@ export function createPreparedPlayer(surface) {
     }
     return {playing:true};
   }
-  return {show, suspend() {
+  return {show, openingDecoded(round) {
+    const opening = round?.prepared?.preload;
+    return Boolean(opening?.length && opening.every(({clipUrl}) =>
+      slots.some(v => v.getAttribute('src') === clipUrl && v.readyState >= 2 && !v.error)));
+  }, suspend() {
     for (const v of slots) v.pause();
     segment = undefined;
   }};

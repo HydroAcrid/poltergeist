@@ -69,9 +69,9 @@ test('fresh generation preserves the original room while waiting and retries a d
   player.show(loading,0);player.show(loading,200);
   assert.deepEqual(videos.map(v=>v.src),[a,b]);
   assert.ok(videos.every(v=>v.hidden && v.paused));
-  assert.match(player.show(fresh({phase:'collecting',collectUntil:900}),1000).message,/Preparing the first scene/);
+  assert.match(player.show(fresh({phase:'collecting',collectUntil:900}),1000).message,/Filming the opening/);
   const repair={...fresh({phase:'collecting',collectUntil:900}),playbackMetrics:{rejected:1}};
-  assert.match(player.show(repair,1000).message,/Trying your haunting again/);
+  assert.match(player.show(repair,1000).message,/Send more hauntings/);
   assert.match(player.show(fresh({phase:'handoff',clipUrl:null}),1000).message,/Preparing the first scene/);
   assert.equal(surface.dataset.cover,'clear');
   const r=fresh({});
@@ -160,4 +160,20 @@ test('filmed screening uses the matched original approach exactly once and holds
     assert.equal(show.state.upNext,null);
   }
   assert.deepEqual(receipts,['guest-bats']);
+});
+
+test('host preloads and decodes the live opening before Start, then reveals it on the first playing tick',async t=>{
+  const {createPreparedPlayer}=await moduleUnderTest;
+  const {player,videos,surface}=display(createPreparedPlayer,t);
+  const live=(phase,extra)=>({...part(phase,extra),showStartedAt:10000,playMode:'buffered-live'});
+  const lobby=live('collecting',{preload:[{clipUrl:a},{clipUrl:b}],upNext:{clipUrl:a},collectUntil:9000,canStart:true});
+  player.show(lobby,9500);
+  videos[1].readyState=0;assert.equal(player.openingDecoded(lobby),false);
+  videos[1].readyState=2;assert.equal(player.openingDecoded(lobby),true);
+  player.show(live('handoff',{upNext:{clipUrl:a}}),10000);
+  assert.equal(surface.dataset.cover,'closing');
+  player.show(live('handoff',{upNext:{clipUrl:a}}),10700);
+  assert.equal(surface.dataset.cover,'dark');
+  assert.equal(player.show(live('playing',{clipStartedAt:11250,upNext:{clipUrl:b}}),11250).playing,true);
+  assert.equal(videos[0].hidden,false);assert.equal(videos[0].currentTime,0);
 });

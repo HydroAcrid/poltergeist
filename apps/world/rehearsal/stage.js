@@ -103,7 +103,8 @@ function controls() {
     ready = state?.plateReady,
     preparing = state?.platePreparing;
   const beforePhoto = !state?.round && state?.lobby?.phase === 'before-photo';
-  const waiting = !!state && !state.round;
+  const warming = state?.round?.playMode === 'buffered-live' && state.round.phase === 'preparing';
+  const waiting = !!state && (!state.round || warming);
   const menu = el('show-minutes');
   if (state) {
     const recorded = menu.querySelector('[value="prepared"]'), buffered = menu.querySelector('[value="buffered"]');
@@ -133,18 +134,20 @@ function controls() {
   el('go-live').disabled ||= !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
   const seconds = Math.round((state?.cameraTestDurationMs || 45000) / 1000);
   set('go-live', state?.providerClosing ? 'Closing camera test…' : 'Start ' + seconds + '-second camera test');
-  el('go-show').hidden = !canLaunch;
+  el('go-show').hidden = !canLaunch && !warming;
   el('show-length').hidden = !canLaunch;
   const buffered = menu.value === 'buffered';
   const isDemo = el('show-minutes').value === '5';
-  set('go-show',buffered ? 'Start live crowd game' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
-  set('show-cost',buffered ? (state?.venuePrologueReady ? 'Guests have 30 seconds to join. Audience ideas generate the next scenes while the recorded opening plays.' : 'Guests can send ideas while the opening scenes are being generated.') + ' About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
+  set('go-show',warming ? (state.round.prepared?.renderPaused ? 'Retry filming' : 'Start game') : buffered ? 'Open live lobby' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
+  set('show-cost',buffered ? 'Guests can send ideas while Genie films two opening scenes. Start the five-minute clock when both are ready. About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
     'The clock pauses during blackouts. About $6 per generated minute.');
   el('go-show').disabled ||= !canLaunch || (!screening && el('go-live').disabled);
+  if (warming) el('go-show').disabled = loading || !connected || (!state.round.prepared?.renderPaused && (!state.round.prepared?.canStart || !preparedPlayer.openingDecoded(state.round)));
   el('show-cost').hidden = !canLaunch;
   el('start').hidden = busy || (!beforePhoto && !state?.canLive);
   el('stop-show').hidden = !busy || (!state?.round?.live && state?.round?.playMode !== 'prepared-show');
   el('stop-show').disabled = loading || !connected;
+  set('stop-show',warming ? 'Close lobby' : 'End game');
   el('default').hidden = busy || (!custom && !beforePhoto);
   if (host) {
     const r = state?.round;
@@ -154,7 +157,7 @@ function controls() {
     if (!copyReady) el('report-text').hidden = true;
     if (!waiting || beforePhoto) el('host-guests').hidden = true;
     set('setup-title', busy ? mode : r?.phase === 'ended' ? 'Round complete' : beforePhoto ? 'Choose the hallway' : 'Waiting room');
-    set('host-readiness', beforePhoto ? 'Guests can send ideas now. Take or choose a hallway photo.' :
+    set('host-readiness', warming ? (state.round.prepared?.renderPaused ? 'Filming paused. Guests can still send ideas. Retry when you’re ready.' : state.round.prepared?.canStart && preparedPlayer.openingDecoded(state.round) ? 'Your live opening is ready. Start when your audience is ready.' : 'Guests can send ideas while the opening is filmed.') : beforePhoto ? 'Guests can send ideas now. Take or choose a hallway photo.' :
       r?.phase === 'ended' ? mode + ' · ' + diagnostics.endReason(r) : busy ? diagnostics.roundStatus(r) :
       preparing ? 'Preparing your photo. Ghosts can join while it develops.' :
       !state?.canLive ? diagnostics.readiness(state) :
@@ -168,7 +171,7 @@ function controls() {
     }
   }
   if (host && lastBusy !== busy) {
-    el('host').open = !busy;
+    el('host').open = !busy || warming;
     lastBusy = busy;
   }
 }
@@ -249,7 +252,6 @@ async function refreshLobbyJoin(lobby) {
     if (host) {
       set('host-guests', headcount);
       el('host-guests').hidden = false;
-      return;
     }
     link.classList.add('show-qr');
     if (!qr.hasAttribute('src')) qr.src = '/api/crowd/join.svg';
@@ -452,7 +454,7 @@ function paint() {
       by = '';
     }
     set('phase', phase);
-    el('round-clock').hidden = !r;
+    el('round-clock').hidden = !r || (r.playMode === 'buffered-live' && r.phase === 'preparing');
     set('timer-label', label);
     set('clock', clock);
     set('cue', cue);
@@ -547,7 +549,8 @@ el('copy-report').onclick = async () => {
 };
 el('go-live').onclick = () => startWorld(false);
 el('show-minutes').onchange=controls;
-el('go-show').onclick = () => el('show-minutes').value === 'prepared'
+el('go-show').onclick = () => state?.round?.playMode === 'buffered-live' && state.round.phase === 'preparing'
+  ? run(() => request(state.round.prepared?.renderPaused ? '/rehearsal/retry-render' : '/rehearsal/play', {round:state.round.id})) : el('show-minutes').value === 'prepared'
   ? run(() => request('/rehearsal/start', {mode:'prepared', expectedPlayMode:'prepared-show'}))
   : startWorld(true);
 el('stop-show').onclick = () => run(() => request('/rehearsal/stop', {round:state.round.id}));

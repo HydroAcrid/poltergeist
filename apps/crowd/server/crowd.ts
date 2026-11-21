@@ -339,7 +339,7 @@ export class CrowdService {
       ...(waiting ? { waiting, waitingReasons: reasons } : reasons.length ? { waiting: reasons } : {}),
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
-      ...(clock?.phase === "handoff" && clock.clockMode !== "wall" ? { roundPausedRemainingMs: clock.remainingMs }
+      ...(this.deps.renderWindow?.()?.warming ? {} : clock?.phase === "handoff" && clock.clockMode !== "wall" ? { roundPausedRemainingMs: clock.remainingMs }
         : this.active ? { roundEndsAt: clock?.deadline ?? this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       you: { ghostName: this.ghostName(deviceId) },
       mine,
@@ -373,7 +373,7 @@ export class CrowdService {
    * dispatches, and phones stop showing it as live. Queued ideas wait for the next round.
    */
   private expireStaleRound(clock: MatchClock | undefined): void {
-    if (clock) return; // This matched, in-process World owns the end signal, including while its game clock is frozen.
+    if (clock || this.deps.renderWindow?.()?.warming) return; // This matched, in-process World owns the end signal, including while its game clock is frozen.
     const ep = this.active;
     if (ep && this.now() >= ep.endsAt + this.config.endGraceMs) {
       this.deps.log?.("round passed its deadline without episode.ended; treating it as interrupted", { episodeId: ep.episodeId });
@@ -421,7 +421,7 @@ export class CrowdService {
     const limit = (film || batch) && this.config.maxPerEpisode === null ? Infinity : this.slotLimit(clock);
     if (ep.dispatched >= limit) return;
     if (clock && this.now() >= clock.deadline) return;
-    const t = clock ? clock.durationMs - (clock.deadline - this.now()) : this.now() - ep.startedAt;
+    const t = clock && !batch ? clock.durationMs - (clock.deadline - this.now()) : this.now() - ep.startedAt;
     if (t < ep.nextSlotT) return;
     if (film) {
       const history = this.hallwayIds.map(id => this.haunts.get(id)!);

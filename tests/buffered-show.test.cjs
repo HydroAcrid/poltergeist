@@ -25,14 +25,14 @@ function validEvidence(request, extra) {
     winnerFrame:extra.winner ? 280 : null,...extra};
 }
 
-async function room(opening = []) {
+async function room(autoPlay = true) {
   const {createBufferedShow} = await import('../apps/world/rehearsal/buffered-show.mjs');
   let now = 10000;
   const requests=[], receipts=[], ended=[], scares=[], disposed=[], seed=Buffer.from('opening');
-  const show=createBufferedShow({id:'match',seed,opening,start:now,deadline:now+300000,clock:()=>now,
+  const show=createBufferedShow({id:'match',seed,start:now,deadline:now+300000,clock:()=>now,
     onScare:p=>scares.push(p.id),onFinish:(...v)=>ended.push(v),onReceipt:(...v)=>receipts.push(v),render:opts=>
       new Promise((resolve,reject)=>requests.push({opts,resolve,reject}))});
-  async function step(ms=0){ now+=ms;show.advance(now);await settle(); }
+  async function step(ms=0){ now+=ms;show.advance(now);if(autoPlay && show.state.canStart) show.play(now);await settle(); }
   async function complete(i,extra={}){
     const {opts,resolve}=requests[i];
     const finalFrame=Buffer.from('native-end-'+i);
@@ -42,30 +42,31 @@ async function room(opening = []) {
     return finalFrame;
   }
   const pick = id => show.enqueue({hauntId:id,text:'A different audience idea '+id}, 'Velvet Ghost',now);
-  return {show,requests,receipts,ended,scares,disposed,seed,step,complete,pick};
+  return {show,requests,receipts,ended,scares,disposed,seed,step,complete,pick,play:()=>show.play(now)};
 }
 
 test('two picks per batch, exact predecessor frames, real playback acknowledgments, and overlapping generation',async()=>{
   const {show,requests,receipts,seed,step,complete,pick,disposed}=await room();
   assert.ok(pick('A'));assert.ok(pick('A'));assert.ok(pick('B'));assert.equal(pick('C'),false);
   await step();assert.equal(requests.length,1);assert.strictEqual(requests[0].opts.seed,seed);
-  assert.deepEqual(requests[0].opts.picks.map(p=>p.id),['A','B']);
+  assert.deepEqual(requests[0].opts.picks.map(p=>p.id),['A']);
   assert.ok(pick('C'));await step(4000);assert.equal(requests.length,1);
-  const end1=await complete(0,{picks:[encounter('A',2000,true),encounter('B')]});await step();
+  const end1=await complete(0,{picks:[encounter('A',2000,true)]});await step();
   assert.strictEqual(requests[1].opts.seed,end1);assert.equal(requests[1].opts.initialFear,1);
-  const end2=await complete(1);
+  assert.deepEqual(requests[1].opts.picks.map(p=>p.id),['B','C']);
+  const end2=await complete(1);pick('D');
   await step(26000);assert.equal(show.state.phase,'handoff');await step(1250);
   assert.equal(show.state.phase,'playing');assert.equal(show.file(1),'/private/0.mp4');assert.equal(receipts.length,0);
   await step(100);assert.strictEqual(requests[2].opts.seed,end2);
-  await step(1900);assert.deepEqual(receipts.map(r=>[r[0].id,r[1]]),[['A',true],['B',true]]);
+  await step(1900);assert.deepEqual(receipts.map(r=>[r[0].id,r[1]]),[['A',true]]);
   await complete(2);await step(10000);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/2.mp4');
   await step(2200);assert.equal(receipts.at(-1)[0].id,'C');
   show.stop();if(requests[3]) await complete(3);await show.dispose();
   assert.deepEqual(disposed.sort(),requests.map((_,i)=>i));
 });
 test('a slow successor keeps the finished picture until a fresh clip is ready',async()=>{
-  const {show,step,complete,requests,ended}=await room();
-  await step(8000);await complete(0);await step();await complete(1);await step(22000);await step(1250);
+  const {show,step,complete,requests,ended,pick}=await room();
+  pick('a');pick('b');await step(8000);await complete(0);await step();await complete(1);pick('c');await step(22000);await step(1250);
   await step();await step(12000);await step(1250);await step(12000);await step(2250);
   assert.equal(show.state.phase,'waiting');assert.equal(show.metrics.playbackGaps,1);
   assert.ok(show.state.clipUrl.endsWith('/2.mp4'));
@@ -74,11 +75,15 @@ test('a slow successor keeps the finished picture until a fresh clip is ready',a
   assert.deepEqual(ended,[]);await step(12000);assert.deepEqual(ended,[['exit','robot']]);
   assert.equal(requests.length,3);await show.dispose();
 });
-test('failed first segment gives no winner, no duplicate paid retries, and no audience success receipt',async()=>{
+test('a failed provider leaves intake open and waits for the host before retrying the reserved idea',async()=>{
   const {show,pick,step,requests,receipts,ended}=await room();
   pick('A');await step(2200);requests[0].reject(Error('unavailable'));await settle();
-  await step();assert.deepEqual(ended,[['interrupted',null]]);assert.equal(receipts[0][1],false);
-  await step(22000);assert.equal(requests.length,1);await show.dispose();
+  await step();assert.deepEqual(ended,[]);assert.deepEqual(receipts,[]);
+  assert.equal(show.state.renderPaused,true);
+  await step(600000);assert.equal(requests.length,1);
+  assert.equal(show.resume(),true);await step();assert.equal(requests.length,2);
+  assert.deepEqual(requests[1].opts.picks.map(p=>p.id),['A']);
+  show.stop();requests[1].reject(Error('canceled'));await show.dispose();assert.equal(receipts[0][1],false);
 });
 test('canceling a generation discards its eventual clip and never starts another',async()=>{
   const {show,pick,step,requests,receipts,complete,disposed}=await room();
@@ -87,8 +92,8 @@ test('canceling a generation discards its eventual clip and never starts another
 });
 
 test('waiting past the collection timer cannot open on only one finished render',async()=>{
-  const {show,requests,step,complete}=await room();
-  await step(8000);await complete(0);await step();
+  const {show,requests,step,complete,pick}=await room();
+  pick('a');pick('b');await step(8000);await complete(0);await step();
   await step(32000);
   assert.equal(requests.length,2);
   assert.equal(show.state.phase,'collecting','opening requires two playable segments');
@@ -96,7 +101,7 @@ test('waiting past the collection timer cannot open on only one finished render'
   await complete(1);
   assert.equal(show.state.preload.length,2);
   await step();await step(1250);assert.equal(show.state.phase,'playing');
-  const first=show.state.clipUrl;await step();
+  const first=show.state.clipUrl;pick('c');await step(2000);
   assert.equal(requests.length,3,'refill starts while the first clip is playing');
   await step(12000);await step(1250);
   assert.notEqual(show.state.clipUrl,first);assert.equal(show.metrics.playbackGaps,0);
@@ -105,10 +110,9 @@ test('waiting past the collection timer cannot open on only one finished render'
 
 test('fear stays live on the show clock and increases only once at the filmed scare', async()=>{
   const {show,pick,requests,step,scares,complete}=await room();
-  pick('startle');pick('sidestep');await step();
+  pick('startle');pick('sidestep');await step(2000);
   await complete(0,{picks:[
     {...encounter('startle',1500,true),reactedOffsetMs:4500,reactedFrame:109},
-    encounter('sidestep'),
   ],finalFear:1});
   await step();await complete(1);await step(30000);await step(1250);
   assert.deepEqual(scares,[]);
@@ -120,7 +124,7 @@ test('fear stays live on the show clock and increases only once at the filmed sc
 
 test('rejected footage stays private and the same batch retries once from the last accepted native frame',async()=>{
   const {show,step,seed,complete,requests,pick,disposed,receipts,ended,scares}=await room();
-  await step(8000);
+  pick('a');await step(8000);
   const lastGood=await complete(0);
   pick('gust');await step(2200);
   const bad=await complete(1,{observations:[{...camera(275),feetVisible:false}]});
@@ -137,7 +141,7 @@ test('rejected footage stays private and the same batch retries once from the la
   assert.deepEqual(ended,[]);assert.deepEqual(receipts,[]);await show.dispose();
 });
 
-test('two unresolved encounters end opening without a winner, a scare or a successful receipt',async()=>{
+test('two unresolved encounters release the failed idea and keep the live lobby collecting',async()=>{
   const {show,step,complete,requests,pick,disposed,receipts,ended,scares}=await room();
   pick('bucket');await step(2200);
   const unresolved = {...encounter('bucket'),reacted:false,reaction:undefined};
@@ -146,19 +150,21 @@ test('two unresolved encounters end opening without a winner, a scare or a succe
   await complete(1,{picks:[unresolved]});await step();await step(5000);
   assert.equal(requests.length,2);assert.equal(show.file(1),undefined);assert.equal(show.state.preload.length,0);
   assert.deepEqual(disposed,[0,1]);assert.equal(receipts.length,1);assert.equal(receipts[0][1],false);
-  assert.match(receipts[0][2],/reacted/);assert.deepEqual(ended,[['interrupted',null]]);
+  assert.match(receipts[0][2],/reacted/);assert.deepEqual(ended,[]);assert.equal(show.window(50000).canDispatch,true);
   assert.deepEqual(scares,[]);await show.dispose();
 });
 
-test('a usable opening can play after the successor exhausts its one retry',async()=>{
+test('one finished scene cannot start a live game after the second exhausts its retry',async()=>{
   const {show,step,complete,requests,pick,receipts,ended}=await room();
-  await step(8000);await complete(0);
+  pick('a');await step(8000);await complete(0);
   pick('B');await step(2000);const failure=Object.assign(Error('The next scene opened in a different view of the hallway.'),{code:'HALLWAY_MISMATCH'});
   requests[1].reject(failure);await settle();await step();requests[2].reject(failure);await settle();
   await step(20000);await step(1250);assert.equal(show.file(2),undefined);
-  assert.equal(show.state.clipUrl,'/rehearsal/segments/match/1.mp4');
-  await step(12000);assert.deepEqual(ended,[['interrupted',null]]);assert.equal(receipts.length,1);
-  assert.equal(requests.length,3);await show.dispose();
+  assert.equal(show.state.clipUrl,undefined);assert.equal(show.metrics.played,0);
+  assert.deepEqual(ended,[]);assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['B',false]]);
+  assert.equal(requests.length,3);
+  pick('new-guest');await step(2200);assert.equal(requests[3].opts.picks[0].id,'new-guest');
+  await complete(3);await step();await step(1250);assert.equal(show.metrics.played,1);await show.dispose();
 });
 
 test('an operator stop between visual attempts releases the reservation exactly once',async()=>{
@@ -202,8 +208,8 @@ test('old bucket and gust cuts fail using their archived final reads and applied
 });
 
 test('opening retry has a distinct archive id while still starting from the photo',async()=>{
-  const {show,step,complete,requests,seed}=await room();
-  await step(8000);await complete(0,{observations:[]});await step();
+  const {show,step,complete,requests,seed,pick}=await room();
+  pick('a');pick('b');await step(8000);await complete(0,{observations:[]});await step();
   assert.equal(requests[1].opts.chapter,2);assert.strictEqual(requests[1].opts.seed,seed);
   assert.equal(requests[1].opts.continuation,false);await complete(1);
   await step();assert.equal(requests[2].opts.continuation,true);
@@ -213,20 +219,26 @@ test('opening retry has a distinct archive id while still starting from the phot
 test('a missed second idea has its own receipt while a filmed encounter or a genuine exit still plays',async()=>{
   for (const exiting of [false,true]) {
     const {show,step,complete,requests,pick,receipts,ended}=await room();
+    let take=0;
+    if (!exiting) {
+      pick('opening');await step(2200);await complete(0);
+      take=1;
+    }
     pick('unseen');if (!exiting) pick('seen');await step(2200);
     const picks=[{id:'unseen',delivered:false,inPath:false}];
     if (!exiting) picks.push(encounter('seen'));
-    await complete(0,{picks,...(exiting ? {winner:'robot'} : {})});
+    await complete(take,{picks,...(exiting ? {winner:'robot'} : {})});
     assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['unseen',false]]);
     await step();
-    if (!exiting) await complete(1);
+
     await step(30000);await step(1250);await step(2200);
     assert.ok(show.file(1));assert.doesNotMatch(show.state.sourceTitle,/unseen/);
     if (exiting) {
       await step(10000);assert.deepEqual(ended,[['exit','robot']]);
       assert.equal(requests.length,1);
     } else {
-      assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['unseen',false],['seen',true]]);
+      await step(9800);await step(1250);await step(2200);
+      assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['unseen',false],['opening',true],['seen',true]]);
     }
     show.stop();if(requests[2])await complete(2);await show.dispose();
   }
@@ -254,41 +266,40 @@ test('only a filmed third scare can end the match on fear',async()=>{
   evidence.winner=null;assert.equal(reviewSegment(clip,[p],2,false).ok,false);
 });
 
-test('an unavailable film reviewer closes the opening truthfully without retrying a paid world',async()=>{
-  const {show,step,requests,ended}=await room();await step(8000);
+test('an unavailable film reviewer pauses preparation without silently retrying a paid world',async()=>{
+  const {show,step,requests,ended,pick}=await room();pick('opening');await step(8000);
   const message='Gemini Decisions could not review the recorded frames.';
   requests[0].reject(Object.assign(Error(message),{code:'VISUAL_REVIEW_UNAVAILABLE'}));
   await settle();await step();await step(10000);
   assert.equal(requests.length,1);assert.equal(show.file(1),undefined);
-  assert.deepEqual(ended,[['interrupted',null]]);assert.equal(show.error,message);
+  assert.deepEqual(ended,[]);assert.equal(show.state.renderPaused,true);assert.equal(show.error,message);
   await show.dispose();
 });
 
-test('verified stock opening collects two guest picks and generates against the exact native tail during the opening',async()=>{
-  const {loadVenuePrologue}=await import('../apps/world/rehearsal/venue-prologue.mjs');
-  const dir=require('node:path').resolve(__dirname,'../apps/world/rehearsal');
-  const receipt=require('../apps/world/rehearsal/venue-opening.json');
-  assert.deepEqual(loadVenuePrologue(dir,'custom-photo'),[]);
-  const clips=loadVenuePrologue(dir,receipt.seedSha256);
-  assert.deepEqual(clips.map(clip=>clip.durationMs),[17250,7000]);
-  const {show,requests,receipts,scares,step,complete,pick}=await room(clips);
-  assert.equal(show.metrics.preparedOpening,2);
-  await step(1000);
-  assert.equal(requests.length,0,'a quiet stock lobby does not spend an empty generation');
+test('the live lobby begins empty and stays open without a game clock until the host starts two newly rendered scenes',async()=>{
+  const {show,requests,receipts,seed,step,complete,pick,play}=await room(false);
+  assert.equal(show.file(1),undefined);
+  assert.deepEqual(show.state.preload,[]);
+  await step(60000);assert.equal(requests.length,0);
   pick('low-fog');pick('swinging-lamp');await step();
-  assert.equal(requests.length,1);
-  assert.equal(requests[0].opts.chapter,3);
-  assert.deepEqual(requests[0].opts.picks.map(p=>p.id),['low-fog','swinging-lamp']);
-  assert.equal(require('node:crypto').createHash('sha256').update(requests[0].opts.seed).digest('hex'),
-    'e10355627e68d4a98a83d0ba90a98edc7cf7b2e453a523822f5ceb9d46e0f1d5');
-  assert.equal(requests[0].opts.continuation,true);
-  await step(28999);assert.equal(show.state.phase,'collecting');
-  await step(1);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/1.mp4');
-  assert.equal(show.busy,true);assert.equal(show.metrics.generated,0);
-  await step(17250);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/2.mp4');
-  assert.deepEqual(receipts,[]);assert.deepEqual(scares,[]);
-  await complete(0);await step(7000);await step(1250);assert.equal(show.state.clipUrl,'/rehearsal/segments/match/3.mp4');
-  assert.deepEqual(receipts,[]);await step(2000);
-  assert.deepEqual(receipts.map(([p,ok])=>[p.id,ok]),[['low-fog',true],['swinging-lamp',true]]);
-  show.stop();if(requests[1])await complete(1);await show.dispose();
+  assert.deepEqual(requests[0].opts.picks.map(p=>p.id),['low-fog']);
+  assert.strictEqual(requests[0].opts.seed,seed);
+  assert.equal(requests[0].opts.chapter,1);
+  const end1=await complete(0);
+  await step(75000);
+  assert.equal(play(),false);
+  assert.strictEqual(requests[1].opts.seed,end1);
+  assert.deepEqual(requests[1].opts.picks.map(p=>p.id),['swinging-lamp']);
+  await complete(1);
+  await step(360000);
+  assert.equal(show.state.canStart,true);
+  assert.equal(show.metrics.played,0);
+  assert.equal(requests.length,2);
+  assert.deepEqual(receipts,[]);
+  assert.equal(play(),true);assert.equal(play(),false);
+  await step(1249);assert.equal(show.metrics.played,0);
+  await step(1);assert.equal(show.metrics.played,1);
+  assert.equal(show.file(1),'/private/0.mp4');
+  await step(2000);assert.deepEqual(receipts.map(([p])=>p.id),['low-fog']);
+  show.stop();if(requests[2])await complete(2);await show.dispose();
 });
