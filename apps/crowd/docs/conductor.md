@@ -2,9 +2,20 @@
 
 Crowd's answer to World's [conductor brief](../../../FEATURES.md#the-audience-conductor). The policy is code: [`server/conductor.ts`](../server/conductor.ts). The trace below is asserted by [`test/conductor.test.ts`](../test/conductor.test.ts). It isn't wired into the scheduler yet; until World's scene data flows, the scheduler stays FIFO.
 
-| Projector (robot first, feed beside it) | Phone (live view, feed below) |
-|---|---|
-| ![Projector mock](sidebar-projector.jpg) | ![Phone mock](sidebar-phone.jpg) |
+| | Projector (robot first, feed beside it) | Phone, 390 px (live view, then the same feed below) |
+|---|---|---|
+| **Opening, 30 s** | ![Projector, opening](sidebar-projector-opening.jpg) | ![Phone, opening](sidebar-phone-opening.jpg) |
+| **Live, t = 24 s** | ![Projector, live](sidebar-projector.jpg) | ![Phone, live](sidebar-phone.jpg) |
+
+## Round phases (matching on both screens)
+
+| Phase | Phase bar and HUD | Phone | Conductor |
+|---|---|---|---|
+| **Opening** (30 s before the robot moves) | "● Ideas open · robot moves in 0:24" / "Clock starts in 0:24" | Submit box and presets open; private receipt immediately | Nothing is sent. "Up next" says "Picking in 0:14" until **10 s before the clock starts**, then reserves the first pick ("Up next · first slot") on the current shot and holds it. |
+| **Live** | "● Round N live · 0:36 left" | Same, plus "In the hallway" fills in | First slot 8 s after the clock starts, then every 12 s (max 6). |
+| **Over** | "Robot escaped" / "Audience wins: time's up" / "Interrupted: no winner" | Submissions carry over to the next round | Nothing reserved. |
+
+The player keeps getting clean right-shoulder frames in every phase. The phase bar, captions and ghost cue are audience-only.
 
 ## What the audience sees
 
@@ -72,6 +83,8 @@ interface SceneObserved {
 interface HauntSeen { hauntId: Id; episodeId: Id; t: Ms; response?: string }   // response ≤ 60, e.g. "Robot steps right around it"
 type EffectKind = "floor_prop" | "airborne" | "lighting" | "visibility" | "sign" | "audio" | "overhead" | "other";
 ```
+
+**Round phase timing:** for the matching countdowns, Crowd needs to know when the opening started and when the game clock starts. The smallest change: `Episode` gains optional `clockStartsAt` (epoch ms), with `maxDurationMs` counted from it. `episode.started` would then mean "opening began". Or World can publish a `round.phase` event with `{ phase, at, endsAt }`. Either works; World decides.
 
 **Interim option from Brain, needing no new contract:** until `haunt.seen` exists, Crowd can mark an idea "Seen in the hallway" at the first `tick` after `haunt.injected { ok: true }` whose `perception.hazards` gains a new label. The observed response can be that tick's display-safe `rationale` (≤ 60, e.g. "obstacle ahead, stepping left"). This is heuristic: a hazard the player notices isn't proof of what the audience sees. So `haunt.seen` from World's camera stays the target, and the tick rule is the fallback. With neither, the idea stays at "Sent to world".
 
