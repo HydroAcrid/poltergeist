@@ -329,6 +329,36 @@ describe("scheduler and fake World", () => {
   });
 });
 
+describe("referee and scoreboard on episode end", () => {
+  it("blames the adversary when a visual haunting lands just before the target is lost, then updates the scoreboard", async () => {
+    const a = await phone();
+    await a.submit({ text: "fog lol" });
+    await hub.crowd.whenIdle();
+    const episodeId = hub.world.startEpisode({ maxDurationMs: 60_000 });
+    const tick = (seq: number, visible: boolean) =>
+      hub.bus.publish("tick", "brain", {
+        episodeId, seq, t: seq * 500, driver: "brain", framePath: `f/${seq}.jpg`, frameDiff: 0.1,
+        perception: { visible, conf: visible ? 0.9 : 0.1, hazards: [], model: "fixture", latencyMs: 600 },
+        action: { key: "W", holdMs: 600 }, mode: visible ? "track" : "search", rationale: "walking", successClaim: false, policyVersion: "v1",
+      }, episodeId);
+    for (let s = 0; s < 16; s++) tick(s, true); // target visible until t = 7.5 s
+    hub.clock.advance(8_000);
+    hub.crowd.tick(); // fog dispatched at t = 8 s
+    await hub.world.flush(); // injected ok
+    for (let s = 18; s < 30; s++) tick(s, false); // target lost from t = 9 s
+    hub.world.endEpisode("timeout");
+
+    const v = hub.bus.history({ types: ["verdict.provisional"] }).at(-1)!.payload as { blame: string; culpritHauntId: string; failureT: number };
+    const fogId = (await a.state()).mine[0]!.hauntId;
+    expect(v).toMatchObject({ blame: "adversary", culpritHauntId: fogId, failureT: 9000 });
+
+    const board = (await hub.app.inject({ method: "GET", url: "/api/crowd/scoreboard" })).json();
+    expect(board.attacks).toMatchObject({ injected: 1, landed: 1 });
+    expect(board.killFeed[0].text).toMatch(/^💀 .+: Thick fog rolls down the hallway → robot lost the target$/);
+    expect(hub.bus.history({ types: ["scoreboard.updated"] }).length).toBeGreaterThan(0);
+  });
+});
+
 describe("operator and page", () => {
   it("serves a self-contained /overlay, its logic module and a join QR", async () => {
     const page = await hub.app.inject({ method: "GET", url: "/overlay" });

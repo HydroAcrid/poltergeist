@@ -6,7 +6,11 @@ import { HauntDispatch, HauntPublic, type CrowdState, type Haunt, type HauntSubm
 import type { HauntInjected } from "@poltergeist/contracts/haunt-injected.js";
 import type { Bus, Envelope } from "@poltergeist/contracts/hub-types.js";
 import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
+import type { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
+import type { Verdict } from "@poltergeist/contracts/verdict.js";
 import { GhostNames } from "./ghost-names.js";
+import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
+import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
 import type { ModerationAdapter } from "./moderation/types.js";
 
@@ -89,6 +93,11 @@ export class CrowdService {
   private haunts = new Map<Id, Haunt>();
   private names = new GhostNames();
   private hallwayIds: Id[] = []; // dispatched this round, oldest first
+  private ticksByEpisode = new Map<Id, RefTick[]>(); // Brain's TickLog, for the referee
+  private injectedLog: (RefInjected & { episodeId: Id })[] = [];
+  private verdicts = new Map<Id, Verdict>(); // one per episode (final replaces provisional)
+  private policyVersion = "v1";
+  private board: Scoreboard | null = null;
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, { time: number; hauntId: Id; revised: boolean }[]>();
   private revisions = new Map<Id, Id>(); // rejected parent → its one resubmission
@@ -106,7 +115,7 @@ export class CrowdService {
     this.now = deps.now ?? Date.now;
     this.config = { ...DEFAULT_CONFIG, ...deps.config };
     this.presetsById = new Map(deps.presets.map((p) => [p.id, p]));
-    this.unsubscribe = deps.bus.subscribe(["episode.started", "episode.ended", "haunt.injected", "operator.command"], (e) => this.onEvent(e));
+    this.unsubscribe = deps.bus.subscribe(["episode.started", "episode.ended", "haunt.injected", "operator.command", "tick"], (e) => this.onEvent(e));
   }
 
   // ---------- lifecycle ----------
@@ -319,15 +328,26 @@ export class CrowdService {
         };
         if (ep.round !== undefined) this.lastRound = ep.round;
         this.hallwayIds = []; // a new round starts with an empty hallway
+        if (ep.policyVersion) this.policyVersion = ep.policyVersion;
         break;
       }
       case "episode.ended": {
         const ended = e.payload as EpisodeEnded;
         if (this.active?.episodeId === ended.episodeId) this.active = null;
+        this.referee(ended);
+        break;
+      }
+      case "tick": {
+        const k = e.payload as RefTick & { episodeId?: Id };
+        if (!k?.episodeId || typeof k.t !== "number" || !k.perception) return;
+        const list = this.ticksByEpisode.get(k.episodeId) ?? [];
+        if (list.length < 2000) list.push({ seq: k.seq, t: k.t, perception: k.perception, action: k.action, mode: k.mode, ...(k.reaction ? { reaction: k.reaction } : {}) });
+        this.ticksByEpisode.set(k.episodeId, list);
         break;
       }
       case "haunt.injected": {
         const inj = e.payload as HauntInjected;
+        this.injectedLog.push({ hauntId: inj.hauntId, t: inj.t, ok: inj.ok, episodeId: inj.episodeId });
         const h = this.haunts.get(inj.hauntId);
         if (!h || h.status !== "dispatched") return;
         if (inj.ok) this.setStatus(h, "injected", { injectedT: inj.t });
@@ -367,6 +387,45 @@ export class CrowdService {
       default:
         break; // world/brain commands
     }
+  }
+
+  /** Rule verdict for an ended episode (published within the same tick), then a scoreboard update. */
+  private referee(ended: EpisodeEnded): void {
+    try {
+      const verdict = ruleVerdict(
+        {
+          episode: { episodeId: ended.episodeId },
+          ended,
+          ticks: this.ticksByEpisode.get(ended.episodeId) ?? [],
+          injected: this.injectedLog.filter((i) => i.episodeId === ended.episodeId),
+          haunts: [...this.haunts.values()].filter((h) => h.episodeId === ended.episodeId),
+        },
+        this.now(),
+      );
+      this.verdicts.set(ended.episodeId, verdict);
+      this.deps.bus.publish("verdict.provisional", "crowd", verdict, ended.episodeId);
+    } catch (err) {
+      this.deps.log?.("referee failed", { episodeId: ended.episodeId, err: String(err) });
+    }
+    this.ticksByEpisode.delete(ended.episodeId);
+    this.publishScoreboard();
+  }
+
+  private publishScoreboard(): void {
+    this.board = buildScoreboard({
+      haunts: [...this.haunts.values()],
+      injected: this.injectedLog,
+      verdicts: [...this.verdicts.values()],
+      policyVersion: this.policyVersion,
+      now: this.now(),
+    });
+    this.deps.bus.publish("scoreboard.updated", "crowd", this.board);
+  }
+
+  /** Current scoreboard (GET /api/crowd/scoreboard). */
+  scoreboard(): Scoreboard {
+    if (!this.board) this.publishScoreboard();
+    return this.board!;
   }
 
   private setStatus(h: Haunt, status: Haunt["status"], patch: Partial<Haunt> = {}): void {
