@@ -54,6 +54,48 @@ describe("rules-only moderation", () => {
     expect(m.safe).toBe(false);
   });
 
+  it("rejects blocked words hidden with invisible characters, leetspeak, spacing or look-alike letters", async () => {
+    const hidden = [
+      "thick fog rolls in and a g​un appears", // zero-width space
+      "fog rolls in, then a k­nife drops", // soft hyphen
+      "the fog hides a b‍omb in the hall", // zero-width joiner
+      "fog rolls in and a ⁦gun⁩ drops", // bidi isolates
+      "fog rolls in with a g u n",
+      "fog rolls in with a g.u.n",
+      "fog rolls in and a k1ll3r chair",
+      "fog rolls in and a bl00dy chair",
+      "fog rolls in and a gυn drops", // Greek upsilon
+      "fog rolls in and a кnife drops", // Cyrillic ka
+    ];
+    for (const s of hidden) {
+      const m = await mod.moderate(s);
+      expect(m.safe, JSON.stringify(s)).toBe(false);
+      expect(m.text).toBe("");
+    }
+  });
+
+  it("never lets control, format or markup characters into approved text", async () => {
+    for (const s of ["fog rolls in \u0000", "fog‮rolls in", "fog rolls​ in slowly", "fog rolls in\tslowly"]) {
+      const m = await mod.moderate(s);
+      if (m.safe) expect(m.text, JSON.stringify(s)).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    }
+    expect((await mod.moderate("fog rolls in <b>bold</b>")).safe).toBe(false);
+    expect((await mod.moderate("fog rolls​ in slowly")).text).toBe("Fog rolls in slowly");
+  });
+
+  it("does not over-block ordinary words, numbers or single letters", async () => {
+    for (const s of ["fog rolls in at 3 am", "2 chairs tip over in the aisle", "a cat runs down aisle 4", "fog rolls in, a b c of shadows", "the lamps flicker 10 times"]) {
+      expect((await mod.moderate(s)).safe, s).toBe(true);
+    }
+  });
+
+  it("strips invisible characters from nicknames and drops hidden unsafe ones", () => {
+    expect(mod.nickname("spo​oky")).toBe("spooky");
+    expect(mod.nickname("k1ll3r")).toBeUndefined();
+    expect(mod.nickname("g u n s")).toBeUndefined();
+    expect(mod.nickname("<b>hi</b>")).toBeUndefined();
+  });
+
   it("keeps clean nicknames and drops unsafe ones", () => {
     expect(mod.nickname("spooky sam")).toBe("spooky sam");
     expect(mod.nickname("  ghost  ")).toBe("ghost");
