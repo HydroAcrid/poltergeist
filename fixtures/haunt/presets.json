@@ -10,13 +10,12 @@
     "group": "On the floor"
   },
   {
-    "id": "paper-gust",
-    "label": "Gust of loose papers",
-    "text": "A gust blows loose papers across the aisle",
+    "id": "bat-swarm",
+    "label": "Send in the bats",
+    "text": "A swarm of bats sweeps across the flashlight beam",
     "tags": [
-      "distractor",
       "occlusion",
-      "weather"
+      "distractor"
     ],
     "group": "In the air"
   },
@@ -60,12 +59,13 @@
     "group": "On the floor"
   },
   {
-    "id": "balloons",
-    "label": "Release balloons",
-    "text": "A bunch of balloons drifts across the hall",
+    "id": "paper-gust",
+    "label": "Gust of loose papers",
+    "text": "A gust blows loose papers across the aisle",
     "tags": [
+      "distractor",
       "occlusion",
-      "distractor"
+      "weather"
     ],
     "group": "In the air"
   },

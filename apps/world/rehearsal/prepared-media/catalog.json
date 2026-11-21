@@ -145,6 +145,46 @@
       "placement": "in-path",
       "verifiedAvoidance": false,
       "verifiedScare": false
+    },
+    {
+      "id": "bat-swarm",
+      "role": "effect",
+      "presetId": "bat-swarm",
+      "family": "occlusion",
+      "title": "The bats descend",
+      "buttonLabel": "Send in the bats",
+      "file": "bat-swarm.mp4",
+      "durationMs": 7000,
+      "fps": 24,
+      "frames": 168,
+      "outcome": "Bats sweep through the flashlight beam. The explorer ducks, shields its head and stands back up.",
+      "source": {
+        "episodeId": "ep_01M8002QYW5PF9DAKZAFMWPM0V",
+        "capture": "Native director-cued continuation",
+        "setting": "dim venue hallway",
+        "seedFrame": 414,
+        "seedSha256": "b5c4bf6ee0436be710d0c63fd684ca08093d9e5711ee048947bed0347efaa064",
+        "firstFrame": 1,
+        "lastFrame": 168,
+        "captureFrames": 296,
+        "captureFps": 24,
+        "captureSha256": "db3a74e4da139c8412e8e030c1c57a39a16de1b9a1652ca36de0c993445d9aa2"
+      },
+      "sha256": "523e2bdfcefc6a0a06656236292540167d9922d7e61c3d57f7d3a18346364e9f",
+      "placement": "in-path",
+      "verifiedAvoidance": true,
+      "verifiedScare": false,
+      "reactionEvidence": {
+        "episodeId": "ep_01M8002QYW5PF9DAKZAFMWPM0V",
+        "clipSha256": "523e2bdfcefc6a0a06656236292540167d9922d7e61c3d57f7d3a18346364e9f",
+        "verifiedInPixels": true,
+        "action": "duck",
+        "obstacleFrame": 1,
+        "responseFrame": 18,
+        "recoveredFrame": 120,
+        "brainDecision": "hold",
+        "performance": "director-cued native continuation"
+      }
     }
   ]
 }
