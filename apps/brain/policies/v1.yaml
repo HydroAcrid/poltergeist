@@ -1,0 +1,41 @@
+version: v1
+parent: null
+createdBy: human
+rationale: baseline
+perception: { adapter: er2, thinking: low, timeoutMs: 2500, promptAddenda: [] }
+controller:
+  emaAlpha: 0.5
+  maxPointJump: 300
+  yawDeadband: 0.15
+  kYaw: 600            # ms of turn per unit |e|   (calibrate: degrees per 100 ms ArrowRight)
+  kFwd: 1200           # ms forward per unit (1 - boxH)
+  defaultFwdMs: 600
+  lostTicksBeforeSearch: 2
+  searchStepMs: 450    # ≈ 45° (calibrate live)
+  searchMaxSteps: 8
+  exploreFwdMs: 800
+  stuckDiffThreshold: 0.02
+  stuckTicks: 2
+  successBoxHeight: 0.45
+  successCenter: 0.2
+  successTicks: 2
+  # Two or more door candidates with no depth cue to tell them apart:
+  # change the viewing angle before committing (the recorded sidestep was D for 1 s).
+  verifyKey: D
+  verifyHoldMs: 1000
+  verifyMaxSteps: 2
+# Third-person navigation (avatar in frame). Units are 0–1000 frame space.
+navigation:
+  pathHalfWidth: 20      # half-width of the walking corridor at the feet
+  farWidthRatio: 0.2     # corridor width at the goal, as a fraction of pathHalfWidth
+  defaultObstacleHalfWidth: 30
+  walkMs: 600
+  stepAsideMs: 600       # ≈ one lane in the prototype (calibrate live)
+  arriveRadius: 25       # feet midpoint within this of the threshold = arrived
+  headingX: 500          # follow camera: W walks toward the frame's centre column
+  turnDeadband: 0.15     # exit bearing (|goalX − headingX| / 500) that triggers a turn
+  kTurn: 600             # ms of turn per unit bearing (calibrate live)
+  # ER 2's forward floor point varied between runs on the same frames (live probe
+  # 2026-11-21), so facing comes from the follow camera until a calibration pair.
+  useForwardPoint: false
+
