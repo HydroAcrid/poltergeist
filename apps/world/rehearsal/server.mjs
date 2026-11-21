@@ -365,6 +365,8 @@ export async function registerStage(
         try {
           live = launchLive({
             episodeId: r.id,
+            playMode: r.playMode,
+            plannedDurationMs: r.plannedDurationMs,
             dir: captureDir,
             seed:resuming ? continuation.bytes : seed,
             ...(r.chapters ? {chapter:ticket.chapter,chapterMs:chapterTiming.limitMs} : {}),
@@ -651,6 +653,7 @@ export async function registerStage(
     number,
     queue: [...queue.values()],
     canLive: !!captureDir,
+    cameraTestDurationMs: liveMs,
     providerClosing: !!providerClosing(),
     custom,
     revision,
@@ -667,10 +670,15 @@ export async function registerStage(
     const showMinutes=req.body?.showMinutes;
     if (showMinutes!==undefined && (![5,10].includes(showMinutes) || req.body?.mode!=='genie' || req.body?.chapters!==true))
       return reply.code(400).send({error:'Choose a 5 or 10 minute chaptered Genie show.'});
+    const paid = req.body?.mode === 'genie';
+    const chaptered = paid && req.body?.chapters === true;
+    const playMode = !paid ? 'offline-rehearsal' : !chaptered ? 'camera-test'
+      : showMinutes === 5 ? 'five-minute-demo' : 'ten-minute-game';
+    if (req.body?.expectedPlayMode !== undefined && req.body.expectedPlayMode !== playMode)
+      return reply.code(400).send({error: 'The game length changed. Select the duration again before starting.'});
     if (checkingPlayer) return reply.code(409).send({ error: 'The opening shot is being checked.' });
     if (round && round.phase !== 'ended')
       return reply.code(409).send({ error: 'A round is already open.' });
-    const paid = req.body?.mode === 'genie';
     if (paid) {
       if (providerClosing()) return reply.code(409).send({ error: 'The previous live hallway is still closing.' });
       if (custom && (!plateStatus().plateReady || req.body?.plateKey !== sourceKey))
@@ -724,7 +732,7 @@ export async function registerStage(
       round.deadline = Date.now();
     }
     round.live = paid;
-    if (paid && req.body?.chapters===true) {
+    if (chaptered) {
       const wall=showMinutes===5;
       const duration=wall ? fiveMinuteShowMs : chapterTiming.matchMs;
       Object.assign(round,{chapters:true,chapter:1,showMinutes:wall ? 5 : 10,clockMode:wall ? 'wall' : 'active',
@@ -737,6 +745,7 @@ export async function registerStage(
         round.remainingMs=Math.max(0,round.showDeadline-Date.now());
       }
     }
+    Object.assign(round, {playMode, requestedAt, plannedDurationMs: chaptered ? round.durationMs : paid ? liveMs : playMs});
     pilot = paid ? makePilot() : null;
     if (paid) {
       const r=round;
@@ -747,7 +756,7 @@ export async function registerStage(
         },r.id);
       }, { cueLeadMs: 1800 });
     }
-    return { id: round.id, openingMs: lobbyOpenedAt == null ? openingMs : 0 };
+    return { id: round.id, playMode, plannedDurationMs: round.plannedDurationMs, openingMs: lobbyOpenedAt == null ? openingMs : 0 };
   });
   app.post('/rehearsal/stop', async (req,reply)=>{
     if(req.headers['x-show-control']!=='1') return reply.code(403).send();

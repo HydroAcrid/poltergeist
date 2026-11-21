@@ -356,3 +356,29 @@ test('a provider close arriving after the wall deadline cannot schedule another 
   assert.equal(h.providers.length,1);
   assert.equal(h.events.filter(e=>e.type==='episode.ended').length,1);
 });
+
+test('host duration selection must match the launched round and its native receipt',async t=>{
+  const h=await stage(t,undefined,true,{autoStart:false});
+  const seed=image(0).toString('base64');
+  const wrong=await h.call('start',{mode:'genie',seed,expectedPlayMode:'ten-minute-game'});
+  assert.equal(wrong.status,400);
+  assert.equal(h.reviews(),0);
+  assert.equal(h.current(),null);
+  const started=await h.call('start',{mode:'genie',seed,chapters:true,showMinutes:10,expectedPlayMode:'ten-minute-game'});
+  assert.equal(started.status,200);
+  assert.equal(started.data.playMode,'ten-minute-game');
+  assert.equal(started.data.plannedDurationMs,8000);
+  assert.equal(h.current().requestedAt,h.clickedAt);
+  assert.equal(h.current().plannedDurationMs,started.data.plannedDurationMs);
+  h.tick(150);
+  assert.equal(h.providers[0].playMode,started.data.playMode);
+  assert.equal(h.providers[0].plannedDurationMs,started.data.plannedDurationMs);
+});
+
+test('camera tests advertise their configured duration and use a distinct receipt',async t=>{
+  const h=await stage(t,undefined,false);
+  const state=(await h.call('state')).data;
+  assert.equal(state.round.playMode,'camera-test');
+  assert.equal(state.cameraTestDurationMs,state.round.plannedDurationMs);
+  assert.equal(h.providers[0].plannedDurationMs,state.round.plannedDurationMs);
+});
