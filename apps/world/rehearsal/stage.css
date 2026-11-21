@@ -540,3 +540,20 @@ body:not(.projector) main {
 #test-observations dd { margin: 0; overflow-wrap: anywhere; }
 
 #show-cost { display:block; margin:.3em 0 .7em; color:var(--muted); font-size:13px; }
+
+.show-length {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+.show-length[hidden] { display: none; }
+.show-length select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-height: 44px;
+  padding: 0 .55rem;
+}

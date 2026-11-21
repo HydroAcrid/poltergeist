@@ -87,6 +87,7 @@ function controls() {
     'start',
     'go-live',
     'go-show',
+    'show-minutes',
     'capture',
     'upload',
     'default',
@@ -104,6 +105,11 @@ function controls() {
     !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
   set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start short Genie round');
   el('go-show').hidden = !state?.canLive;
+  el('show-length').hidden = !state?.canLive || busy;
+  const isDemo = el('show-minutes').value === '5';
+  set('go-show',isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
+  set('show-cost',isDemo ? 'Ends five minutes after Start, including blackouts. About $6 per generated minute.' :
+    'Up to ten minutes of play. The clock pauses during blackouts. About $6 per generated minute.');
   el('go-show').disabled ||= el('go-live').disabled;
   el('show-cost').hidden = !state?.canLive || busy;
   el('stop-show').hidden = !busy || !state?.round?.live;
@@ -309,11 +315,11 @@ function paint() {
         }
       } else if (r.phase === 'preparing') {
         phase = 'Opening the hallway';
-        clock = '···';
-        label = 'Opening';
+        clock = r.clockMode==='wall' ? time(Math.max(0,Math.ceil((r.showDeadline-now)/1000))) : '···';
+        label = r.clockMode==='wall' ? 'Time left' : 'Opening';
       } else if (r.phase === 'handoff') {
         phase = 'The hallway shifts';
-        clock = time(Math.max(0,Math.ceil(r.remainingMs/1000)));
+        clock = time(Math.max(0,Math.ceil((r.clockMode==='wall' ? r.showDeadline-now : r.remainingMs)/1000)));
         label = 'Time left';
       } else if (r.phase === 'playing') {
         phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
@@ -423,13 +429,14 @@ function startWorld(chapters) {
   return run(() =>
     request('/rehearsal/start', {
       mode: 'genie',
-      ...(chapters ? {chapters:true} : {}),
+      ...(chapters ? {chapters:true, showMinutes:Number(el('show-minutes').value)} : {}),
       plateKey: state.plateKey,
       seed: scene.seed(state),
     }),
   );
 }
 el('go-live').onclick = () => startWorld(false);
+el('show-minutes').onchange=controls;
 el('go-show').onclick = () => startWorld(true);
 el('stop-show').onclick = () => run(() => request('/rehearsal/stop', {round:state.round.id}));
 el('prepare').onclick = () =>

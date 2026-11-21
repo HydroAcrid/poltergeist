@@ -112,6 +112,23 @@ describe("phone page follows World's phase", () => {
     expect(hub.crowd.scoreboard().rounds).toBe(1);
   });
 
+  it("keeps the five-minute deadline visible on phones through a blackout", async () => {
+    await hub.close();
+    let clock: MatchClock | undefined;
+    hub = await buildTestHub({ matchClock: () => clock, config: { seededFallback: false } });
+    const a = await guest();
+    const durationMs = 300_000;
+    const deadline = hub.clock.now() + durationMs;
+    const id = hub.world.startEpisode({ maxDurationMs: durationMs });
+    clock = { id, phase: "handoff", clockMode: "wall", durationMs, remainingMs: 18_000, deadline };
+    const first = await a.poll();
+    hub.clock.advance(2_000);
+    const next = await a.poll();
+    expect(next).toMatchObject({ roundEndsAt: deadline, slotsPerRound: 25, you: first.you });
+    expect(next.roundPausedRemainingMs).toBeUndefined();
+    expect(hub.dispatched()).toHaveLength(0);
+  });
+
   it("uses active play time for dispatch slots throughout a long match", async () => {
     await hub.close();
     let clock: MatchClock | undefined;

@@ -16,7 +16,7 @@ Kevin’s World host takes the photo and prepares the hallway. Courtney owns the
 
 ## During a longer game
 
-Guests join once and keep their ghost names. The host can start a short live round or a game with up to ten minutes of active play. In the longer game, the hallway lights falter and go dark between Genie interactions. The clock holds during the reconnect. Guests can keep submitting hauntings, and the score carries over. The lights return when the projector sees movement in the next stream. The match ends when the robot reaches the exit, the ghosts earn enough scares, or playing time expires.
+Guests join once and keep their ghost names. For a five-minute presentation, open submissions while people scan in and use **Start 5-minute demo** to set a five-minute deadline. Hosts can also choose a short live test or a game with ten minutes of active play. In the longer game, the hallway lights falter and go dark between Genie interactions. The five-minute demo clock keeps running through the reconnect. The ten-minute active-play clock pauses. Guests can keep submitting hauntings, and the score carries over. The lights return when the projector sees movement in the next stream. The match ends when the robot reaches the exit, the ghosts earn enough scares, or playing time expires.
 
 World prepares the next opening from the current hallway while play is running. It uses a recent settled frame of the same explorer with a clear path ahead, then closes the current interaction before opening the next. If the frame or connection cannot be confirmed, the host reports an interruption. A new interaction can redraw objects, so check placement and the robot's response from fresh video. [Genie 4 session limits](https://aistudio.google.com/docs/genie#limitations)
 

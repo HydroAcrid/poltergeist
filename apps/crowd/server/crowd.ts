@@ -69,6 +69,7 @@ interface ActiveEpisode {
 export interface MatchClock {
   id: string;
   phase: "playing" | "handoff";
+  clockMode?: "wall" | "active";
   durationMs: number;
   remainingMs: number;
   deadline: number;
@@ -308,7 +309,7 @@ export class CrowdService {
       ...(waiting ? { waiting, waitingReasons: reasons } : reasons.length ? { waiting: reasons } : {}),
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
-      ...(clock?.phase === "handoff" ? { roundPausedRemainingMs: clock.remainingMs }
+      ...(clock?.phase === "handoff" && clock.clockMode !== "wall" ? { roundPausedRemainingMs: clock.remainingMs }
         : this.active ? { roundEndsAt: clock?.deadline ?? this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       you: { ghostName: this.ghostName(deviceId) },
       mine,
