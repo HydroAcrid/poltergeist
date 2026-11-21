@@ -1,5 +1,5 @@
 import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
-import {createPreparedShow, registerPreparedMedia, serveMovie, preparedEncountersAvailable} from './prepared-show.mjs';
+import {createPreparedShow, registerPreparedMedia, serveMovie, preparedLibrary} from './prepared-show.mjs';
 import {createBufferedShow} from './buffered-show.mjs';
 import {renderSegment, bufferedEncoderReady} from './buffered-render.mjs';
 import { randomUUID } from 'node:crypto';
@@ -39,6 +39,7 @@ export async function registerStage(
     launchLive = openLive,
     renderBuffered = renderSegment,
     canEncode = bufferedEncoderReady,
+    library = preparedLibrary,
     chapterTiming = {matchMs:matchDurationMs,cutMs:chapterCutMs,limitMs:chapterLimitMs},
     crowdPhone = false,
     hosted = false,
@@ -46,7 +47,8 @@ export async function registerStage(
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
-  registerPreparedMedia(app, root);
+  const preparedEncountersAvailable=library.effectOptions.length>0;
+  registerPreparedMedia(app, root,library);
   let prepared = null, buffered = null;
   app.get('/rehearsal/segments/:round/:file', async (req,reply) => {
     const match = /^([1-9]\d*)\.mp4$/.exec(req.params.file);
@@ -906,7 +908,7 @@ export async function registerStage(
           r.props.push({id:guest.id, name:guest.clip.title, by:guest.by, recorded:true, shownAt:now});
           bus.publish('haunt.injected','world',{hauntId:guest.id,episodeId:r.id,t:now-r.startedAt,
             ok:true,simulated:true,sceneEvidence:"in-recording"},r.id);
-        });
+        },undefined,library);
         r.prepared = prepared.state;
       }
       try { publishStart(r,requestedAt,rolling ? Math.min(90_000, chapterTiming.limitMs) : 0); }

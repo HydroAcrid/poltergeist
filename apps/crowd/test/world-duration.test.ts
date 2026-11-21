@@ -14,7 +14,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function world(badId = false) {
+async function world(badId = false, library?: unknown) {
   vi.useFakeTimers({toFake:["Date","setInterval","clearInterval"]});
   const app = fastify(); hosts.push(app);
   const bus = new MemoryBus();
@@ -23,7 +23,7 @@ async function world(badId = false) {
   const {registerStage} = await import(path);
   const root = resolve(__dirname,"../../world/rehearsal");
   const round = await registerStage(app,{
-    bus,root,captureDir:root,chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
+    bus,root,library,captureDir:root,chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
     newId:()=>badId ? "invalid-episode" : newId("ep"),
     launchLive:(provider:Provider)=>{providers.push(provider);return {stop,send:vi.fn()};},
   });
@@ -125,7 +125,13 @@ it("closes an accepted episode once if a live subscriber throws",async()=>{
 });
 
 it("keeps a filmed audience pick pending through collection and blackout, acknowledges it at actual clip playback, and ends at five minutes", async () => {
-  const h = await world();
+  const {buildPreparedLibrary}=await import(resolve(__dirname,"../../world/rehearsal/prepared-show.mjs"));
+  const take={role:"effect",id:"fixture-response",file:"fixture-response.mp4",presetId:"mop-bucket",title:"A rolling bucket",
+    frames:120,durationMs:5000,sha256:"c".repeat(64),source:{episodeId:"fixture-episode"}};
+  const receipt={verifiedInPixels:true,episodeId:take.source.episodeId,clipSha256:take.sha256,action:"sidestep",obstacleFrame:36,responseFrame:75};
+  const library=buildPreparedLibrary([{role:"walk",file:"fixture-walk.mp4",durationMs:6000},
+    {role:"idle",file:"fixture-idle.mp4",durationMs:6000},take,{...take,file:"fixture-response-verified.mp4",reactionEvidence:receipt}]);
+  const h = await world(false,library);
   const startedAt = Date.now();
   expect((await h.post("/rehearsal/start", {mode:"prepared"})).statusCode).toBe(200);
   const join = await h.app.inject("/api/crowd/state");
@@ -143,11 +149,22 @@ it("keeps a filmed audience pick pending through collection and blackout, acknow
   expect(h.round().prepared.phase).toBe("handoff");
   expect((await state()).mine[0].status).toBe("dispatched");
   await h.tick(1600);
-  expect(h.round().prepared.clipUrl).toContain("mop-bucket.mp4");
+  expect(h.round().prepared.clipUrl).toContain("fixture-response-verified.mp4");
   expect((await state()).mine[0].status).toBe("injected");
   expect(h.bus.history({types:["haunt.dispatch","haunt.injected"]}).map(e=>e.type)).toEqual(["haunt.dispatch","haunt.injected"]);
   await h.tick(300000 - (Date.now()-startedAt) + 150);
   expect((await state()).episodeActive).toBe(false);
   expect(h.providers).toHaveLength(0);
   expect(h.review).not.toHaveBeenCalled();
+});
+
+
+it("refuses a screening with no verified library entry before publishing a round or opening a provider", async()=>{
+  const {buildPreparedLibrary}=await import(resolve(__dirname,"../../world/rehearsal/prepared-show.mjs"));
+  const h=await world(false,buildPreparedLibrary([]));
+  const start=await h.post("/rehearsal/start",{mode:"prepared"});
+  expect(start.statusCode).toBe(409);
+  expect(start.json().error).toMatch(/verified robot response/);
+  expect(h.providers).toHaveLength(0);
+  expect(h.bus.history({types:["episode.started"]})).toHaveLength(0);
 });

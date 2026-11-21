@@ -5,7 +5,6 @@ const catalogFile = new URL('./prepared-media/catalog.json', import.meta.url);
 const presetsFile = new URL('../../../fixtures/haunt/presets.json', import.meta.url);
 const {clips} = JSON.parse(readFileSync(catalogFile));
 const presets = JSON.parse(readFileSync(presetsFile));
-const byRole = role => clips.find(clip => clip.role === role);
 // Screening plays both halves of a filmed encounter at native speed. A visible
 // prop or a movement instruction alone cannot qualify an audience choice.
 export function hasFilmedResponse(clip) {
@@ -16,12 +15,18 @@ export function hasFilmedResponse(clip) {
   return e.verifiedInPixels === true && ['duck','shield','recoil','retreat','sidestep','stop'].includes(e.action) &&
     inClip(e.obstacleFrame) && inClip(e.responseFrame) && e.obstacleFrame < e.responseFrame;
 }
-const effectOptions = clips.filter(hasFilmedResponse).map(clip => {
-  const preset = presets.find(item => item.id === clip.presetId);
-  return {id:preset.id, text:preset.text, title:clip.title, label:clip.buttonLabel, tags:preset.tags};
-});
-export const preparedEncountersAvailable = effectOptions.length > 0;
-const byText = new Map(effectOptions.map(option => [option.text, clips.find(c => c.presetId === option.id)]));
+export function buildPreparedLibrary(clips) {
+  const effectOptions=[], byText=new Map();
+  for (const clip of clips.filter(hasFilmedResponse)) {
+    const preset=presets.find(p=>p.id===clip.presetId);
+    if (!preset || byText.has(preset.text)) continue;
+    effectOptions.push({id:preset.id,text:preset.text,title:clip.title,label:clip.buttonLabel,tags:preset.tags});
+    byText.set(preset.text,clip);
+  }
+  return {clips,effectOptions,byText};
+}
+export const preparedLibrary=buildPreparedLibrary(clips);
+export const preparedEncountersAvailable=preparedLibrary.effectOptions.length>0;
 const brief = clip => ({clipUrl:'/rehearsal/clips/' + clip.file, title:clip.title});
 const blackoutMs = 1250;
 const preloadLeadMs = 4000;
@@ -40,16 +45,17 @@ export function serveMovie(path,req,reply) {
     .header('content-length',end-start+1).send(createReadStream(path,{start,end}));
 }
 
-export function registerPreparedMedia(app, root) {
-  for (const clip of clips) {
+export function registerPreparedMedia(app, root, library=preparedLibrary) {
+  for (const clip of library.clips) {
     const path = resolve(root, 'prepared-media', clip.file);
     app.get(brief(clip).clipUrl, async (req, reply) => serveMovie(path,req,reply));
   }
 }
 
-export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000) {
-  const walk = byRole('walk');
-  const idle = byRole('idle');
+export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000, library=preparedLibrary) {
+  const {clips,effectOptions,byText}=library;
+  const walk = clips.find(c=>c.role==='walk');
+  const idle = clips.find(c=>c.role==='idle');
   const selected = new Set();
   let fallback = walk, queued = null;
   let nextChange = start + collectMs;
