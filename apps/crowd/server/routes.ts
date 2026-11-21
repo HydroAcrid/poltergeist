@@ -44,7 +44,10 @@ export interface RouteOptions {
 
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
-  const loadPage = () => (page ??= readFileSync(opts.hauntPagePath, "utf8"));
+  // Phones are on venue Wi-Fi: serve the page without each line's leading indentation and blank
+  // lines (the source stays readable). The page has no <pre> or multi-line strings, so this is safe.
+  const compact = (html: string) => html.replace(/^[ \t]+/gm, "").replace(/\n{2,}/g, "\n");
+  const loadPage = () => (page ??= compact(readFileSync(opts.hauntPagePath, "utf8")));
 
   app.post("/api/crowd/haunt", { bodyLimit: 2048 }, async (req, reply) => {
     const deviceId = deviceOf(req, reply);

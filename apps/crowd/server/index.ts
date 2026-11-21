@@ -4,6 +4,8 @@ import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
 import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
+import type { SceneObservation } from "./conductor.js";
+import { createRehearsalSceneSource } from "./scene.js";
 import type { ModerationAdapter } from "./moderation/types.js";
 import { registerCrowdRoutes } from "./routes.js";
 
@@ -13,6 +15,8 @@ export interface CrowdModuleOptions {
   autoTick?: boolean;
   config?: Partial<CrowdConfig>;
   onService?: (service: CrowdService) => void;
+  /** Scene for the conductor; defaults to polling PG_CROWD_SCENE_URL (World's /rehearsal/state) if set. */
+  scene?: () => SceneObservation | undefined;
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
@@ -25,11 +29,16 @@ function pickModeration(ctx: HubContext): ModerationAdapter {
 
 export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
   let service: CrowdService | null = null;
+  let sceneSource: ReturnType<typeof createRehearsalSceneSource> | null = null;
   return {
     lane: "crowd",
     kind: "real",
     async register(app, ctx) {
+      // World's rehearsal host: PG_CROWD_SCENE_URL=http://127.0.0.1:8914/rehearsal/state
+      const sceneUrl = ctx.env.PG_CROWD_SCENE_URL;
+      if (!opts.scene && sceneUrl) sceneSource = createRehearsalSceneSource(sceneUrl, { now: opts.now });
       service = new CrowdService({
+        scene: opts.scene ?? (sceneSource ? () => sceneSource!.scene() : undefined),
         bus: ctx.bus,
         moderation: pickModeration(ctx),
         presets: loadPresets(),
@@ -51,6 +60,7 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
     },
     async close() {
       service?.stop();
+      sceneSource?.stop();
     },
   };
 }

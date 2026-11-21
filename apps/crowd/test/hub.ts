@@ -2,6 +2,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { FakeWorld } from "../dev/fake-world.js";
 import { MemoryBus } from "../dev/memory-bus.js";
+import type { SceneObservation } from "../server/conductor.js";
 import type { CrowdService } from "../server/crowd.js";
 import { createCrowdModule } from "../server/index.js";
 
@@ -16,7 +17,7 @@ export interface TestHub {
   close: () => Promise<void>;
 }
 
-export async function buildTestHub(): Promise<TestHub> {
+export async function buildTestHub(opts: { scene?: () => SceneObservation | undefined } = {}): Promise<TestHub> {
   let t = new Date("2026-11-21T14:00:00").getTime();
   const clock = { now: () => t, advance: (ms: number) => void (t += ms) };
   const bus = new MemoryBus(clock.now);
@@ -24,7 +25,7 @@ export async function buildTestHub(): Promise<TestHub> {
   const app = Fastify();
   const operatorToken = "test-operator-token";
   let crowd!: CrowdService;
-  const mod = createCrowdModule({ now: clock.now, autoTick: false, onService: (s) => (crowd = s) });
+  const mod = createCrowdModule({ now: clock.now, autoTick: false, scene: opts.scene, onService: (s) => (crowd = s) });
   await mod.register(app, {
     bus,
     dataDir: "./data-test",

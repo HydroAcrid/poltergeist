@@ -137,6 +137,7 @@ function render() {
     c.textContent = "";
     const body = el("div");
     body.append(el("div", "k", card.label), el("div", "t", card.text), el("div", "w", "from " + card.who));
+    if (card.why) body.append(el("div", "w", card.why));
     if (card.reaction) body.append(el("div", "r", card.reaction));
     c.append(el("span", "icon", card.stage === "upnext" ? "⏭️" : "👻"), body);
     c.hidden = false;

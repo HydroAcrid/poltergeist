@@ -77,6 +77,7 @@ textarea::placeholder{color:#8f857c}
 .label{font:600 12px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
 .spot .text{font:normal 1.35rem/1.25 Georgia,serif;margin:6px 0 4px}
 .empty{color:var(--muted);font-size:15px;padding:6px 0}
+.why{font-size:13px;color:var(--muted);margin-top:3px}
 .switch{display:flex;gap:6px;margin:0 0 10px}
 .switch button{min-height:40px;padding:0 16px;border-radius:30px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
 .switch [aria-pressed=true]{background:var(--paper);color:#201a18;border-color:var(--paper)}
@@ -456,6 +457,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     up.textContent = "";
     if (head) {
       up.append(el("div", "label", mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next"), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
+      if (state.upNext?.hauntId === head.hauntId && state.upNext.mode === "conductor") up.append(el("div", "why", state.upNext.reason));
     } else {
       up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
     }
@@ -467,6 +469,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       const li = el("li");
       const b = el("div", "body");
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds));
+      const why = (state.waiting || []).find((w) => w.hauntId === h.hauntId);
+      if (why) b.append(el("div", "why", why.reason));
       li.append(el("span", "pos", String(i)), b);
       q.append(li);
     }
