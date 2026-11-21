@@ -1,5 +1,5 @@
 import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
-import {createPreparedShow, registerPreparedMedia, serveMovie} from './prepared-show.mjs';
+import {createPreparedShow, registerPreparedMedia, serveMovie, preparedEncountersAvailable} from './prepared-show.mjs';
 import {createBufferedShow} from './buffered-show.mjs';
 import {renderSegment, bufferedEncoderReady} from './buffered-render.mjs';
 import { randomUUID } from 'node:crypto';
@@ -755,7 +755,7 @@ export async function registerStage(
     lobby: lobbyState(),
     number,
     queue: [...queue.values()],
-    preparedAvailable: !custom,
+    preparedAvailable: !custom && preparedEncountersAvailable,
     bufferedAvailable: !!captureDir && canEncode(),
     canLive: !!captureDir,
     cameraTestDurationMs: liveMs,
@@ -783,6 +783,8 @@ export async function registerStage(
     if (paid && !rolling && !chaptered && (!Number.isSafeInteger(liveMs) || liveMs <= 0 || liveMs > 90_000))
       return reply.code(400).send({error:'A single Genie camera test must run for 1–90,000 ms. Start a chaptered show for a longer game.'});
     const screening = req.body?.mode === 'prepared';
+    if (screening && !preparedEncountersAvailable)
+      return reply.code(409).send({error:'No recorded encounter with a verified robot response is ready yet.'});
     if (screening && custom)
       return reply.code(409).send({error:'These scenes were recorded in the venue hallway. Choose the venue photo or start a live game with your photo.'});
     const playMode = rolling ? 'buffered-live' : screening ? 'prepared-show' : !paid ? 'offline-rehearsal' : !chaptered ? 'camera-test'
