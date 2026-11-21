@@ -1,0 +1,17 @@
+{
+  "hauntId": "ht_01JDGZ8Q4M0000000000000003",
+  "displayName": "spooky sam",
+  "status": "approved",
+  "moderated": {
+    "safe": true,
+    "text": "Thick fog rolls down the hallway",
+    "tags": [
+      "visibility",
+      "weather"
+    ],
+    "model": "rules-only"
+  },
+  "votes": 0,
+  "seeded": false,
+  "createdAt": 1795370462000
+}

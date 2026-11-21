@@ -1,0 +1,17 @@
+{
+  "hauntId": "ht_01JDGZ8Q4M0000000000000004",
+  "preset": "banana-peel",
+  "status": "queued",
+  "moderated": {
+    "safe": true,
+    "text": "A banana peel lands in the aisle",
+    "tags": [
+      "distractor",
+      "geometry"
+    ],
+    "model": "preset"
+  },
+  "votes": 0,
+  "seeded": false,
+  "createdAt": 1795370463000
+}

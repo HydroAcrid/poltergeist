@@ -1,0 +1,16 @@
+{
+  "hauntId": "ht_01JDGZ8Q4M0000000000000002",
+  "deviceId": "dv_3Hc8wZ1bYf6gJ2dE",
+  "raw": "<CELEB_NAME> walks down the hallway",
+  "status": "rejected",
+  "moderated": {
+    "safe": false,
+    "text": "",
+    "tags": [],
+    "reason": "Keep it about the hallway, not people.",
+    "model": "rules-only"
+  },
+  "votes": 0,
+  "seeded": false,
+  "createdAt": 1795370461000
+}

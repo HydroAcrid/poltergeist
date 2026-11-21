@@ -1,0 +1,20 @@
+{
+  "hauntId": "ht_01JDGZ8Q4M0000000000000005",
+  "deviceId": "dv_3Hc8wZ1bYf6gJ2dE",
+  "raw": "Drop a banana peel",
+  "preset": "banana-peel",
+  "status": "injected",
+  "moderated": {
+    "safe": true,
+    "text": "A banana peel lands in the aisle",
+    "tags": [
+      "distractor",
+      "geometry"
+    ],
+    "model": "preset"
+  },
+  "votes": 0,
+  "seeded": false,
+  "createdAt": 1795370463000,
+  "injectedT": 8240
+}

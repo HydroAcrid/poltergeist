@@ -1,0 +1,22 @@
+{
+  "episodeId": "ep_01JDGZ8Q4M0000000000000001",
+  "overrodeRule": true,
+  "createdAt": 1795370520000,
+  "stage": "final",
+  "outcome": "failure",
+  "failureT": 21500,
+  "blame": "world",
+  "ruleBlame": "agent",
+  "evidence": [
+    {
+      "t": 21000,
+      "note": "EXIT sign visible at 21.0 s"
+    },
+    {
+      "t": 21500,
+      "note": "Sign gone at 21.5 s with no haunting or large move"
+    }
+  ],
+  "confidence": 0.75,
+  "model": "gemini-4-neon"
+}

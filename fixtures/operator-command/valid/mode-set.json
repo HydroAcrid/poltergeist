@@ -1,0 +1,4 @@
+{
+  "cmd": "mode.set",
+  "mode": "webcam"
+}

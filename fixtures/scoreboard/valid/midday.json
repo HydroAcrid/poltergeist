@@ -1,0 +1,63 @@
+{
+  "updatedAt": 1795384800000,
+  "rounds": 6,
+  "episodes": 9,
+  "successes": 4,
+  "attacks": {
+    "submitted": 87,
+    "approved": 52,
+    "injected": 31,
+    "landed": 9
+  },
+  "uniqueAttackers": 41,
+  "topAttackers": [
+    {
+      "displayName": "spooky sam",
+      "landed": 3
+    },
+    {
+      "displayName": "anon",
+      "landed": 2
+    }
+  ],
+  "topTags": [
+    {
+      "tag": "distractor",
+      "injected": 14,
+      "landed": 5
+    },
+    {
+      "tag": "lighting",
+      "injected": 8,
+      "landed": 3
+    },
+    {
+      "tag": "visibility",
+      "injected": 6,
+      "landed": 1
+    }
+  ],
+  "blame": {
+    "adversary": 9,
+    "agent": 3,
+    "world": 1
+  },
+  "policy": {
+    "version": "v2",
+    "heldoutHitRate": 0.71
+  },
+  "killFeed": [
+    {
+      "ts": 1795384740000,
+      "text": "💀 spooky sam: A banana peel lands in the aisle → robot lost the target"
+    },
+    {
+      "ts": 1795383900000,
+      "text": "🛡️ anon: The hallway lights flicker and dim → robot shrugged it off"
+    },
+    {
+      "ts": 1795383000000,
+      "text": "👻 world glitch: Genie forgot the target"
+    }
+  ]
+}

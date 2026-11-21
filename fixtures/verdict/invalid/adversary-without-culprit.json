@@ -1,0 +1,11 @@
+{
+  "episodeId": "ep_01JDGZ8Q4M0000000000000001",
+  "overrodeRule": false,
+  "createdAt": 1795370520000,
+  "stage": "provisional",
+  "outcome": "failure",
+  "failureT": 9000,
+  "blame": "adversary",
+  "evidence": [],
+  "confidence": 0.6
+}
