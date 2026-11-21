@@ -21,8 +21,20 @@ export interface Candidate {
   depth: "recessed" | "flat" | "unclear";
 }
 
-/** Contract `Perception`, plus brain-internal candidates when the adapter reports several. */
-export type PerceptionResult = Perception & { candidates?: Candidate[] };
+/**
+ * Third-person view: where the avatar's feet are, what lies on the floor and
+ * where the exit threshold is. All points are what the perceiver saw in this
+ * frame; nothing here says whether the round is won.
+ */
+export interface Scene {
+  feet: { left: Point; right: Point };
+  obstacles: { point: Point; box?: Box }[];
+  goal?: Point;
+  pose: "upright" | "stumbling";
+}
+
+/** Contract `Perception`, plus brain-internal candidates or a third-person scene. */
+export type PerceptionResult = Perception & { candidates?: Candidate[]; scene?: Scene };
 
 export interface PerceiveOptions {
   timeoutMs: number;

@@ -24,3 +24,12 @@ controller:
   verifyKey: D
   verifyHoldMs: 1000
   verifyMaxSteps: 2
+# Third-person navigation (avatar in frame). Units are 0–1000 frame space.
+navigation:
+  pathHalfWidth: 20      # half-width of the walking corridor at the feet
+  farWidthRatio: 0.2     # corridor width at the goal, as a fraction of pathHalfWidth
+  defaultObstacleHalfWidth: 30
+  walkMs: 600
+  stepAsideMs: 600       # ≈ one lane in the prototype (calibrate live)
+  arriveRadius: 25       # feet midpoint within this of the threshold = arrived
+

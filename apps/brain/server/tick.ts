@@ -2,6 +2,7 @@
 import { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import { initialState, step, type ControllerState } from "./controller.js";
+import { stepNav } from "./navigate.js";
 import { buildPlayerInput, type PlayerTask } from "./perception/player-input.js";
 import { resolvePerception } from "./perception/resolve.js";
 import type { PerceptionAdapter, PerceptionResult } from "./perception/types.js";
@@ -19,10 +20,15 @@ export class TickHandler {
   private readonly states = new Map<string, ControllerState>();
   constructor(private readonly deps: TickDeps) {}
 
+  /** HTTP boundary: validate the request (C04), then decide. */
   async handle(raw: unknown): Promise<TickResponse> {
+    return this.run(TickRequest.parse(raw));
+  }
+
+  /** Decide on an already-validated request. */
+  async run(req: TickRequest): Promise<TickResponse> {
     const now = this.deps.now ?? (() => performance.now());
     const started = now();
-    const req = TickRequest.parse(raw);
     const task = this.deps.taskFor(req.episodeId);
     if (!task) throw new Error(`no task for episode ${req.episodeId}`);
 
@@ -35,7 +41,8 @@ export class TickHandler {
     );
 
     const seen = resolvePerception(result);
-    const ctl = step(this.states.get(req.episodeId) ?? initialState(), seen, req, policy);
+    const prev = this.states.get(req.episodeId) ?? initialState();
+    const ctl = seen.scene ? stepNav(prev, seen.scene, req, policy) : step(prev, seen, req, policy);
     this.states.set(req.episodeId, ctl.state);
 
     return TickResponse.parse({

@@ -1,11 +1,13 @@
 import type { Perception } from "@poltergeist/contracts/tick-response.js";
-import type { Candidate, PerceptionResult } from "./types.js";
+import type { Candidate, PerceptionResult, Scene } from "./types.js";
 
 export interface Resolved {
   /** What goes into the TickResponse. */
   perception: Perception;
   /** Set when ≥ 2 candidates remain and nothing tells them apart. */
   ambiguous?: Candidate[];
+  /** Third-person scene, when the adapter reports one. */
+  scene?: Scene;
 }
 
 /**
@@ -17,7 +19,8 @@ export interface Resolved {
  *   as unconfirmed so the controller changes viewpoint instead of choosing.
  */
 export function resolvePerception(result: PerceptionResult): Resolved {
-  const { candidates, ...rest } = result;
+  const { candidates, scene, ...rest } = result;
+  if (scene && !result.error) return { perception: rest, scene };
   if (!candidates || candidates.length < 2 || result.error) return { perception: rest };
 
   const meta = { model: rest.model, latencyMs: rest.latencyMs, hazards: rest.hazards };

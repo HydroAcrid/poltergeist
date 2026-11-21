@@ -40,6 +40,14 @@ export const Policy = z.object({
     verifyHoldMs: ms.min(1).max(1500),
     verifyMaxSteps: z.number().int().nonnegative(),
   }),
+  navigation: z.object({
+    pathHalfWidth: z.number().positive(),
+    farWidthRatio: unit,
+    defaultObstacleHalfWidth: z.number().positive(),
+    walkMs: ms.min(1).max(1500),
+    stepAsideMs: ms.min(1).max(1500),
+    arriveRadius: z.number().positive(),
+  }),
 });
 export type Policy = z.infer<typeof Policy>;
 
