@@ -245,6 +245,8 @@ ol,ul{list-style:none;margin:0;padding:0}
   const filmed = () => catalogKey?.startsWith("filmed:") === true;
   const buffered = () => catalogKey === "buffered";
   let sending = false;
+  let presetDraft = null;
+  let previouslyClosed;
   let editingRevision = "";
   const revised = store.get("pg_revised", {});
   const revisionErrors = new Map();
@@ -347,7 +349,30 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   function waitingForPhoto() {
-    return state.lobbyPhase === "before-photo" || state.lobbyPhase === "ended";
+    return loadedPage < 0 || state.lobbyPhase === "before-photo" || state.lobbyPhase === "ended";
+  }
+
+  function showPresetDraft(id, text, message, bad) {
+    presetDraft = { id, text };
+    editingRevision = "";
+    $("composer-label").textContent = "What happens in the hallway?";
+    $("text").value = text;
+    updateCount();
+    say(message, bad);
+    if (screen !== "haunt") location.hash = "#haunt";
+    else $("form").scrollIntoView({ block: "center" });
+  }
+
+  async function choosePreset(p, button) {
+    if (sending) return;
+    if (waitingForPhoto()) {
+      showPresetDraft(p.id, p.text, "Draft selected. Tap Send when the hallway opens.");
+      return;
+    }
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    try { await send({ preset: p.id }, p.text); }
+    finally { button.disabled = false; button.removeAttribute("aria-busy"); }
   }
 
   async function send(payload, rawText) {
@@ -357,7 +382,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     $("send").disabled = true;
     function showError(message) {
       if (payload.revisionOf) { revisionErrors.set(payload.revisionOf, message); render(); }
-      say(message, true);
+      if (payload.preset) showPresetDraft(payload.preset, rawText, message, true);
+      else say(message, true);
     }
     try {
       const { ok, body } = await api("/api/crowd/haunt", { method: "POST", body: JSON.stringify(payload) });
@@ -373,7 +399,11 @@ ol,ul{list-style:none;margin:0;padding:0}
       if (!state.mine.some(h => h.hauntId === body.hauntId) && !pendingMine.some(h => h.hauntId === body.hauntId)) {
         pendingMine.unshift({ hauntId: body.hauntId, status: "submitted" });
       }
-      if (payload.text) { $("text").value = ""; updateCount(); }
+      if (payload.text || presetDraft?.id === payload.preset) {
+        presetDraft = null;
+        $("text").value = "";
+        updateCount();
+      }
       lastSent = body.hauntId;
       store.set("pg_last_sent", lastSent);
       location.hash = "#sent"; // the confirmation page
@@ -465,6 +495,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       return b;
     }
     function edit(value) {
+      presetDraft = null;
       editingRevision = id;
       $("composer-label").textContent = "Edit your idea";
       $("text").value = value;
@@ -548,7 +579,14 @@ ol,ul{list-style:none;margin:0;padding:0}
       ph.textContent = "Waiting for the host";
     }
     const card = $("lobby");
-    $("send").disabled = sending || waitingForPhoto();
+    const closed = waitingForPhoto();
+    $("send").disabled = sending || closed;
+    if (previouslyClosed !== closed) {
+      $("ideas-intro").textContent = closed ? "Choose an idea to draft. You can send it when the hallway opens." :
+        filmed() ? "Tap a filmed scene to put it in the running." : "Tap one to send it. Each idea is checked before it goes into the hallway.";
+      if (presetDraft && previouslyClosed === true && !closed) say("The hallway is open. Tap Send to submit your draft.");
+      previouslyClosed = closed;
+    }
     card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
       $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
@@ -695,7 +733,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       const body = await reply.json();
       $("haunt-intro").textContent = filmed() ? "Choose which filmed haunting plays next. Your pick counts with the crowd’s." : "Change one thing in the hallway. The robot has to get past it.";
       $("h-presets").textContent = filmed() ? "Filmed hauntings" : "Or try one";
-      $("ideas-intro").textContent = filmed() ? "Tap a filmed scene to put it in the running." : "Tap one to send it. Each idea is checked before it goes into the hallway.";
+      previouslyClosed = undefined;
       $("hallway-intro").textContent = filmed() || buffered() ? "Track which ideas were selected and confirmed in a scene." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
       $("text").placeholder = filmed() ? (body[0]?.label || "Suggest a scene") : "A banana peel lands in the aisle";
       const more = $("chips").querySelector(".more");
@@ -706,7 +744,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       for (const p of body.slice(0, 3)) {
         const c = el("button", "chip", p.label);
         c.type = "button";
-        c.onclick = () => send({ preset: p.id }, p.label);
+        c.onclick = () => choosePreset(p, c);
         $("chips").insertBefore(c, more);
       }
       const groups = new Map();
@@ -722,8 +760,8 @@ ol,ul{list-style:none;margin:0;padding:0}
           const b = el("button", "idea");
           b.type = "button";
           b.append(el("b", "", p.label), el("span", "", p.text));
-          b.setAttribute("aria-label", "Send: " + p.label + ". " + p.text);
-          b.onclick = () => send({ preset: p.id }, p.label);
+          b.setAttribute("aria-label", p.label + ". " + p.text);
+          b.onclick = () => choosePreset(p, b);
           box.append(b);
         }
         $("ideas-list").append(box);
@@ -735,9 +773,14 @@ ol,ul{list-style:none;margin:0;padding:0}
     e.preventDefault();
     const text = $("text").value.trim();
     if (!text) { say("Type an idea, or tap one below.", true); return; }
-    send(editingRevision ? { text, revisionOf: editingRevision } : { text }, text);
+    const payload = editingRevision ? { text, revisionOf: editingRevision } :
+      presetDraft && text === presetDraft.text ? { preset: presetDraft.id } : { text };
+    send(payload, text);
   });
-  $("text").addEventListener("input", updateCount);
+  $("text").addEventListener("input", () => {
+    if (presetDraft) { presetDraft = null; say(""); }
+    updateCount();
+  });
 
   // Speech to text (Web Speech API). Hidden where the browser doesn't support it;
   // the phone keyboard's own dictation still works everywhere.
