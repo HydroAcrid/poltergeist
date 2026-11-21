@@ -83,9 +83,11 @@ const currentRound = await registerStage(app, {
 });
 const crowd = createCrowdModule({
   lobbyPhase: currentRound.lobbyPhase,
+  prepared: currentRound.prepared,
+  renderWindow: currentRound.renderWindow,
   matchClock: () => {
     const round = currentRound();
-    if (round?.chapters && (round.phase === 'playing' || round.phase === 'handoff')) return round;
+    if ((round?.chapters || round?.playMode === 'prepared-show' || round?.playMode === 'buffered-live') && (round.phase === 'playing' || round.phase === 'handoff')) return round;
   },
   config: { firstDispatchMs: 1200, seededFallback: false, roundEveryMs: null },
   scene: process.env.PG_CROWD_SCENE_URL ? undefined : () => sceneFromRehearsal(currentRound(), Date.now()),

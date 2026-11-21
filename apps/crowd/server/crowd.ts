@@ -14,6 +14,7 @@ import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
 import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
 import type { ModerationAdapter } from "./moderation/types.js";
+import { filmedPick, filmedVerdict, type PreparedWindow, type RenderWindow } from "./prepared.js";
 
 export interface CrowdConfig {
   rateMs: number; // min gap between submissions per device
@@ -87,6 +88,8 @@ export interface CrowdDeps {
   scene?: () => SceneObservation | undefined;
   lobbyPhase?: () => CrowdState["lobbyPhase"];
   matchClock?: () => MatchClock | undefined;
+  prepared?: () => PreparedWindow | null;
+  renderWindow?: () => RenderWindow | null;
 }
 
 /** Display-safe copy. `forAuthor` keeps private moderation feedback. */
@@ -133,6 +136,8 @@ export class CrowdService {
   private lastRound: number | undefined;
   private unsubscribe: () => void;
   private timer: NodeJS.Timeout | null = null;
+  private sending = false;
+  private filmedCatalog = "";
   private readonly now: () => number;
   private readonly presetsById: Map<string, Preset>;
 
@@ -161,7 +166,15 @@ export class CrowdService {
   }
 
   get presets(): Preset[] {
-    return this.deps.presets;
+    return this.deps.prepared?.()?.options.map(({ id, text, tags, label }) => ({ id, text, tags, label }))
+      ?? this.deps.presets;
+  }
+
+  /** Response header on every phone poll, including 304s, so an open phone can enter or leave a screening. */
+  get phoneCatalog(): string {
+    const film = this.deps.prepared?.();
+    if (film) return "filmed:" + film.options.map(o => o.id).join(",");
+    return this.deps.renderWindow?.() ? "buffered" : "live";
   }
 
   // ---------- submissions ----------
@@ -242,7 +255,12 @@ export class CrowdService {
     let moderated: NonNullable<Haunt["moderated"]>;
     let staging: Staging | undefined;
     try {
-      if (preset) moderated = { safe: true, text: preset.text, tags: preset.tags, model: "preset" };
+      const film = this.deps.prepared?.();
+      if (film) {
+        const result = filmedVerdict(haunt.raw, film.options, preset?.id);
+        moderated = result.moderated;
+        if (result.option) haunt.preset = result.option.id;
+      } else if (preset) moderated = { safe: true, text: preset.text, tags: preset.tags, model: "preset" };
       else {
         const checked = await this.deps.moderation.moderate(haunt.raw);
         ({ staging, ...moderated } = checked);
@@ -375,17 +393,38 @@ export class CrowdService {
   tick(): void {
     const clock = this.matchClock();
     this.expireStaleRound(clock);
-    if (clock?.phase === "handoff") return;
-    if (this.active && this.hallwayIds.length) {
+    if (this.sending || clock?.phase === "handoff") return;
+    const film = this.deps.prepared?.();
+    const batch = this.deps.renderWindow?.();
+    const catalog = film ? film.options.map(o => o.id).join(",") + ":filmed" : "";
+    if (catalog !== this.filmedCatalog) {
+      this.filmedCatalog = catalog;
+      this.releaseReservation();
+      if (film) this.recheckFilmedQueue(film);
+    }
+    if ((film && !film.canDispatch) || (batch && (!batch.canDispatch || !(batch.slots > 0)))) {
+      this.releaseReservation();
+      return;
+    }
+    if (this.active && this.hallwayIds.length && !film && !batch) {
       for (const id of this.deps.scene?.()?.verifiedPathHauntIds ?? [])
         if (this.hallwayIds.includes(id)) this.verifiedPathHaunts.add(id);
     }
-    this.reserve();
     const ep = this.active;
-    if (!ep || ep.dispatched >= this.slotLimit(clock)) return;
+    if (!ep) return this.releaseReservation();
+    if (!film && !batch) this.reserve();
+    const limit = (film || batch) && this.config.maxPerEpisode === null ? Infinity : this.slotLimit(clock);
+    if (ep.dispatched >= limit) return;
     if (clock && this.now() >= clock.deadline) return;
     const t = clock ? clock.durationMs - (clock.deadline - this.now()) : this.now() - ep.startedAt;
     if (t < ep.nextSlotT) return;
+    if (film) {
+      const history = this.hallwayIds.map(id => this.haunts.get(id)!);
+      const pick = filmedPick(this.eligible(), film.options, history);
+      if (pick) this.sendPick(pick, ep, t);
+      return;
+    }
+    if (batch) this.reserve();
 
     // Re-check the reserved pick's hard rules right before sending; if it's now impossible,
     // release it (with its public reason) and pick again. The public pick changes only here.
@@ -399,19 +438,47 @@ export class CrowdService {
       }
     }
     const reservedHaunt = this.reserved ? this.haunts.get(this.reserved.hauntId) : undefined;
-    const pick = reservedHaunt ?? (this.eligible().length === 0 && this.config.seededFallback ? this.takeSeeded() : undefined);
+    const pick = reservedHaunt ?? (!batch && this.eligible().length === 0 && this.config.seededFallback ? this.takeSeeded() : undefined);
     if (!pick) return; // the slot stays open until something feasible is eligible
+    this.sendPick(pick, ep, batch ? t : Math.max(ep.nextSlotT, t) + this.config.intervalMs);
+  }
+
+  private recheckFilmedQueue(film: PreparedWindow): void {
+    // The host can choose the filmed show after guests have already submitted in the lobby.
+    for (const h of this.haunts.values()) {
+      const latest = this.submissions.get(h.deviceId)?.at(-1);
+      if (h.status === "rejected" && latest?.hauntId === h.hauntId && h.moderated?.model !== "operator") {
+        const { moderated } = filmedVerdict(h.raw, film.options, h.preset);
+        if (!moderated.safe) this.setStatus(h, "rejected", { moderated });
+        continue;
+      }
+      if (!["submitted", "approved", "queued"].includes(h.status)) continue;
+      const { moderated, option } = filmedVerdict(h.raw, film.options, h.preset);
+      if (!option) {
+        this.setStatus(h, "rejected", { moderated });
+        continue;
+      }
+      h.preset = option.id;
+      const status = h.status === "submitted" ? (this.finalsApprovalMode ? "approved" : "queued") : h.status;
+      if (h.moderated?.model !== "filmed" || h.status !== status) this.setStatus(h, status, { moderated });
+    }
+  }
+
+  private sendPick(pick: Haunt, ep: ActiveEpisode, nextSlot: number): void {
     this.reserved = null;
     this.waitingReasons.delete(pick.hauntId);
     this.sentAt.set(pick.hauntId, this.now());
 
     // Reserve before publishing, so a re-entrant tick can never send it twice.
-    this.setStatus(pick, "dispatched", { episodeId: ep.episodeId });
-    this.hallwayIds.push(pick.hauntId);
-    ep.dispatched++;
-    ep.nextSlotT = Math.max(ep.nextSlotT, t) + this.config.intervalMs;
-    const dispatch = HauntDispatch.parse({ hauntId: pick.hauntId, episodeId: ep.episodeId, text: pick.moderated!.text, tags: pick.moderated!.tags });
-    this.deps.bus.publish("haunt.dispatch", "crowd", dispatch, ep.episodeId);
+    this.sending = true;
+    try {
+      this.hallwayIds.push(pick.hauntId);
+      ep.dispatched++;
+      ep.nextSlotT = nextSlot;
+      this.setStatus(pick, "dispatched", { episodeId: ep.episodeId });
+      const dispatch = HauntDispatch.parse({ hauntId: pick.hauntId, episodeId: ep.episodeId, text: pick.moderated!.text, tags: pick.moderated!.tags });
+      this.deps.bus.publish("haunt.dispatch", "crowd", dispatch, ep.episodeId);
+    } finally { this.sending = false; }
   }
 
   /** Reserved pick first, then the rest in FIFO order. */
@@ -516,6 +583,8 @@ export class CrowdService {
     switch (e.type) {
       case "episode.started": {
         const ep = e.payload as Episode;
+        this.releaseReservation();
+        this.filmedCatalog = "";
         this.active = {
           episodeId: ep.episodeId,
           startedAt: ep.startedAt,

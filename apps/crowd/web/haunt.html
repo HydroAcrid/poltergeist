@@ -137,7 +137,7 @@ ol,ul{list-style:none;margin:0;padding:0}
 
   <section class="screen" id="screen-haunt" aria-labelledby="h-haunt">
     <h1 id="h-haunt" tabindex="-1">Haunt the hallway</h1>
-    <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
+    <p class="lede" id="haunt-intro">Change one thing in the hallway. The robot has to get past it.</p>
     <div class="card lobby" id="lobby" hidden>
       <strong>👻 You're in the waiting room</strong>
       <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span></div>
@@ -163,7 +163,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   <section class="screen" id="screen-ideas" aria-labelledby="h-ideas" hidden>
     <a class="back" href="#haunt">Back</a>
     <h1 id="h-ideas" tabindex="-1">More ideas</h1>
-    <p class="lede">Tap one to send it. Each idea is checked before it goes into the hallway.</p>
+    <p class="lede" id="ideas-intro">Tap one to send it. Each idea is checked before it goes into the hallway.</p>
     <div id="ideas-list"></div>
     <a class="next" href="#haunt">Write your own instead</a>
   </section>
@@ -200,7 +200,7 @@ ol,ul{list-style:none;margin:0;padding:0}
 
   <section class="screen" id="screen-hallway" aria-labelledby="h-hallway" hidden>
     <h1 id="h-hallway" tabindex="-1">Sent to the hallway</h1>
-    <p class="lede">Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.</p>
+    <p class="lede" id="hallway-intro">Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.</p>
     <ol class="list card" id="hallway"></ol>
     <a class="next" href="#haunt">Send another idea</a>
   </section>
@@ -239,6 +239,9 @@ ol,ul{list-style:none;margin:0;padding:0}
   let filter = "all";
   let waitingPage = 0, loadedPage = -1, stateTag = "";
   let pendingMine = [];
+  let catalogKey = null, displayedCatalog = null;
+  const filmed = () => catalogKey?.startsWith("filmed:") === true;
+  const buffered = () => catalogKey === "buffered";
   let sending = false;
   let editingRevision = "";
   const revised = store.get("pg_revised", {});
@@ -316,6 +319,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       const res = await fetch("/api/crowd/state?waitingPage=" + requested, { credentials: "same-origin", headers: { ...headers, "x-pg-client": "phone" } });
       if (res.status !== 304 && !res.ok) throw Error("Queue unavailable");
       $("offline").hidden = true;
+      catalogKey = res.headers.get("x-pg-catalog") || "live";
+      if (catalogKey !== displayedCatalog) await loadPresets(catalogKey);
       if (res.status !== 304 && requested === waitingPage) {
         const body = await res.json();
         if (requested !== waitingPage) return;
@@ -403,10 +408,12 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   function progress(card, h, head) {
-    const at = stepIndex(h, head?.hauntId === h.hauntId);
+    const screenings = filmed() || buffered() || h.moderated?.model === "filmed";
+    const at = screenings && h.status === "dispatched" ? 2 : stepIndex(h, head?.hauntId === h.hauntId);
+    const labels = screenings ? ["Received", "In the queue", "Selected", "On screen"] : STEPS;
     const steps = el("ol", "steps");
-    steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
-    STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
+    steps.setAttribute("aria-label", "Progress: " + (labels[at] || labels[3]));
+    labels.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
     card.append(steps);
     if (card.id !== "sent-card" && state.verifiedPathHauntIds?.includes(h.hauntId))
       card.append(el("div", "by", "Seen in the robot’s path."));
@@ -487,7 +494,12 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (!h) return "";
     if (h.status === "rejected") return revised[h.hauntId] ? "Revision sent." :
       h.moderated?.suggestion ? "The idea check has a suggested change." : "The idea check needs a change.";
-    if (h.status === "submitted") return "Checking whether your idea can work in the hallway…";
+    if (h.status === "submitted") return filmed() ? "Checking the filmed choices…" : "Checking whether your idea can work in the hallway…";
+    if (filmed() || buffered() || h.moderated?.model === "filmed") {
+      if (h.status === "injected") return "Your scene made it to the big screen.";
+      if (h.status === "dispatched") return buffered() ? "Selected for filming. Watch here for the screening." : "Selected for the next screening.";
+      if (h.status === "queued") return "Your idea is in the running for a scene on the big screen.";
+    }
     if (h.status === "failed" || h.status === "withdrawn") return STATUS[h.status][0];
     if (state.verifiedPathHauntIds?.includes(h.hauntId)) return "Seen in the robot’s path.";
     if (h.status === "injected") return "Delivered to the hallway.";
@@ -509,7 +521,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (state.roundPausedRemainingMs != null) {
       ph.append(el("span", "live", "The hallway is shifting"), " · ", el("b", "", duration(state.roundPausedRemainingMs)), " left · Keep sending ideas");
     } else if (lp === "playing" || (!lp && state.episodeActive)) {
-      ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
+      ph.append(el("span", "live", filmed() ? "● Audience screening" : "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
     } else if (lp === "before-photo") {
       ph.append("Setting up the hallway…");
@@ -548,7 +560,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     const live = state.mine.find((h) => h.status === "dispatched" || (h.status === "injected" && hall.some((x) => x.hauntId === h.hauntId)));
     hap.textContent = "";
     if (live) {
-      hap.append(state.verifiedPathHauntIds?.includes(live.hauntId) ? "Your haunting appeared in the robot’s path!" : live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
+      hap.append((filmed() || buffered() || live.moderated?.model === "filmed") ? receiptStatus(live, reserved) : state.verifiedPathHauntIds?.includes(live.hauntId) ? "Your haunting appeared in the robot’s path!" : live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
       hap.href = "#hallway";
     } else if (reserved && mineIds.has(reserved.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
@@ -593,12 +605,13 @@ ol,ul{list-style:none;margin:0;padding:0}
     // Hallway
     const hw = $("hallway");
     hw.textContent = "";
-    if (!hall.length) hw.append(el("li", "empty", state.episodeActive ? "Nothing sent yet. The first idea goes a few seconds after the robot starts." : "Nothing sent yet. Ideas go once the round starts."));
+    if (!hall.length) hw.append(el("li", "empty", (filmed() || buffered()) ? "Collecting ideas for the next scene." : state.episodeActive ? "Nothing sent yet. The first idea goes a few seconds after the robot starts." : "Nothing sent yet. Ideas go once the round starts."));
     for (const h of hall) {
       const li = el("li");
       const b = el("div", "body");
-      const [label, cls] = state.verifiedPathHauntIds?.includes(h.hauntId)
-        ? ["Seen in the robot’s path", "p-ok"] : STATUS[h.status] || [h.status, ""];
+      const [label, cls] = (filmed() || buffered() || h.moderated?.model === "filmed") && ["dispatched", "injected"].includes(h.status)
+        ? [h.status === "injected" ? "Shown on screen" : "Selected", h.status === "injected" ? "p-ok" : "p-go"]
+        : state.verifiedPathHauntIds?.includes(h.hauntId) ? ["Seen in the robot’s path", "p-ok"] : STATUS[h.status] || [h.status, ""];
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds), el("span", "pill " + cls, label));
       li.append(b);
       hw.append(li);
@@ -663,11 +676,21 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   // ---------- events ----------
-  async function loadPresets() {
+  async function loadPresets(key) {
     try {
-      const { ok, body } = await api("/api/crowd/presets");
-      if (!ok) return;
+      const reply = await fetch("/api/crowd/presets", { credentials: "same-origin" });
+      if (!reply.ok || (reply.headers.get("x-pg-catalog") || "live") !== key) return;
+      const body = await reply.json();
+      $("haunt-intro").textContent = filmed() ? "Choose which filmed haunting plays next. Your pick counts with the crowd’s." : "Change one thing in the hallway. The robot has to get past it.";
+      $("h-presets").textContent = filmed() ? "Filmed hauntings" : "Or try one";
+      $("ideas-intro").textContent = filmed() ? "Tap a filmed scene to put it in the running." : "Tap one to send it. Each idea is checked before it goes into the hallway.";
+      $("hallway-intro").textContent = filmed() || buffered() ? "See which audience ideas were selected and which reached the big screen." : "Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.";
+      $("text").placeholder = filmed() ? (body[0]?.label || "Suggest a scene") : "A banana peel lands in the aisle";
       const more = $("chips").querySelector(".more");
+      $("chips").replaceChildren(more);
+      more.hidden = filmed() && body.length <= 3;
+      $("ideas-list").replaceChildren();
+      displayedCatalog = key;
       for (const p of body.slice(0, 3)) {
         const c = el("button", "chip", p.label);
         c.type = "button";
@@ -763,7 +786,6 @@ ol,ul{list-style:none;margin:0;padding:0}
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 
   go(location.hash.slice(1), false);
-  loadPresets();
   refresh();
   setInterval(refresh, 2000);
   setInterval(renderPhase, 1000);

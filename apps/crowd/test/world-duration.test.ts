@@ -27,15 +27,15 @@ async function world(badId = false) {
     newId:()=>badId ? "invalid-episode" : newId("ep"),
     launchLive:(provider:Provider)=>{providers.push(provider);return {stop,send:vi.fn()};},
   });
-  const crowd = createCrowdModule({lobbyPhase:round.lobbyPhase,matchClock:()=>{
-    const r=round();return r?.chapters && ["playing","handoff"].includes(r.phase) ? r : undefined;
+  const crowd = createCrowdModule({lobbyPhase:round.lobbyPhase,prepared:round.prepared,renderWindow:round.renderWindow,matchClock:()=>{
+    const r=round();return (r?.chapters || r?.playMode === "prepared-show" || r?.playMode === "buffered-live") && ["playing","handoff"].includes(r.phase) ? r : undefined;
   },config:{roundEveryMs:null,seededFallback:false}});
   await crowd.register(app,{bus,env:{PG_MODERATION_ADAPTER:"rules-only"},instance:"local",dataDir:"./data-test",log:()=>{}});
   app.addHook("onClose",async()=>{await crowd.close?.();});
   const seed = Buffer.alloc(200);seed.writeUInt16BE(0xffd8);
   const post=(url:string,payload={})=>app.inject({method:"POST",url,headers:{"x-show-control":"1"},payload});
   await post("/rehearsal/reset-photo");
-  return {bus,providers,stop,review,round,
+  return {bus,providers,stop,review,round,app,post,
     start:(minutes?:number)=>post("/rehearsal/start",{mode:"genie",seed:seed.toString("base64"),...(minutes?{showMinutes:minutes,chapters:true}:{})}),
     tick:(ms:number)=>vi.advanceTimersByTimeAsync(ms),
     state:async()=>(await app.inject("/rehearsal/state")).json(),
@@ -122,4 +122,32 @@ it("closes an accepted episode once if a live subscriber throws",async()=>{
   p.onClose("completed");
   expect(h.stop).toHaveBeenCalledTimes(1);
   expect(h.bus.history({types:["episode.started","episode.ended"]}).map(e=>e.type)).toEqual(["episode.started","episode.ended"]);
+});
+
+it("keeps a filmed audience pick pending through collection and blackout, acknowledges it at actual clip playback, and ends at five minutes", async () => {
+  const h = await world();
+  const startedAt = Date.now();
+  expect((await h.post("/rehearsal/start", {mode:"prepared"})).statusCode).toBe(200);
+  const join = await h.app.inject("/api/crowd/state");
+  const cookie = String(join.headers["set-cookie"]).split(";")[0]!;
+  const state = async () => (await h.app.inject({method:"GET", url:"/api/crowd/state", headers:{cookie}})).json();
+  expect(join.headers["x-pg-catalog"]).toContain("filmed:");
+  expect((await state()).roundEndsAt).toBe(startedAt + 300000);
+  await h.app.inject({method:"POST", url:"/api/crowd/haunt", headers:{cookie}, payload:{preset:"mop-bucket"}});
+  await h.tick(24000);
+  expect((await state()).mine[0].status).toBe("queued");
+  expect((await state()).upNext).toBeUndefined();
+  await h.tick(3000);
+  expect((await state()).mine[0].status).toBe("dispatched");
+  await h.tick(3200);
+  expect(h.round().prepared.phase).toBe("handoff");
+  expect((await state()).mine[0].status).toBe("dispatched");
+  await h.tick(1600);
+  expect(h.round().prepared.clipUrl).toContain("mop-bucket.mp4");
+  expect((await state()).mine[0].status).toBe("injected");
+  expect(h.bus.history({types:["haunt.dispatch","haunt.injected"]}).map(e=>e.type)).toEqual(["haunt.dispatch","haunt.injected"]);
+  await h.tick(300000 - (Date.now()-startedAt) + 150);
+  expect((await state()).episodeActive).toBe(false);
+  expect(h.providers).toHaveLength(0);
+  expect(h.review).not.toHaveBeenCalled();
 });

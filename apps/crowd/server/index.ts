@@ -19,6 +19,8 @@ export interface CrowdModuleOptions {
   scene?: () => SceneObservation | undefined;
   lobbyPhase?: CrowdDeps["lobbyPhase"];
   matchClock?: CrowdDeps["matchClock"];
+  prepared?: CrowdDeps["prepared"];
+  renderWindow?: CrowdDeps["renderWindow"];
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
@@ -43,6 +45,8 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
       service = new CrowdService({
         lobbyPhase: opts.lobbyPhase,
         matchClock: opts.matchClock,
+        prepared: opts.prepared,
+        renderWindow: opts.renderWindow,
         scene: opts.scene ?? (sceneSource ? () => sceneSource!.scene() : undefined),
         bus: ctx.bus,
         moderation: pickModeration(ctx),

@@ -63,9 +63,13 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     return { hauntId: r.hauntId, status: r.status };
   });
 
-  app.get("/api/crowd/presets", async () => crowd.presets);
+  app.get("/api/crowd/presets", async (_req, reply) => {
+    reply.header("cache-control", "no-store").header("x-pg-catalog", crowd.phoneCatalog);
+    return crowd.presets;
+  });
 
   app.get<{ Querystring: { waitingPage?: string } }>("/api/crowd/state", async (req, reply) => {
+    reply.header("x-pg-catalog", crowd.phoneCatalog);
     const page = req.query.waitingPage;
     if (page !== undefined && (typeof page !== "string" || !/^\d{1,8}$/.test(page))) {
       return fail(reply, 400, "INVALID", "Choose a valid waiting page.");
