@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import jpeg from "jpeg-js";
 import {
-  cameraStep,
+  cameraStep, shoulderFrame,
   characterInstruction,
   createNativeFollow,
   createMoveWindow,
@@ -17,8 +17,8 @@ const still = {
   grounded: true,
   known: true,
   lost: false,
-  x: 0.245,
-  h: 0.71,
+  x: shoulderFrame.x,
+  h: shoulderFrame.height,
   scale:1,
   vx: 0,
   vh: 0,
@@ -70,7 +70,7 @@ test("a close subject never triggers a forward key; small pan covers an off-mark
     "arrow_right",
   );
   assert.equal(
-    cameraStep({ ...still, x: 0.1, scale:1.22, vx: -0.06 }).key,
+    cameraStep({ ...still, x: 0.06, scale:1.22, vx: -0.06 }).key,
     "arrow_left",
   );
   assert.equal(cameraStep({ ...still, vx:0.06,scale:1.12,vh:0.09 }), null);
@@ -195,12 +195,12 @@ test("bounded depth component needs both independently measured shrinkage and fr
 test('upper body remains a valid camera anchor when both boots fall below the frame',()=>{
   const tracker=createNativeFollow();
   tracker.push(image,1);
-  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,435],upperBodyBox:[290,75,840,355],feetVisible:false},1);
+  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,435],upperBodyBox:[340,85,755,300],feetVisible:false},1);
   assert.equal(tracker.permits('W'),true);
   assert.equal(tracker.status().scale,1);
   assert.equal(tracker.correction(1000),null);
   tracker.push(image,6);
-  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,540],upperBodyBox:[290,75,840,355],feetVisible:false},6);
+  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,540],upperBodyBox:[340,85,755,300],feetVisible:false},6);
   assert.equal(tracker.status().rangeTrend,false,'turning the flashlight alone must not change chase distance');
   tracker.push(image,11);
   tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',feetVisible:false},11);
@@ -272,24 +272,26 @@ test('hosted return cadence retains one semantic actor through optical loss and 
   deliver(71,123,[299,109,1000,432]);
   assert.equal(tracker.permits('W'),true,'a failed patch must not delete the preceding semantic match');
   deliver(135,180,[324,157,1000,417]);
+  assert.equal(tracker.permits('W'),true,'the new wider shot accepts the previous medium view');
+  deliver(191,238,[340,190,996,432]);
   assert.equal(tracker.permits('W'),false);
-  const pulse=tracker.correction(8000);
+  const pulse=tracker.correction(10000);
   assert.equal(pulse.key,'key_w');
   assert.equal(pulse.reason,'recover shoulder distance');
   assert.equal(pulse.lateralKey,undefined);
   assert.equal(pulse.ms,4000,'recovery uses a finite watchdog while native frames monitor the held key');
-  assert.equal(tracker.verified(135),true,'the distant verified actor remains visible to placement');
-  assert.equal(tracker.permitsPlacement(135),true);
-  assert.equal(tracker.permitsPlacement(71),false);
-  assert.equal(tracker.correction(9900),null,'one bounded camera approach per source observation');
-  deliver(191,238,[340,190,996,432],{obstacles:[{label:'bench',box:[875,300,1000,590]}]});
-  assert.equal(tracker.correction(10500),null,'an obstruction between camera and subject blocks an approach');
+  assert.equal(tracker.verified(191),true,'the distant verified actor remains visible to placement');
+  assert.equal(tracker.permitsPlacement(191),true);
+  assert.equal(tracker.permitsPlacement(135),false);
+  assert.equal(tracker.correction(11900),null,'one bounded camera approach per source observation');
+  deliver(250,298,[351,208,981,438],{obstacles:[{label:'bench',box:[875,300,1000,590]}]});
+  assert.equal(tracker.correction(12800),null,'an obstruction between camera and subject blocks an approach');
   assert.equal(tracker.permits('D'),false);
-  deliver(250,298,[325,145,1000,446]);
+  deliver(310,355,[350,190,970,438]);
   assert.equal(tracker.permits('W'),false,'await measured restoration before allowing the actor to advance');
-  deliver(310,355,[300,78,1000,416]);
-  assert.equal(tracker.permits('W'),true);
-  deliver(366,418,[300,78,1000,416],{playerCount:2});
+  deliver(366,418,[345,93,946,378]);
+  assert.equal(tracker.permits('W'),true,'resume at the new medium shot, well before the original 38% width');
+  deliver(429,477,[345,93,946,378],{playerCount:2});
   assert.equal(tracker.permits('W'),false);
   assert.equal(tracker.correction(20000),null);
 });
@@ -331,14 +333,27 @@ test('native texture expansion releases recovery before a new semantic result gr
   const initial=patternedFrame(1);
   const scene=(bodyBox)=>({...sighting(bodyBox),rightFloorVisible:true,pose:'upright',threat:'ordinary',ahead:[720,510],obstacles:[]});
   tracker.push(initial,1);
-  tracker.observe(scene([290,80,1000,435]),1);
+  tracker.observe(scene([340,75,930,365]),1);
   for(let frame=6;frame<=51;frame+=5) tracker.push(initial,frame);
-  tracker.observe(scene([315,131,970,391]),51);
+  tracker.observe(scene([315,156,970,360]),51);
   assert.equal(tracker.status().cameraRecovery,true);
   for(let frame=56;frame<=126;frame+=5)
     tracker.push(patternedFrame(1+(frame-51)*.006),frame);
   const lock=tracker.status();
-  assert.ok(lock.known && lock.opticalWidth>=.38*.88,'native subject scale should grow back into the shoulder crop');
+  assert.ok(lock.known && lock.opticalWidth>=shoulderFrame.width*.88 && lock.opticalWidth<.38*.88,'native subject scale should grow back into the shoulder crop');
   assert.equal(lock.cameraRecovery,false,'stop the native forward key immediately at restored scale');
   assert.equal(tracker.permits('W'),false,'only a fresh semantic reading may restart the actor');
+});
+
+test('a grounded rear-right diagonal stays steady; two head-on aisle sightings permit a bounded clear orbit',()=>{
+  const tracker=createNativeFollow();
+  const scene=(heading,obstacles=[])=>({...sighting([340,65,930,355]),rightFloorVisible:true,feetVisible:true,
+    ahead:[710,505],pose:'upright',threat:'ordinary',aisleHeading:heading,obstacles});
+  const read=(frame,heading,obstacles)=>{tracker.push(image,frame);tracker.observe(scene(heading,obstacles),frame);return tracker.correction(frame*100);};
+  assert.equal(read(1,'diagonal-right'),null);
+  assert.equal(read(11,'head-on'),null);
+  const step=read(21,'head-on');
+  assert.deepEqual([step.key,step.lateralKey,step.reason],['arrow_left','key_d','restore rear-right diagonal']);
+  assert.equal(read(31,'head-on',[{box:[510,545,970,810]}]),null,'a chair beside the camera blocks the sideways motion');
+  assert.equal(read(41,'diagonal-right'),null);
 });

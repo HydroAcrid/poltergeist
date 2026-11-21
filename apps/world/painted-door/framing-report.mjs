@@ -37,8 +37,16 @@ export function assessFraming(events, totalFrames) {
     if (width > shoulderFrame.width*1.22) faults.push('too close');
     if (Math.abs(centre - shoulderFrame.x) > .115) faults.push('left the shoulder framing');
     if (top < 15 || left < 12 || right > 988) faults.push('clipped');
-    if (bottom<900 && (scene.feetVisible || width<.26)) faults.push('wide full-body view');
+    // The wider shot shows the boots and the open diagonal runway. A side-on
+    // profile or a head-on tunnel can have the same on-screen player box.
+    if (bottom/1000 < shoulderFrame.top+shoulderFrame.height-.17) faults.push('left the lower foreground');
     if (scene.rightFloorVisible===false) faults.push('route obscured');
+    const atExit = ['at-threshold','through'].includes(scene.doorwayProgress);
+    if (!atExit) {
+      if (scene.rightFloorVisible==null) incomplete=true;
+      if (!scene.aisleHeading || scene.aisleHeading==='unclear') incomplete=true;
+      else if (scene.aisleHeading!=='diagonal-right') faults.push('aisle lost the upper-right diagonal');
+    }
     if (faults.length) result.issues.push({frame: observed, faults});
   }
   if (totalFrames - priorFrame > 96) incomplete = true;

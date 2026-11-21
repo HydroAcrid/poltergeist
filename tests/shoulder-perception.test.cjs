@@ -5,7 +5,7 @@ test('ambiguous player identity holds navigation even when the visible box looks
   const { inspectRoom } = await import('../apps/world/rehearsal/live-perception.mjs');
   async function see(playerCount,playerMatch=true) {
     const scene = {
-      playerCount, playerMatch, shoulderView:'rear-right', robotVisible: true, feetVisible: false, left: [0,0], right: [0,0],
+      playerCount, playerMatch, shoulderView:'rear-right', aisleHeading:'diagonal-right', robotVisible: true, feetVisible: false, left: [0,0], right: [0,0],
       upperBodyBox: [285,45,872,375], bodyBox: [280,40,1000,420], obstacles: [],
     };
     return inspectRoom({models: {generateContent: async request => {
@@ -16,6 +16,7 @@ test('ambiguous player identity holds navigation even when the visible box looks
   }
   assert.equal((await see(2)).visible, false);
   assert.equal((await see(1)).visible, true);
+  assert.equal((await see(1)).aisleHeading,'diagonal-right');
   assert.equal((await see(0)).visible, false);
   assert.equal((await see(1,false)).visible, false);
 });
@@ -27,6 +28,10 @@ test('the shoulder pilot keeps native exit and obstacle coordinates and marks hi
   const view = fromShoulderView(scene,[1000,220]);
   assert.deepEqual(view.feet,{left:[1000,205],right:[1000,235]});
   assert.equal(view.feetEstimated, true);
+  const feet={left:[911,183],right:[920,248]};
+  const measured=fromShoulderView({...scene,feet,feetVisible:true},[1000,220]);
+  assert.deepEqual(measured.feet,feet);
+  assert.equal(measured.feetEstimated,false);
   assert.deepEqual(view.goal,scene.goal);
   assert.deepEqual(view.obstacles[0].point,[626,536]);
   assert.equal(fromShoulderView({...scene,goal:undefined},[1000,220]).goal,undefined);
@@ -37,7 +42,7 @@ test('each live player compares its own last frame and sends its chosen movement
   const frames = [];
   const ai = {models:{generateContent:async ({contents}) => {
     frames.push(contents[0].parts.filter(p=>p.inlineData).map(p=>p.inlineData.data));
-    return {text:JSON.stringify({playerCount:1, playerMatch:true, robotVisible:true, shoulderView:'rear-right',
+    return {text:JSON.stringify({playerCount:1, playerMatch:true, robotVisible:true, shoulderView:'rear-right', aisleHeading:'diagonal-right',
       bodyBox:[291,54,1000,396],upperBodyBox:[291,54,888,382],obstacles:[{label:'barrier',relation:'crossing',box:[700,450,790,560],solid:true}],
       intent:'step_right', change:'A barrier crossed the aisle',reason:'Clear floor to my right',avoiding:true,target:[760,610]})};
   }}};

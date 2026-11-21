@@ -232,6 +232,8 @@ export function cameraStep(subject) {
   if (top > .49 && scale>.8)
     return { key: "arrow_down", ms: 70, reason: "shoulder too low" };
   const error = x - shoulderFrame.x;
+  if (subject.squareAisle && subject.orbitClear && Math.abs(error)<.1 && Math.abs(scale-1)<.24)
+    return {key:'arrow_left',lateralKey:'key_d',ms:75,reason:'restore rear-right diagonal'};
   const near = scale>1.18 || (scale>1.05 && vh>.05);
   const moving = Math.abs(vx) > 0.021;
   // When the robot is already moving back toward its mark, let it settle.
@@ -279,13 +281,13 @@ export function cameraStep(subject) {
 export function createNativeFollow() {
   const history = [];
   const neutral = {
-    x: 0.22,
-    y: 0.65,
+    x: shoulderFrame.x,
+    y: shoulderFrame.top+shoulderFrame.height/2,
     h: shoulderFrame.height,
     vx: 0,
     vh: 0,
-    top: 0.44,
-    bottom: 0.82,
+    top: shoulderFrame.top,
+    bottom: shoulderFrame.top+shoulderFrame.height,
     known: false,
   };
   let anchor = { ...neutral },
@@ -293,6 +295,7 @@ export function createNativeFollow() {
     lastBox = null,
     lastStaticCorrection = -1,
     lastRecovery = -1;
+  let squareAisle=false, orbitClear=false;
   let distanceHeld = false, approachClear = false, semanticThrough = -1, semanticAnchor = null;
   let lastAcceptedAtFrame = -1, opticallyRestoredAt = -1, opticalBreakAt = -1, floorVisible = false;
   let nextCamera = 0,
@@ -319,6 +322,8 @@ export function createNativeFollow() {
     distanceHeld = false;
     approachClear = false;
     floorVisible = false;
+    squareAisle=false;
+    orbitClear=false;
     lastAcceptedAtFrame = -1;
     opticallyRestoredAt = -1;
   }
@@ -388,8 +393,9 @@ export function createNativeFollow() {
     const prior=lastBox && number-lastBox.number<=24*4 ? lastBox : null;
     const continuous = prior && Math.abs(bodyX-prior.bodyX)<.15 &&
       bodyWidth/prior.bodyWidth>=.6 && bodyWidth/prior.bodyWidth<=1.65;
-    const nearSeed = Math.abs(bodyX-shoulderFrame.x)<=.16 && bodyWidth>=.23 &&
-      bodyWidth<=.56 && top<=570 && bottom>=810;
+    const nearSeed = Math.abs(bodyX-shoulderFrame.x)<=.16 &&
+      bodyWidth>=shoulderFrame.width*.63 && bodyWidth<=shoulderFrame.width*1.48 &&
+      top/1000<=shoulderFrame.top+.25 && bottom/1000>=shoulderFrame.top+shoulderFrame.height-.18;
     if (prior && !continuous) { lose('discontinuous subject'); return; }
     if (!prior && !nearSeed) { lose('outside seed shoulder position'); return; }
     const h=(b[2]-b[0])/1000;
@@ -416,7 +422,12 @@ export function createNativeFollow() {
       scene.threat!=='startling' && bodyWidth>=.1 && bodyX>=.1 && bodyX<=.56 &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) &&
         o.box[2]>=bottom-20 && o.box[1]<=550 && o.box[3]>=Math.min(450,bodyX*1000+50)));
-    lastBox={upper,number,scale,x,bodyX,bodyWidth};
+    // Keep a short grounded orbit distinct from player navigation. A single
+    // uncertain result during a glance can't change the camera's heading.
+    squareAisle=continuous && prior.aisleHeading==='head-on' && scene.aisleHeading==='head-on';
+    orbitClear=floorVisible && scene.pose==='upright' && scene.threat==='ordinary' &&
+      !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) && o.box[2]>810 && o.box[3]>550);
+    lastBox={upper,number,scale,x,bodyX,bodyWidth,aisleHeading:scene.aisleHeading};
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,grounding:number,opticalWidth:bodyWidth,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     semanticAnchor = { ...anchor, clearLane };
     history[index].track = { ...anchor };
@@ -445,7 +456,7 @@ export function createNativeFollow() {
       bodyWidth:lastBox?.bodyWidth,
       cameraRecovery:Boolean(usable && distanceHeld && approachClear && opticallyRestoredAt<lastGrounding && opticalBreakAt<=lastAcceptedAtFrame),
       opticalWidth:anchor.opticalWidth,
-      floorVisible,
+      floorVisible,squareAisle,orbitClear,
       grounded: lastGrounding >= 0,
       observed: lastGrounding,
       holdReason: usable ? distanceHeld ? 'recovering shoulder distance' : null : holdReason,
@@ -484,7 +495,7 @@ export function characterInstruction(command) {
     command.key
   ];
   if (command.key === "W")
-    return "One continuous trailing shot: the existing foreground robot takes two small walking strides along the visible floor toward the exit. The eye travels the same two strides behind its right shoulder as the floor passes underneath. The head and orange backpack stay large on the left. Robot and viewpoint pause together.";
+    return "One continuous trailing shot: the existing foreground robot takes two small walking strides along the visible floor toward the exit. The observer travels in parallel above and behind its right shoulder at fixed distance and focal length. Keep its back and right flank in the lower left and the floor and obstacle ahead toward the upper right; retain the wider view as the room passes. Robot and viewpoint pause together.";
   if (command.key === "S")
     return "The existing foreground robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
   if (command.key === "A" || command.key === "D")

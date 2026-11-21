@@ -28,12 +28,15 @@ export function fromTrailView(scene) {
     goal:scene.goal?project(scene.goal):scene.rightFloorVisible?[350,500]:undefined,
     obstacles:scene.obstacles.map(obstacle)};
 }
-// Sri's close shoulder policy is calibrated in screen coordinates. The
-// ground anchor marks the player's estimated position below the picture.
+// The diagonal shoulder view still uses native screen coordinates. Visible
+// boot contacts supersede the rig estimate, which is retained for occlusions.
 export function fromShoulderView(scene, [y, x]) {
+  const measured = scene.feetVisible===true && [scene.feet?.left,scene.feet?.right].every(
+    point=>Array.isArray(point) && point.length===2 && point.every(n=>Number.isFinite(n) && n>=0 && n<=1000)
+  );
   return {
-    feet: { left: [y, Math.max(0, x - 15)], right: [y, Math.min(1000, x + 15)] },
-    feetEstimated: true,
+    feet: measured ? scene.feet : { left: [y, Math.max(0, x - 15)], right: [y, Math.min(1000, x + 15)] },
+    feetEstimated: !measured,
     goal: scene.goal,
     forward: scene.ahead,
     obstacles: scene.obstacles.map(({box, point, solid}) => ({
