@@ -464,3 +464,33 @@ body:not(.projector) main {
     animation: none !important;
   }
 }
+
+.story.haunt-card {
+  box-sizing: border-box;
+  top: max(86px, calc(env(safe-area-inset-top) + 78px));
+  right: max(env(safe-area-inset-right), clamp(16px, 3.5vw, 60px));
+  bottom: auto;
+  left: auto;
+  width: min(290px, 34vw);
+  padding: 12px 15px;
+  border: 1px solid #dbe5cc50;
+  border-left: 3px solid #c7d9ae;
+  border-radius: 9px;
+  background: #0c1715ed;
+  text-shadow: none;
+  pointer-events: none;
+}
+.story.haunt-card.on-left {
+  left: max(env(safe-area-inset-left), clamp(16px, 3.5vw, 60px));
+  right: auto;
+}
+.haunt-card > span { color: #d7e5c7; }
+.haunt-card > strong { display: block; font-size: clamp(15px, 1.45vw, 21px); line-height: 1.22; }
+#ghost-by { display: block; margin-top: 5px; color: #d4d6cb; font-size: 13px; }
+#ghost-by:empty { display: none; }
+@media (max-aspect-ratio: 1/1) {
+  .story.haunt-card { width: min(270px, 80vw); }
+}
+@media (max-height: 480px) and (min-aspect-ratio: 1/1) {
+  .story.haunt-card { top: 52px; padding: 7px 10px; }
+}

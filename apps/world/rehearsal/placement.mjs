@@ -89,11 +89,11 @@ export function floorCorridor(scene) {
   );
   return { feet, dy, dx, radius };
 }
-function intervalHits(corridor, b, start, end, radius) {
+function intervalHits(corridor, b, start, end, radius, airborne = false) {
   if (!box(b)) return false;
   // Only the object's floor contact patch can obstruct a footstep. A tall chair
   // by a side wall may overlap the robot at head height while its legs are clear.
-  const floorTop = b[2] - Math.min(35, (b[2] - b[0]) * 0.18);
+  const floorTop = airborne ? b[0] : b[2] - Math.min(35, (b[2] - b[0]) * 0.18);
   const coords = [
     [corridor.feet[0], corridor.dy, floorTop - radius, b[2] + radius],
     [
@@ -163,7 +163,7 @@ export function inspectPlacement(
         !before.some((prior) => sameFootprint(prior, o))),
   );
   const inPath = candidates.filter((o) =>
-    intervalHits(c, o.box, 0.17, 1.45, c.radius),
+    intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'),
   );
   const near = inPath.filter((o) =>
     intervalHits(c, o.box, 0, 0.48, c.radius * 0.72),
@@ -185,7 +185,7 @@ export function inspectPlacement(
   };
 }
 
-export function createPlacementController(round, send, report) {
+export function createPlacementController(round, send, report, { cueLeadMs = 0 } = {}) {
   let latest,
     lastMove = 0,
     pauseUntil = 0,
@@ -200,7 +200,7 @@ export function createPlacementController(round, send, report) {
     send({ pause: true });
   }
   function trySend(job, time) {
-    if (!freshObservation(latest, time, lastMove) || time >= round.deadline)
+    if (time < job.prop.selectedAt + cueLeadMs || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
     const prop = job.prop,
       retry = prop.attempt === 1;
@@ -251,6 +251,7 @@ export function createPlacementController(round, send, report) {
         id,
         name: text,
         by,
+        selectedAt: time,
         attempt: 0,
         acked: false,
         seen: false,
@@ -259,8 +260,13 @@ export function createPlacementController(round, send, report) {
       };
       round.props.push(prop);
       jobs.set(id, { prop, effect: describeEffect(text) });
+      if (cueLeadMs > 0 && [...jobs.values()].find((item) => !item.closed)?.prop === prop) {
+        pauseUntil = time + cueLeadMs;
+        send({ pause: true, settleCamera: true });
+      }
       pump(time);
     },
+    tick(time = now()) { pump(time); },
     navigationPaused(time = now()) {
       return time < Math.max(pauseUntil, inspectUntil);
     },
@@ -312,6 +318,7 @@ export function createPlacementController(round, send, report) {
         });
         if (result && freshObservation(latest, time)) {
           job.lastChecked = frame;
+          if (result.visible && !p.seen) p.seenAt = at;
           p.seen ||= result.visible;
           p.inPath = result.inPath;
           if (result.inPath) {
@@ -359,9 +366,21 @@ export function createPlacementController(round, send, report) {
             job.closed = true;
             p.placement = 'passed';
           } else if (at - job.ackTime >= 1000) {
+            const nearby = result.visible && scene.obstacles.find((o) =>
+              o.relation === 'noticeable' && job.effect.matches(o.label) && box(o.box));
+            if (nearby && !p.noticeRequestedAt && scene.pose === 'upright') {
+              const feetX = (scene.feet.left[1] + scene.feet.right[1]) / 2;
+              const toward = (nearby.box[1] + nearby.box[3]) / 2 < feetX ? 'left' : 'right';
+              p.noticeRequestedAt = time;
+              send({ reaction: 'notice', toward });
+            }
             if (p.attempt === 1 && round.deadline - time > 1800) {
               p.placement = 'correcting';
               job.ackTime = null;
+              if (cueLeadMs > 0) {
+                pauseUntil = time + 1800;
+                send({ pause: true, settleCamera: true });
+              }
             } else {
               p.placement = result.visible ? 'off-path' : 'unverified';
               job.closed = true;
@@ -372,6 +391,13 @@ export function createPlacementController(round, send, report) {
       }
       pump(time);
     },
+    characterCommand(decision, at = now()) {
+      const command = { key: decision.action.key, ms: decision.action.holdMs };
+      const prop = [...jobs.values()].find((job) => !job.closed && job.prop.inPath)?.prop;
+      if (!prop || !['A', 'D'].includes(command.key) || prop.avoidRequestedAt) return command;
+      prop.avoidRequestedAt = at;
+      return { ...command, reaction: 'avoid', toward: command.key === 'A' ? 'left' : 'right' };
+    },
     finish() {
       for (const job of jobs.values()) {
         if (job.closed) continue;
@@ -380,6 +406,7 @@ export function createPlacementController(round, send, report) {
           job.prop.placement = 'failed';
           report(job.prop, false);
         } else if (!job.prop.seen) job.prop.placement = 'unverified';
+        else if (!job.prop.inPath && job.prop.placement === 'correcting') job.prop.placement = 'off-path';
       }
     },
   };

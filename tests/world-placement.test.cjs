@@ -246,3 +246,46 @@ test('ordinary, off-axis, ambiguous and missing threats resume navigation withou
     assert.equal(r.fear, 0, label);
   }
 });
+
+test('audience gets a committed cue before send, then sees the actual placement stage', async () => {
+  const { createPlacementController } = await moduleUnderTest;
+  const { hauntCue } = await import('../apps/world/rehearsal/haunt-cue.mjs');
+  const r = { phase: 'playing', props: [], fear: 0, deadline: 30000 };
+  const sent = [];
+  const q = createPlacementController(r, x => sent.push(x), () => {}, { cueLeadMs: 1800 });
+  q.add('chair', 'A chair tips over', 'Moss Moth', 1000);
+  assert.equal(hauntCue(r, 1020).label, 'Up next');
+  q.observe(scene(), 20, 2410, 2450);
+  q.tick(2799);
+  assert.equal(sent.some(x => x.haunt), false);
+  q.tick(2800);
+  assert.equal(hauntCue(r, 2801).label, 'Taking effect');
+  assert.equal(sent.filter(x => x.haunt).length, 1);
+  q.acknowledged('chair', 1, 2820, 21);
+  assert.equal(hauntCue(r, 2900).label, 'Taking effect');
+  q.observe(scene([chair(680, 450)]), 23, 3600, 3800);
+  assert.equal(hauntCue(r, 3801).label, 'In the robot’s path');
+  const decision = {action: {key: 'D', holdMs: 220}};
+  assert.equal(q.characterCommand(decision, 3900).reaction, 'avoid');
+  assert.equal(q.characterCommand(decision, 4000).reaction, undefined);
+  assert.equal(r.fear, 0);
+});
+
+test('visible airborne movement beside the robot can earn a glance but no collision or scare', async () => {
+  const { createPlacementController } = await moduleUnderTest;
+  const r = { phase: 'playing', props: [], fear: 0, deadline: 30000 };
+  const sent = [];
+  const q = createPlacementController(r, x => sent.push(x), () => {});
+  q.add('wind', 'A paper gust', 'Moss Moth', 10);
+  q.observe(scene(), 5, 100, 150);
+  q.acknowledged('wind', 1, 200, 6);
+  const off = {...chair(680, 740, 'loose papers'), relation: 'noticeable'};
+  q.observe(scene([off]), 8, 1500, 1700);
+  assert.deepEqual(sent.filter(x => x.reaction), [{reaction:'notice', toward:'right'}]);
+  assert.equal(r.props[0].inPath, false);
+  assert.equal(r.fear, 0);
+  q.acknowledged('wind', 2, 1800, 9);
+  q.observe(scene([off]), 10, 3100, 3200);
+  assert.equal(sent.filter(x => x.reaction).length, 1);
+  assert.equal(r.fear, 0);
+});
