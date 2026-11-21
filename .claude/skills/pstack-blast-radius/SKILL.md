@@ -2,6 +2,7 @@
 name: pstack-blast-radius
 description: Investigate what a proposed code change could break beyond its diff and prove its critical safety assumptions. Use for an explicit blast-radius review or a consequential cross-boundary change; avoid speculative audits of trivial edits.
 license: MIT
+disable-model-invocation: true
 ---
 
 # Blast radius

@@ -2,6 +2,7 @@
 name: pstack-benchmark-checklist
 description: Review whether a performance, latency, throughput or token-efficiency claim is supported by a meaningful benchmark. Use before reporting or acting on a measured improvement; this does not authorize paid experiments or changing frozen evaluation data.
 license: MIT
+disable-model-invocation: true
 ---
 
 # Review benchmark evidence

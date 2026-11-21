@@ -1,29 +1,21 @@
-# Kevin’s review workflows
+# Team review skills
 
-Start with **pre-flight** if you want to understand how Kevin decides a change is ready to ship. This kit is for inspection. Each folder can be read directly in Claude Code without installing anything. The four pstack adaptations include their MIT licenses and pinned upstream references.
+Pull the repo and open Claude Code in the checkout. Type a command on its own or follow it with the change you want to review. If the commands are missing in an open session after pulling, restart Claude Code from this checkout.
 
-| Workflow | When it earns its time |
+| Command | Use it when |
 |---|---|
-| [Pre-flight](pre-flight/SKILL.md) | A candidate is ready for review. A fresh reviewer examines the base-to-head change, drives the affected product path and records a verdict tied to the commit. |
-| [Verify](pstack-verify/SKILL.md) | Someone else needs to reproduce a real journey, from a clean start through the visible result and cleanup. |
-| [Blast radius](pstack-blast-radius/SKILL.md) | A change crosses lanes. Trace the producer, consumer and the most consequential assumption, then exercise it. |
-| [Benchmark checklist](pstack-benchmark-checklist/SKILL.md) | Someone claims a player is faster, cheaper or more accurate. Check equivalent work, quality, errors and run-to-run variation. |
-| [Correct](pstack-correct/SKILL.md) | The same failure keeps recurring. Reproduce it and choose the smallest structural change or test that catches it. |
+| [`/pre-flight`](../../.claude/skills/pre-flight/SKILL.md) | A candidate is ready for independent code and product review. |
+| [`/pstack-verify`](../../.claude/skills/pstack-verify/SKILL.md) | A teammate needs a repeatable way to exercise a real user journey. |
+| [`/pstack-blast-radius`](../../.claude/skills/pstack-blast-radius/SKILL.md) | A change could affect another lane or consumer. |
+| [`/pstack-benchmark-checklist`](../../.claude/skills/pstack-benchmark-checklist/SKILL.md) | A claim about speed, cost, or accuracy needs evidence. |
+| [`/pstack-correct`](../../.claude/skills/pstack-correct/SKILL.md) | A recurring mistake calls for a guard or regression test. |
 
-## Try this in Claude Code
+These commands run on request. For example, try `/pstack-blast-radius What happens to the phone queue if World acknowledges a proposal twice?`
 
-> Read docs/workflows/README.md and the pre-flight workflow, then inspect the Poltergeist feature map and my lane. Which one check would catch a real failure before our first round? Name the action, the result I should see, and what would still be unverified. Give me your assessment before editing files or running a paid session.
-
-For a concrete example, Courtney can test an approved idea and a rejected idea from two phones. The author should see a receipt for both. Only the approved idea should appear on the second phone. A reviewer can then check whether the test would catch accidental publication of the rejected idea.
-
-## Inspect the pre-flight implementation
-
-The [review protocol](pre-flight/references/review.md) explains what the reviewer records. The [verifier](pre-flight/scripts/preflight.py) checks commit, base, evidence and unresolved findings. The [hook and merge notes](pre-flight/references/enforcement.md) explain which checks are local and what requires a separately controlled GitHub App. The review instructions here are adapted for Claude. The Python tools are Kevin’s Codex reference implementation with an empty project registry.
-
-From this directory, with Python 3.10+ and Git installed, run the offline tests against disposable checkouts:
+Pre-flight includes the [review protocol](../../.claude/skills/pre-flight/references/review.md), [verifier](../../.claude/skills/pre-flight/scripts/preflight.py), and [enforcement notes](../../.claude/skills/pre-flight/references/enforcement.md). To run its offline reference tests from the repository root with Python 3.10+ and Git:
 
 ```sh
-python3 -B -m unittest discover -s pre-flight/scripts -p 'test_*.py'
+python3 -B -m unittest discover -s .claude/skills/pre-flight/scripts -p 'test_*.py'
 ```
 
-This package lives outside the active Claude skills directory. Reading it or running the tests grants no release approval and enables no hooks.
+Each pstack skill includes its MIT license and pinned upstream reference.

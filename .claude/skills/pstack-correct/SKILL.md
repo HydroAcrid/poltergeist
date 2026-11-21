@@ -2,6 +2,7 @@
 name: pstack-correct
 description: Prevent recurring agent mistakes by turning observed failure patterns into structural constraints and proven checks. Use when the user requests this or the same documented mistake recurs; a one-off correction does not justify a repository-wide policy change.
 license: MIT
+disable-model-invocation: true
 ---
 
 # Prevent repeat mistakes

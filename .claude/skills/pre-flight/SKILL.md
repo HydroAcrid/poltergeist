@@ -1,6 +1,7 @@
 ---
 name: pre-flight
 description: Independent code and product review before creating a PR, pushing a release candidate, or merging into main. Requires fresh Flight Bot approval, applicable desktop/mobile review, and demonstrated regression detection. Also use for an explicit pre-flight or full quality review.
+disable-model-invocation: true
 ---
 
 # Pre-flight
@@ -22,7 +23,9 @@ Git commit/tree, base commit, policy and evidence. Relevant changes invalidate
 approval. Keep receipts and sanitized evidence in Git-private storage, outside
 the candidate tree. Never use credentials or private task records as test data.
 
-Configure with `scripts/preflight.py init --repo <root> --base-ref <ref> --ui`.
+Run the bundled verifier with Python 3.10+ from the repository root. Start with
+`python3 .claude/skills/pre-flight/scripts/preflight.py init --repo . --base-ref <ref> --ui`.
+Use the same script for the subcommands below.
 Use `--native-ui --reason <scope>` for a desktop-only app, or
 `--no-ui --reason <scope>` for a project without a rendered interface. Then
 run `snapshot --repo <root>`. Retain any stronger review requirements in the project.

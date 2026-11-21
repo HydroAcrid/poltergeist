@@ -2,6 +2,7 @@
 name: pstack-verify
 description: Create or maintain a project-specific verification skill and feature map that exercises the real app. Use when a repo lacks repeatable end-to-end verification or its verification instructions have drifted; routine checks should use the existing harness.
 license: MIT
+disable-model-invocation: true
 ---
 
 # Project verification
