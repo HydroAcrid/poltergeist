@@ -166,6 +166,40 @@ describe("scheduler and fake World", () => {
     expect(hub.dispatched()).toHaveLength(2);
   });
 
+  it("tells phones when the live round ends, and when the next one starts once it's over", async () => {
+    const a = await phone();
+    const idle = await a.state();
+    expect(idle.episodeActive).toBe(false);
+    expect(idle.roundEndsAt).toBeUndefined();
+    expect(idle.nextRoundAt).toBeGreaterThan(hub.clock.now());
+
+    const startedAt = hub.clock.now();
+    hub.world.startEpisode({ maxDurationMs: 60_000 });
+    const live = await a.state();
+    expect(live).toMatchObject({ episodeActive: true, round: 1, roundEndsAt: startedAt + 60_000 });
+    expect(live.nextRoundAt).toBeUndefined();
+
+    hub.world.endEpisode();
+    const after = await a.state();
+    expect(after.roundEndsAt).toBeUndefined();
+    expect(after.round).toBe(1);
+  });
+
+  it("treats a round that runs past its deadline with no episode.ended as over (interrupted, no winner)", async () => {
+    const a = await phone();
+    await a.submit({ text: "fog lol" });
+    await hub.crowd.whenIdle();
+    hub.world.startEpisode({ maxDurationMs: 30_000 });
+    hub.world.current = null; // World's stream dies: no episode.ended ever arrives
+    hub.clock.advance(30_000 + 5_000); // deadline + 5 s grace
+    hub.crowd.tick();
+    expect(hub.dispatched()).toHaveLength(0); // nothing is sent into a dead round
+    const s = await a.state();
+    expect(s.episodeActive).toBe(false);
+    expect(s.roundEndsAt).toBeUndefined();
+    expect(s.queue).toHaveLength(1); // the idea waits for the next round
+  });
+
   it("marks a failed injection as failed and never retries it", async () => {
     const a = await phone();
     await a.submit({ text: "fog lol" });
@@ -182,8 +216,8 @@ describe("scheduler and fake World", () => {
   });
 
   it("stops at the per-episode cap and after the episode ends; uses the seeded pool when the queue is empty", async () => {
-    hub.world.startEpisode();
-    for (let i = 0; i < 10; i++) {
+    hub.world.startEpisode({ maxDurationMs: 90_000 });
+    for (let i = 0; i < 7; i++) {
       hub.clock.advance(12_000);
       hub.crowd.tick();
     }

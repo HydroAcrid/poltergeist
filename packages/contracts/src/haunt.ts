@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0"; // 1.1.0: optional CrowdState.roundEndsAt
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed"]);
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -114,7 +114,8 @@ export const CrowdState = z
   .object({
     episodeActive: z.boolean(),
     round: z.number().int().nonnegative().optional(),
-    nextRoundAt: EpochMs.optional(),
+    nextRoundAt: EpochMs.optional(), // only between rounds
+    roundEndsAt: EpochMs.optional(), // only during a round: Episode.startedAt + maxDurationMs
     mine: z.array(HauntPublic),
     queue: z.array(HauntPublic),
   })

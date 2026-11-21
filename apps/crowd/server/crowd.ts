@@ -17,6 +17,7 @@ export interface CrowdConfig {
   maxPerEpisode: number; // PG_HAUNT_MAX_PER_EPISODE
   seededFallback: boolean;
   roundEveryMs: number; // public rounds every 15 min (:00 :15 :30 :45)
+  endGraceMs: number; // past startedAt + maxDurationMs + this with no episode.ended → treat the round as interrupted
 }
 
 export const DEFAULT_CONFIG: CrowdConfig = {
@@ -27,6 +28,7 @@ export const DEFAULT_CONFIG: CrowdConfig = {
   maxPerEpisode: 6,
   seededFallback: true,
   roundEveryMs: 15 * 60_000,
+  endGraceMs: 5_000,
 };
 
 export function configFromEnv(env: Record<string, string | undefined>): CrowdConfig {
@@ -51,6 +53,7 @@ export type SubmitResult =
 interface ActiveEpisode {
   episodeId: Id;
   startedAt: number;
+  endsAt: number;
   round?: number;
   dispatched: number;
   nextSlotT: number;
@@ -197,6 +200,7 @@ export class CrowdService {
   }
 
   state(deviceId: string): CrowdState {
+    this.expireStaleRound();
     const mine = [...this.haunts.values()]
       .filter((h) => h.deviceId === deviceId)
       .sort((a, b) => fifo(b, a))
@@ -204,7 +208,7 @@ export class CrowdService {
     return {
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
-      ...(this.active ? {} : { nextRoundAt: this.nextRoundAt() }),
+      ...(this.active ? { roundEndsAt: this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       mine,
       queue: this.eligible().map((h) => toPublic(h)),
     };
@@ -222,7 +226,21 @@ export class CrowdService {
 
   // ---------- scheduler ----------
 
+  /**
+   * World can't yet guarantee episode.ended on every failure path, so a round that
+   * runs past its deadline plus a grace period is treated as interrupted: no more
+   * dispatches, and phones stop showing it as live. Queued ideas wait for the next round.
+   */
+  private expireStaleRound(): void {
+    const ep = this.active;
+    if (ep && this.now() >= ep.endsAt + this.config.endGraceMs) {
+      this.deps.log?.("round passed its deadline without episode.ended; treating it as interrupted", { episodeId: ep.episodeId });
+      this.active = null;
+    }
+  }
+
   tick(): void {
+    this.expireStaleRound();
     const ep = this.active;
     if (!ep || ep.dispatched >= this.config.maxPerEpisode) return;
     const t = this.now() - ep.startedAt;
@@ -264,7 +282,14 @@ export class CrowdService {
     switch (e.type) {
       case "episode.started": {
         const ep = e.payload as Episode;
-        this.active = { episodeId: ep.episodeId, startedAt: ep.startedAt, round: ep.round, dispatched: 0, nextSlotT: this.config.firstDispatchMs };
+        this.active = {
+          episodeId: ep.episodeId,
+          startedAt: ep.startedAt,
+          endsAt: ep.startedAt + ep.maxDurationMs,
+          round: ep.round,
+          dispatched: 0,
+          nextSlotT: this.config.firstDispatchMs,
+        };
         if (ep.round !== undefined) this.lastRound = ep.round;
         break;
       }
