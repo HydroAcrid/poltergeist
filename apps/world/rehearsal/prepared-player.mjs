@@ -75,8 +75,11 @@ export function createPreparedPlayer(surface) {
       const first = source(part.upNext?.clipUrl || opening[0]?.clipUrl);
       const second = opening.find(item => item.clipUrl && item.clipUrl !== first?.getAttribute('src'));
       if (second) source(second.clipUrl, first);
-      if (fresh && Number.isFinite(part.collectUntil) && now >= part.collectUntil)
+      if (fresh && Number.isFinite(part.collectUntil) && now >= part.collectUntil) {
+        if (round.playbackMetrics?.rejected > 0 && !first)
+          return {message:'Trying your haunting again. The hallway will open when it’s ready.'};
         return {message:'Preparing the first scene…'};
+      }
       return {collecting:true};
     }
     if (part.phase === 'handoff') {

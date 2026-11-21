@@ -446,6 +446,11 @@ function paint() {
             fear: 'Three scares stopped the robot.',
             exit: 'The robot escaped.',
           }[r.reason] || 'The hallway closed.';
+        if (r.playMode === 'buffered-live' && r.reason === 'interrupted') {
+          caption = r.playbackMetrics?.played
+            ? 'The next scene wasn’t ready. The host can start another round.'
+            : 'The hallway couldn’t open this round. The host can try again.';
+        }
       }
     }
     if (!connected) {

@@ -70,6 +70,8 @@ test('fresh generation preserves the original room while waiting and retries a d
   assert.deepEqual(videos.map(v=>v.src),[a,b]);
   assert.ok(videos.every(v=>v.hidden && v.paused));
   assert.match(player.show(fresh({phase:'collecting',collectUntil:900}),1000).message,/Preparing the first scene/);
+  const repair={...fresh({phase:'collecting',collectUntil:900}),playbackMetrics:{rejected:1}};
+  assert.match(player.show(repair,1000).message,/Trying your haunting again/);
   assert.match(player.show(fresh({phase:'handoff',clipUrl:null}),1000).message,/Preparing the first scene/);
   assert.equal(surface.dataset.cover,'clear');
   const r=fresh({});
