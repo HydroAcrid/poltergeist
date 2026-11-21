@@ -20,7 +20,7 @@ export const Policy = z.object({
     timeoutMs: ms.max(2900),
     promptAddenda: z.array(z.string().max(300)).max(10),
   }),
-  decision: z.object({ mode: z.enum(["rules", "model"]) }),
+  decision: z.object({ mode: z.enum(["rules", "model"]), maxHolds: z.number().int().min(1).max(40) }),
   controller: z.object({
     emaAlpha: unit,
     maxPointJump: z.number().positive(),
@@ -79,7 +79,7 @@ export function loadPolicy(version = "v1"): Policy {
 
 /** The same policy with a different decision mode (e.g. PG_DECISION=model). */
 export function withDecision(policy: Policy, mode: Policy["decision"]["mode"]): Policy {
-  return { ...policy, decision: { mode } };
+  return { ...policy, decision: { ...policy.decision, mode } };
 }
 
 /** The same policy with a different camera rig (e.g. PG_CAMERA_RIG=shoulder). */
