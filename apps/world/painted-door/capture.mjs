@@ -1,3 +1,4 @@
+import { createNativeFollow } from './native-follow.mjs';
 import { hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -105,6 +106,19 @@ async function capture() {
   process.once('SIGINT', stop);
   if (values.drive || values.round) process.once('disconnect', stop);
   let gameClock, looking=false, heldStageKey=null, nextLook=0;
+  const follow = stagePilot ? createNativeFollow() : null;
+  let lookKey=null, lookRelease, steadyUntil=0, entranceMoving=false;
+  async function aim(key, ms, frame) {
+    if (ending || lookKey || key===heldStageKey) return;
+    lookKey=key;
+    await session.send({event_type:'user_action',action:'key_down',input:key});
+    publish({cameraMoved:true});
+    record('Camera reframed the robot',{key,ms,frame});
+    lookRelease=setTimeout(async()=>{
+      try{if(!ending)await session.send({event_type:'user_action',action:'key_up',input:key});}
+      catch(error){abort.abort(error);}finally{lookKey=null;}
+    },ms);
+  }
   if (autonomous) watchdog = setTimeout(stop, stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) + 35000 : values.round ? 60000 : 45000);
   try {
     interaction = await ai.interactions.create({ model: 'genie-4', api_version: 'v1beta' }, request);
@@ -147,6 +161,14 @@ async function capture() {
             throw error;
           }
         } else if (stagePilot && command?.pause) {
+          entranceMoving=false;
+          steadyUntil=Date.now()+2700;
+          if (lookKey?.startsWith('key_')) {
+            clearTimeout(lookRelease);
+            const key=lookKey;
+            lookKey=null;
+            await session.send({event_type:'user_action',action:'key_up',input:key});
+          }
           if (heldStageKey) {
             clearTimeout(releaseKey);
             const key = heldStageKey;
@@ -157,7 +179,7 @@ async function capture() {
         } else if (stagePilot && command?.reaction === 'startle') {
           await session.send("The same small robot jolts at the surprise in front of its boots, makes one short hop back and steadies its flashlight on the obstacle. Both boots land nearby. The camera eases to a stop beside it.");
           record("Requested a visible startle");
-        } else if (stagePilot && command?.key && !heldStageKey) {
+        } else if (stagePilot && command?.key && !heldStageKey && !lookKey && follow.permits(command.key)) {
           const keys={A:'key_a',D:'key_d',W:'key_w',S:'key_s',ArrowRight:'arrow_right',ArrowLeft:'arrow_left'};
           const key=keys[command.key]; if (!key) return;
           heldStageKey=key;
@@ -222,11 +244,13 @@ async function capture() {
         // Open on a real forward tracking move. Key-up gives control to the Brain.
         // The move is part of the entrance, before the first navigation observation.
         if (stagePilot && log.frames === 5) {
+          entranceMoving=true;
           heldStageKey = 'key_w';
           await session.send({event_type:'user_action',action:'key_down',input:'key_w'});
           record('Entrance: native forward key down');
         }
-        if (stagePilot && log.frames === 101 && heldStageKey === 'key_w') {
+        if (stagePilot && log.frames === 101 && entranceMoving && heldStageKey === 'key_w') {
+          entranceMoving=false;
           await session.send({event_type:'user_action',action:'key_up',input:'key_w'});
           heldStageKey = null;
           record('Entrance: native forward key up');
@@ -235,11 +259,31 @@ async function capture() {
           process.send({ frame: delta.data }, error => { if (error) stop(); });
         }
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
-        if(stagePilot && !ending && !looking && !heldStageKey && Date.now()>=nextLook && log.frames>12) {
+        if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
+          follow.push(bytes, log.frames);
+          const lock = follow.status();
+          if (heldStageKey?.startsWith('key_') && (lock.lost || (lock.known && (lock.x < .08 || lock.x > .89)))) {
+            clearTimeout(releaseKey);
+            const move=heldStageKey;
+            entranceMoving=false;
+            heldStageKey=null;
+            await session.send({event_type:'user_action',action:'key_up',input:move});
+            record('Camera held movement to recover framing',{frame:log.frames});
+          }
+          if (!lookKey && !heldStageKey?.startsWith('arrow')) {
+            const fix = follow.correction(Date.now(), !heldStageKey && Date.now() > steadyUntil);
+            if (fix) await aim(fix.key, fix.ms, log.frames);
+          }
+        }
+        if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>12) {
           looking=true;
           const observed=log.frames, observedAt=Date.now();
           inspectRoom(ai,delta.data,abort.signal).then(scene=>{
-            if(!ending){publish({scene,observed,observedAt});record('Gemini observed live frame',{observed,observedAt,scene});}
+            if(!ending){
+              follow.observe(scene,observed);
+              publish({scene,observed,observedAt});
+              record('Gemini observed live frame',{observed,observedAt,scene});
+            }
           }).catch(error=>{
             if (!ending) {
               publish({observationFailed:true});
@@ -276,6 +320,7 @@ async function capture() {
     abort.abort();
     clearTimeout(gameClock);
     clearTimeout(releaseKey);
+    clearTimeout(lookRelease);
     clearTimeout(watchdog);
     try {
       if (session && !log.terminal) {

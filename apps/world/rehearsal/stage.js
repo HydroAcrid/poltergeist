@@ -159,6 +159,10 @@ function paint() {
   const now = Date.now() + off,
     r = state?.round;
   if (state) {
+    const worldVisible=r?.live
+      ? scene.presentLive(liveId===r.id ? liveImage : null,r,now)
+      : false;
+    if(!r?.live)scene.paint(state,now);
     let phase = 'Before the round',
       label = 'Starts in',
       clock = '0:30',
@@ -179,11 +183,11 @@ function paint() {
         clock = '···';
         label = 'Opening';
       } else if (r.phase === 'playing') {
-        phase = r.live ? 'Live · Genie 4' : 'Round in play';
+        phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
         clock = time(sec);
         label = 'Time left';
-        if (r.live && !liveImage.naturalWidth) {
-          caption = 'Connecting to the hallway…';
+        if (r.live && !worldVisible) {
+          if(now-r.startedAt>4500)caption = 'Opening the hallway…';
         } else if (event && event.until > now) {
           cue = event.by;
           caption = event.text;
@@ -234,12 +238,6 @@ function paint() {
         .querySelectorAll('i')
         .forEach((i, n) => i.classList.toggle('on', n < fear));
       set('fear', fear + ' / 3');
-    }
-    if (r?.live && r.phase === 'playing') {
-      if (liveId === r.id && liveImage.naturalWidth)
-        scene.drawLive(liveImage, r, now);
-    } else if (!(r?.live && r.phase === 'ended' && liveId === r.id)) {
-      scene.paint(state, now);
     }
   }
   requestAnimationFrame(paint);
