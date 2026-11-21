@@ -76,3 +76,63 @@ describe("Crowd's 'In the hallway' rule on Brain's bundles", () => {
     expect(fx("no-hazard-after-haunt.json")).toEqual(load("no-hazard-after-haunt").ticks.at(-1));
   });
 });
+
+describe("referee bundles say what their READMEs claim", () => {
+  const visibleAt = (s: ReturnType<typeof load>, seq: number) => s.ticks[seq]!.perception.visible;
+  const lastVisible = (s: ReturnType<typeof load>) => s.ticks.reduce((acc, t) => (t.perception.visible ? t.seq : acc), -1);
+
+  it("clean-success: no haunts, two successClaims in a row at the end, ended by success_claim", () => {
+    const s = load("clean-success");
+    expect(s.injected).toHaveLength(0);
+    expect(s.ticks.every((t) => t.perception.visible)).toBe(true);
+    expect(s.ticks.slice(-2).every((t) => t.successClaim)).toBe(true);
+    expect(s.ticks.slice(0, -2).some((t) => t.successClaim)).toBe(false);
+    expect(s.ended.reason).toBe("success_claim");
+  });
+
+  it("lost-after-haunt: visible until a visibility haunting, then never again", () => {
+    const s = load("lost-after-haunt");
+    const inj = s.injected[0]!;
+    expect(s.haunts[0]!.moderated.tags).toContain("visibility");
+    expect(s.ticks.filter((t) => t.t <= inj.t).every((t) => t.perception.visible)).toBe(true);
+    const lost = s.ticks.find((t) => !t.perception.visible)!;
+    expect(lost.t - inj.t).toBeGreaterThan(0);
+    expect(lost.t - inj.t).toBeLessThanOrEqual(2000);
+    expect(lastVisible(s)).toBeLessThan(lost.seq);
+    expect(s.ended.reason).toBe("timeout");
+  });
+
+  it("world-forgot: conf ≥ 0.8 at seq 14 after NOOP, gone at seq 15 forever, no haunt within 8 s", () => {
+    const s = load("world-forgot");
+    const [a, b] = [s.ticks[14]!, s.ticks[15]!];
+    expect(a.perception.visible && a.perception.conf >= 0.8).toBe(true);
+    expect(a.action.key).toBe("NOOP");
+    expect(visibleAt(s, 15)).toBe(false);
+    expect(lastVisible(s)).toBe(14);
+    expect(s.injected.filter((i) => b.t - i.t <= 8000 && i.t <= b.t)).toHaveLength(0);
+  });
+
+  it("agent-wander: no haunts; turns away from a target on its right, then loses it", () => {
+    const s = load("agent-wander");
+    expect(s.injected).toHaveLength(0);
+    for (const t of s.ticks.slice(6, 10)) {
+      expect(t.perception.point![1]).toBeGreaterThan(500);
+      expect(t.action.key).toBe("ArrowLeft");
+    }
+    expect(lastVisible(s)).toBe(9);
+  });
+
+  it("haunt-but-irrelevant: same wander, plus an audio-only haunting 0.5 s before the loss", () => {
+    const s = load("haunt-but-irrelevant");
+    const w = load("agent-wander");
+    expect(s.ticks.map((t) => [t.perception.visible, t.action.key])).toEqual(w.ticks.map((t) => [t.perception.visible, t.action.key]));
+    expect(s.haunts.map((h) => h.moderated.tags)).toEqual([["audio"]]);
+    expect(s.ticks.find((t) => !t.perception.visible && t.seq > 0)!.t - s.injected[0]!.t).toBe(500);
+  });
+
+  it("never-seen: the target is never visible", () => {
+    const s = load("never-seen");
+    expect(s.injected).toHaveLength(0);
+    expect(s.ticks.some((t) => t.perception.visible)).toBe(false);
+  });
+});

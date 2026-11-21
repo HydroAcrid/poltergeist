@@ -1,7 +1,7 @@
-{ "lane": "brain", "updatedAt": "2026-11-21T18:40", "tier": 0, "demoPathOk": null,
-  "working": ["er2 adapter on live Gemini Robotics-ER 2 (branch brain/contracts)"],
-  "next": ["POST /api/brain/tick + frames + tick publish (needs World scaffold)", "fake brain", "six referee scenario bundles", "TickLog.reaction 1.1.0 if World and Crowd agree", "turn calibration from a before/after pair"],
+{ "lane": "brain", "updatedAt": "2026-11-21T19:05", "tier": 0, "demoPathOk": null,
+  "working": [],
+  "next": ["mount tick routes in the hub + fake brain (need World scaffold)", "turn calibration from a before/after pair", "real scenario bundles cut from ep_real_*"],
   "blocked": ["World scaffold not on main (common.ts, episode.ts, haunt-injected.ts, hub-types, LaneModule); Brain runs against local shims"],
-  "implements": { "TickResponse": "1.0.0", "TickLog": "1.0.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
+  "implements": { "TickResponse": "1.0.0", "TickLog": "1.1.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
   "measured": { "perceptionP50Ms": 1763, "perceptionP95Ms": 2007 },
   "notes": "ER 2 live probe on World's 8 labeled third-person frames, thinking budget 0: robot 8/8, feet 8/8, exit 8/8, obstacles 7/7, same move as labels 6/8. Default thinking truncated JSON at MAX_TOKENS (~8 s). ER 2's forward point is noisy, so facing comes from the follow camera (useForwardPoint: false). See apps/brain/EVALS.md." }

@@ -103,17 +103,38 @@ describe("Er2Perception", () => {
     expect((await new Er2Perception(twice.client).perceive(input, opts)).error).toBe("parse");
   });
 
-  it("maps API failures to api and timeouts to timeout", async () => {
-    expect((await new Er2Perception(fake(new Error("500 internal")).client).perceive(input, opts)).error).toBe("api");
-    expect((await new Er2Perception(fake(new Error("Request timeout after 2500ms")).client).perceive(input, opts)).error).toBe("timeout");
+  it("never sends a server deadline (Gemini rejects any under 10 s); enforces the budget with an abort signal", async () => {
+    const { client, calls } = fake(reply(chairAhead));
+    await new Er2Perception(client).perceive(input, opts);
+    expect(calls[0]!.config.httpOptions).toBeUndefined();
+    expect(calls[0]!.config.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
-  it("through the tick handler: ER 2's chair-ahead scene turns toward the exit, and a failure falls back", async () => {
+  it("maps API errors to api, even when the message mentions a deadline", async () => {
+    const deadline = new Error('{"error":{"code":400,"message":"Manually set deadline 3s is too short. Minimum allowed deadline is 10s."}}');
+    const a = new Er2Perception(fake(deadline).client);
+    expect((await a.perceive(input, opts)).error).toBe("api");
+    expect(a.lastError).toContain("deadline");
+    expect((await new Er2Perception(fake(new Error("500 internal")).client).perceive(input, opts)).error).toBe("api");
+  });
+
+  it("reports timeout when the budget runs out before ER 2 answers", async () => {
+    const slow: GenAiLike = {
+      models: {
+        generateContent: (r) =>
+          new Promise((_, reject) => r.config.abortSignal.addEventListener("abort", () => reject(new Error("This operation was aborted")))),
+      },
+    };
+    const res = await new Er2Perception(slow).perceive(input, { ...opts, timeoutMs: 50 });
+    expect(res.error).toBe("timeout");
+  });
+
+  it("through the tick handler: ER 2's chair-ahead scene sidesteps right, and a failure falls back", async () => {
     const policy = loadPolicy("v1");
     const ok = new TickHandler({ adapter: new Er2Perception(fake(reply(chairAhead)).client), policy, taskFor: () => task });
     const res = await ok.handle(req(0));
     expect(TickResponse.safeParse(res).success).toBe(true);
-    expect([res.mode, res.action.key]).toEqual(["track", "ArrowRight"]);
+    expect([res.mode, res.action.key]).toEqual(["track", "D"]);
 
     const bad = new TickHandler({ adapter: new Er2Perception(fake(new Error("boom")).client), policy, taskFor: () => task });
     const fb = await bad.handle(req(1));
@@ -134,5 +155,21 @@ describe("facingPoint (forward route from the trailing camera)", () => {
     expect(facingPoint([747, 525], [823, 532], [465, 467], 500)).toEqual([465, 500]);
     expect(facingPoint([747, 525], [745, 600], [465, 467], 500)).toEqual([465, 500]);
     expect(facingPoint([747, 525], undefined, [465, 467], 500)).toEqual([465, 500]);
+  });
+});
+
+describe("prefer sidestep on ER 2's live-probe scenes", () => {
+  it("furniture far down the hall doesn't block a sidestep; a near armchair does", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { stepNav, sideClear } = await import("../server/navigate.js");
+    const { initialState } = await import("../server/controller.js");
+    // A real ER 2 reply, frozen so later probe runs can't change this test.
+    const row = JSON.parse(readFileSync(new URL("./fixtures/er2-reply-peel-in-path.json", import.meta.url), "utf8"));
+    const scene = parseScene(row.raw).scene!;
+    const policy = loadPolicy("v1");
+    const facing: [number, number] = [scene.goal![0], policy.navigation.headingX];
+    expect(sideClear(scene, facing, "left", policy)).toBe(true); // stools at 0.66 of the way: too far to matter
+    expect(sideClear(scene, facing, "right", policy)).toBe(false); // armchair right beside the landing spot
+    expect(stepNav(initialState(), scene, req(0), policy).action.key).toBe("A");
   });
 });

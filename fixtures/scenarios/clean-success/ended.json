@@ -1,0 +1,11 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000005",
+  "endedAt": 1795371012500,
+  "durationMs": 12500,
+  "reason": "success_claim",
+  "genieClosedCleanly": null,
+  "artifacts": {
+    "eventsPath": "data/episodes/ep_01JDPG00000000000000000005/events.jsonl",
+    "framesDir": "data/episodes/ep_01JDPG00000000000000000005/frames"
+  }
+}

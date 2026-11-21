@@ -133,3 +133,20 @@ describe("third-person hallway: avoid, recover, arrive", () => {
     }
   });
 });
+
+describe("TickLog 1.1.0 reaction on World's hallway frames", () => {
+  it("marks avoid, stumble (first tick only), recover, and nothing on plain walking", async () => {
+    const { handler } = setup();
+    const route = ["clear-aisle.jpg", "peel-in-path.jpg", "stumbling.jpg", "stumbling.jpg", "recovered.jpg", "arrived.jpg"];
+    const reactions = [];
+    for (const [seq, file] of route.entries()) reactions.push((await handler.decide(req(seq, b64(file)))).reaction ?? null);
+    expect(reactions).toEqual([null, "avoid", "stumble", null, "recover", null]);
+  });
+
+  it("clean avoidance with no stumble never produces a stumble", async () => {
+    const { handler } = setup();
+    for (const [seq, file] of ["clear-aisle.jpg", "peel-off-path.jpg", "recovered.jpg"].entries()) {
+      expect((await handler.decide(req(seq, b64(file)))).reaction).toBeUndefined();
+    }
+  });
+});

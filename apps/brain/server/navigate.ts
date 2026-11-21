@@ -29,6 +29,8 @@ export interface Block {
   /** Obstacle offset from the corridor centre, in frame units (negative = left). */
   offset: number;
   halfWidth: number;
+  /** How far along the corridor it touches the floor: 0 at the boots, 1 at the end. */
+  along: number;
 }
 
 /**
@@ -52,7 +54,7 @@ export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block
     const halfPath = n.pathHalfWidth * (1 - f * (1 - n.farWidthRatio));
     const halfWidth = o.box ? (o.box[3] - o.box[1]) / 2 : n.defaultObstacleHalfWidth;
     const offset = floor[1] - pathX;
-    if (Math.abs(offset) < halfPath + halfWidth) return { point: o.point, offset, halfWidth };
+    if (Math.abs(offset) < halfPath + halfWidth) return { point: o.point, offset, halfWidth, along: f };
   }
   return undefined;
 }
@@ -85,6 +87,22 @@ export function bearing(feet: Point, facing: Point, goal: Point): number {
   return clamp(d / (Math.PI / 2), -1, 1);
 }
 
+/**
+ * Whether a sidestep to `side` lands on clear floor for the next steps: shift
+ * the boots and the facing point sideways by `sidestepShift` and re-check,
+ * counting only obstacles within `sidestepWithin` of the way to the exit row
+ * (furniture far down the hall doesn't make a side unsafe; it's re-checked as
+ * the robot advances). A step that would leave the frame is not clear.
+ */
+export function sideClear(scene: Scene, facing: Point, side: "left" | "right", policy: Policy): boolean {
+  const dx = (side === "left" ? -1 : 1) * policy.navigation.sidestepShift;
+  const shift = (p: Point): Point => [p[0], p[1] + dx];
+  const feet = { left: shift(scene.feet.left), right: shift(scene.feet.right) };
+  if ([feet.left[1], feet.right[1]].some((x) => x < 0 || x > 1000)) return false;
+  const block = blockingObstacle({ ...scene, feet }, shift(facing), policy);
+  return !block || block.along > policy.navigation.sidestepWithin;
+}
+
 function clock(e: number): string {
   const h = Math.round(e * 3);
   return `${h === 0 ? 12 : h > 0 ? h : 12 + h} o'clock`;
@@ -92,13 +110,18 @@ function clock(e: number): string {
 
 export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, policy: Policy): ControllerOutput {
   const n = policy.navigation;
-  const s: ControllerState = { ...prev, lost: 0, searchSteps: 0, pending: undefined };
+  const wasStumbling = prev.stumbling === true;
+  const s: ControllerState = { ...prev, lost: 0, searchSteps: 0, pending: undefined, stumbling: scene.pose === "stumbling" };
+  // TickLog `reaction`: a stumble on its first tick, recovery on the first upright tick after.
+  let reaction: ControllerOutput["reaction"] =
+    scene.pose === "stumbling" ? (wasStumbling ? undefined : "stumble") : wasStumbling ? "recover" : undefined;
   const out = (action: Action, mode: ControllerOutput["mode"], rationale: string, successClaim = false): ControllerOutput => ({
     state: s,
     action,
     mode,
     rationale: rationale.slice(0, 60),
     successClaim: successClaim && req.driver === "brain",
+    ...(reaction ? { reaction } : {}),
   });
 
   // Mid-stumble: don't stack a new move on top of the fall.
@@ -130,11 +153,29 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   const forward = blockingObstacle(scene, facing, policy);
   const toGoal = blockingObstacle(scene, goal, policy);
 
+  // Projector option: when a grounded obstacle blocks the next steps, prefer a
+  // visible A/D sidestep onto a clear side (toward the exit's side first). If
+  // neither side is open, turn instead (below, or look away from the obstacle).
+  if (n.preferSidestep && forward && forward.along <= n.sidestepWithin) {
+    const towardExit: "left" | "right" = e < 0 ? "left" : "right";
+    const other: "left" | "right" = towardExit === "left" ? "right" : "left";
+    const side = [towardExit, other].find((sd) => sideClear(scene, facing, sd, policy));
+    reaction ??= "avoid";
+    if (side) {
+      return out({ key: side === "left" ? "A" : "D", holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${side}`);
+    }
+    if (toGoal || Math.abs(e) <= n.turnDeadband) {
+      const key = forward.offset > 0 ? "ArrowLeft" : "ArrowRight";
+      return out({ key, holdMs: Math.round(clamp(n.kTurn / 3, 120, n.maxTurnMs)) }, "track", "blocked both sides, looking for a way");
+    }
+  }
+
   // Exit is off to one side and the way there is clear: turn toward it.
   if (Math.abs(e) > n.turnDeadband && !toGoal) {
     const key = e > 0 ? "ArrowRight" : "ArrowLeft";
     const why = forward ? "obstacle ahead, turning toward exit" : `exit ${clock(e)} → turning`;
-    return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, 600)) }, "track", why);
+    if (forward) reaction ??= "avoid";
+    return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, n.maxTurnMs)) }, "track", why);
   }
 
   // Straight ahead is blocked: step aside. Roughly dead-centre → step toward the
@@ -142,6 +183,7 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   if (forward) {
     const centred = Math.abs(forward.offset) < forward.halfWidth / 2;
     const left = centred ? e < 0 : forward.offset > 0;
+    reaction ??= "avoid";
     return out({ key: left ? "A" : "D", holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${left ? "left" : "right"}`);
   }
 

@@ -124,6 +124,8 @@ export class Er2Perception implements PerceptionAdapter {
   readonly name = "er2" as const;
   /** The last raw reply text, for the live probe's report. Never contains the key. */
   lastRaw = "";
+  /** The last API error message, for diagnosis (the SDK does not echo the key). */
+  lastError = "";
 
   constructor(
     private readonly client: GenAiLike,
@@ -141,6 +143,10 @@ export class Er2Perception implements PerceptionAdapter {
     for (let attempt = 0; attempt < 2; attempt++) {
       const remaining = opts.timeoutMs - (this.now() - started);
       if (attempt > 0 && remaining < 800) break;
+      // The budget is enforced here by aborting, never as httpOptions.timeout:
+      // that becomes a server deadline, and Gemini rejects any under 10 s (400).
+      const budget = AbortSignal.timeout(Math.max(1, Math.round(remaining)));
+      const signal = opts.signal ? AbortSignal.any([opts.signal, budget]) : budget;
       let text: string;
       try {
         const res = await this.client.models.generateContent({
@@ -152,14 +158,13 @@ export class Er2Perception implements PerceptionAdapter {
             thinkingConfig: { thinkingBudget: THINKING_BUDGET[opts.thinking ?? "low"] },
             responseMimeType: "application/json",
             responseJsonSchema: SCENE_SCHEMA,
-            httpOptions: { timeout: Math.max(1, Math.round(remaining)) },
-            ...(opts.signal ? { abortSignal: opts.signal } : {}),
+            abortSignal: signal,
           },
         });
         text = res.text ?? "";
       } catch (error) {
-        const msg = String((error as Error)?.message ?? error);
-        return fail(/timeout|abort|deadline/i.test(msg) ? "timeout" : "api");
+        this.lastError = String((error as Error)?.message ?? error).slice(0, 300);
+        return fail(signal.aborted ? "timeout" : "api");
       }
       this.lastRaw = text;
       let parsed: ParsedScene;

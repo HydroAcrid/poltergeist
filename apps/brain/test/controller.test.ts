@@ -123,3 +123,14 @@ describe("resolvePerception", () => {
     expect(r.perception.visible).toBe(false);
   });
 });
+
+describe("TickLog reaction from the first-person controller", () => {
+  it("flags a stall while pushing W as unclear, not a stumble", () => {
+    const stuck = (seq: number) => req(seq, "AAAA", { executing: { key: "W", holdMs: 800, startedT: 0 }, frameDiff: 0.005 });
+    const ahead = seen({ point: [400, 500] });
+    const a = step(initialState(), ahead, stuck(0), policy);
+    expect(a.reaction).toBeUndefined();
+    const b = step(a.state, ahead, stuck(1), policy);
+    expect([b.mode, b.reaction]).toEqual(["unstick", "unclear"]);
+  });
+});

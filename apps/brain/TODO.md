@@ -7,12 +7,12 @@
 
 ## Fakes and scenarios: by H+0:45
 - [ ] `apps/brain/server/fake.ts` (fake brain, CONTRACTS §8)
-- [ ] Six scenario bundles in `fixtures/scenarios/` (synthetic) → FIXTURE-READY → crowd
+- [x] Six scenario bundles in `fixtures/scenarios/` (synthetic) → FIXTURE-READY → crowd
 
 ## Tier 0: H+1:30
 - [ ] Controller as a pure function + unit tests on every scenario (track, search, unstick, success, fallback, human driver)
-- [ ] Real `POST /api/brain/tick` with `PerceptionAdapter=fixture`; `pnpm e2e:pair --real=brain` green
-- [ ] `er2` adapter + `@live` probe on `fixture-zero` (accuracy + p50/p95 latency → EVALS.md; your human runs it)
+- [ ] Real `POST /api/brain/tick` with `PerceptionAdapter=fixture`; `pnpm e2e:pair --real=brain` green (standalone server done: `pnpm --dir apps/brain serve`; hub mount + e2e wait on World's scaffold)
+- [x] `er2` adapter + `@live` probe (on World's labeled frames instead of fixture-zero; accuracy + p50/p95 latency → EVALS.md)
 - [ ] Frames written + `tick` published after the response
 
 ## Tier 1: H+2:30
