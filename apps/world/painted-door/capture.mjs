@@ -2,6 +2,7 @@ import { frameSink } from '../rehearsal/video-stream.mjs';
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { checkpointEligible } from '../rehearsal/chapters.mjs';
 import { proposedKey } from '../rehearsal/move-trace.mjs';
+import { isEncounterStep, reviewableFrame, responseWatchdogMs } from './response-window.mjs';
 import { createEncounterControls } from './encounter-controls.mjs';
 import { chapterSeed } from './chapter-seed.mjs';
 import { assessFraming } from './framing-report.mjs';
@@ -128,6 +129,16 @@ async function capture() {
   const placementView = createPlacementView();
   const encounter = createEncounterControls();
   let commands = Promise.resolve(), actorStepTimer;
+  let reviewing = null, lastSight = null, lastStepFeedback = null;
+  function finishReview(step, observed, reason) {
+    if (!step || reviewing !== step) return false;
+    reviewing = null;
+    clearTimeout(actorStepTimer);
+    publish({stepReview:{encounter:step.encounter,key:step.key,basis:step.basis,appliedFrame:step.appliedFrame,
+      observed,reason}});
+    record('Checked encounter step',{key:step.key,basis:step.basis,appliedFrame:step.appliedFrame,observed,reason});
+    return true;
+  }
   let actorStopping=null, actionPending=false, lastRecoveryObservation=-1;
   function heldMove(command, reason) {
     const entry = { observed:command.observed, key:command.key, source:'native', reason };
@@ -197,6 +208,11 @@ async function capture() {
     if (unsafeForwardPress(lock) || lock.distanceHeld && cameraPress && !cameraPress.recovery)
       await releaseCamera();
     if (encounter.held) {
+      // A semantic read can age out while the new one is in flight. A newly
+      // observed identity loss aborts immediately; the watchdog bounds silence.
+      if (reviewing && (!lock.known || lock.lost) && lock.observed > reviewing.appliedFrame &&
+          finishReview(reviewing, null, 'tracking lost'))
+        await stopActor();
       if (cameraPress) await releaseCamera();
       return !follow.permits('W');
     }
@@ -255,12 +271,25 @@ async function capture() {
       }
       // Revoke travel immediately. The queued stop follows any instruction
       // already on the wire, before an injection may reserve a stationary frame.
+      if (stagePilot && command?.stepFeedback) {
+        const feedback=command.stepFeedback;
+        if (lastStepFeedback?.appliedFrame===feedback.appliedFrame && lastStepFeedback.encounter===feedback.encounter) {
+          lastStepFeedback.outcome=feedback.outcome;
+          record('Observed encounter response',{key:lastStepFeedback.key,appliedFrame:feedback.appliedFrame,
+            observed:feedback.observed,outcome:feedback.outcome});
+        }
+        return;
+      }
       if (stagePilot && command?.releaseEncounter) {
+        if (reviewing?.encounter === command.releaseEncounter && finishReview(reviewing,null,'encounter closed'))
+          stopActor().catch(error=>abort.abort(error));
+        if (lastStepFeedback?.encounter === command.releaseEncounter && lastStepFeedback.outcome!=='route-open') lastStepFeedback=null;
         encounter.release(command.releaseEncounter, motionBoundary() - 1);
         return;
       }
       if (stagePilot && command?.pause && command.encounter) {
         if (!encounter.hold(command.encounter)) return;
+        lastStepFeedback=null;
         releaseCamera().catch(error => abort.abort(error));
       }
       commands = commands.then(async () => {
@@ -319,7 +348,7 @@ async function capture() {
           if(!authorized()) return;
           encounter.acted();
           actionPending=true;
-          try { noteMotion(); await session.send(instruction); }
+          try { noteMotion(); await session.send(instruction); lastStepFeedback=null; }
           finally { noteMotion(); actionPending=false; }
           record('Requested robot reaction',{reaction:command.reaction,toward:command.toward});
         } else if(stagePilot && command?.key) {
@@ -339,6 +368,7 @@ async function capture() {
               ? 'Camera is held for a stationary placement view' : 'Camera is settling';
             return null;
           };
+          if (reviewing) return heldMove(command,'Waiting for visual feedback from the previous step');
           let reason = reasonHeld();
           if (reason) return heldMove(command, reason);
           const instruction=characterInstruction(command);
@@ -353,6 +383,8 @@ async function capture() {
             reason = reasonHeld();
             if (reason) return heldMove(command, reason);
           }
+          const basisImage = lastSight?.observed===command.observed ? lastSight.image : null;
+          if (isEncounterStep(command) && !basisImage) return heldMove(command,'Missing the before-step reference image');
           clearTimeout(actorStepTimer);
           encounter.acted();
           actorMoving=['W','A','S','D'].includes(command.key);
@@ -360,12 +392,20 @@ async function capture() {
           actionPending=true;
           try { await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]); }
           finally { noteMotion(); actionPending=false; }
-          if (actorMoving && (!encounter.held || command.encounter)) {
-            // Genie travel is a language action, not a key we can release.
-            // Bound its single step before a new vision read can choose another.
+          const appliedFrame=motionBoundary()-1;
+          lastStepFeedback=basisImage ? {encounter:command.encounter,key:command.key,basis:command.observed,
+            appliedFrame,basisImage,at:Date.now(),outcome:'awaiting-pixels'} : null;
+          if (isEncounterStep(command) && encounter.held && lastStepFeedback) {
+            const step=lastStepFeedback;
+            reviewing=step;
+            actorStepTimer=setTimeout(()=>{
+              if (finishReview(step,null,'vision timeout')) stopActor().catch(error=>abort.abort(error));
+            },responseWatchdogMs);
+          } else if (actorMoving && (!encounter.held || command.encounter)) {
             actorStepTimer = setTimeout(() => stopActor().catch(error => abort.abort(error)), 1050);
           }
-          publish({navigationMoved:true,key:command.key,observed:command.observed});
+          publish({navigationMoved:true,key:command.key,observed:command.observed,appliedFrame,
+            ...(command.encounter ? {encounter:command.encounter} : {})});
           record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
@@ -435,10 +475,13 @@ async function capture() {
           follow.push(bytes, log.frames);
           await updateShot(log.frames);
         }
-        if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>=1) {
+        if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>=1 &&
+            (!reviewing || reviewableFrame(reviewing.appliedFrame,log.frames,log.fps))) {
           looking=true;
           const observed=log.frames, observedAt=Date.now();
-          inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing).then(async scene=>{
+          const stepForRead=reviewing;
+          if (lastStepFeedback && Date.now()-lastStepFeedback.at>14000) lastStepFeedback=null;
+          inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing,lastStepFeedback).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
               if (settlingChapter) {
@@ -451,8 +494,15 @@ async function capture() {
               const lock=follow.status();
               const current = lock.observed === observed;
               const verifiedScene = follow.verified(observed) ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
+              lastSight=verifiedScene.visible ? {observed,image:delta.data} : null;
+              const reviewed=finishReview(stepForRead,observed,verifiedScene.visible ? 'post-step pixels' : 'tracking lost');
+              if (reviewed) await stopActor();
               const settled = placementView.ready(observed,follow.permitsPlacement(observed),moving());
-              const {stable: trackingPlacementReady, drift} = encounter.measure(verifiedScene, observed, settled);
+              // The first purposeful step displacement establishes the new anchor.
+              // A subsequent stationary frame can be used for the next command.
+              const measurement=encounter.measure(verifiedScene, observed, reviewed ? verifiedScene.visible : settled);
+              const trackingPlacementReady=!reviewed && measurement.stable;
+              const drift=!reviewed && measurement.drift;
               if (drift) {
                 // The provider can animate uncommanded travel. Do not inject or
                 // verify from that moving view. Plant the feet and measure again.

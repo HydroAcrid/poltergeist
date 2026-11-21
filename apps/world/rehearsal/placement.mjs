@@ -192,6 +192,40 @@ export function inspectPlacement(
   };
 }
 
+// A sidestep opens a route only when the same obstacle is still visible and
+// both boots have moved to clear floor on the instructed side of it.
+export function compareEncounterStep(before, after, result, matches, key) {
+  const a = floorCorridor(before), b = floorCorridor(after);
+  if (!a || !b || !before.feetVisible || !after.feetVisible || after.pose !== 'upright' ||
+      !result?.visible) return 'unconfirmed';
+  const targets = scene => scene.obstacles.filter(o => matches(o.label) && box(o.box));
+  const previous = targets(before), current = targets(after);
+  if (previous.length !== 1 || current.length !== 1) return 'unconfirmed';
+  const old = previous[0].box, next = current[0].box;
+  const centre = rect => (rect[1] + rect[3]) / 2;
+  // The held camera makes floor positions comparable. If the prop moved too
+  // far or changed scale, keep the result open instead of attributing its
+  // displacement to the player.
+  const propShift = centre(next)-centre(old);
+  if (Math.abs(propShift)>70 || Math.abs(next[2]-old[2])>65) return 'unconfirmed';
+  const minTravel = Math.max(28, Math.abs(before.feet.right[1]-before.feet.left[1])*.65);
+  const footDx = b.feet[1]-a.feet[1], footDy = b.feet[0]-a.feet[0];
+  if (key === 'S') {
+    const range = (feet, rect) => Math.hypot(feet[0]-rect[2],(feet[1]-centre(rect))*aspect);
+    const away = -(footDy*a.dy + footDx*a.dx*aspect*aspect)/Math.hypot(a.dy,a.dx*aspect);
+    if (away>minTravel && range(b.feet,next)-range(a.feet,old)>minTravel) return 'backed-away';
+  }
+  if (result.inPath) return 'still-blocked';
+  if (key !== 'A' && key !== 'D') return 'unconfirmed';
+  const side = key === 'A' ? -1 : 1;
+  const boots = [after.feet.left[1],after.feet.right[1]];
+  const feetClear = key === 'A' ? Math.max(...boots)<next[1] : Math.min(...boots)>next[3];
+  const routeClear = !(after.obstacles || []).some(o => (o.solid!==false || o.relation==='crossing') &&
+    intervalHits(b,o.box,.17,1.45,b.radius,o.relation==='crossing'));
+  return feetClear && routeClear && footDx*side>minTravel && (footDx-propShift)*side>minTravel
+    ? 'route-open' : 'unconfirmed';
+}
+
 export function createPlacementController(round, send, report, { cueLeadMs = 0 } = {}) {
   let latest,
     lastMove = 0,
@@ -346,6 +380,28 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       const job = active();
       return Boolean(job?.prop.inPath && job.prop.confirmedFrame === frame && latest?.placementReady);
     },
+    applied(command) {
+      const job = jobs.get(command.encounter);
+      const pending = job?.proposedStep;
+      if (!job || job.closed || !pending || pending.basis!==command.observed || pending.key!==command.key ||
+          !Number.isInteger(command.appliedFrame) || command.appliedFrame<command.observed) return;
+      job.step={...pending,appliedFrame:command.appliedFrame};
+      job.proposedStep=null;
+      job.prop.response={key:pending.key, basis:pending.basis, appliedFrame:command.appliedFrame, outcome:'awaiting-pixels'};
+    },
+    reviewed(receipt) {
+      const job = jobs.get(receipt.encounter), step=job?.step;
+      if (!step || job.closed || step.appliedFrame!==receipt.appliedFrame || step.basis!==receipt.basis ||
+          step.key!==receipt.key) return;
+      if (receipt.reason==='post-step pixels') {
+        if (Number.isInteger(receipt.observed) && receipt.observed>step.appliedFrame && step.reviewFrame==null)
+          step.reviewFrame=receipt.observed;
+      } else if (['vision timeout','tracking lost','encounter closed'].includes(receipt.reason)) {
+        job.prop.response.outcome='unconfirmed';
+        send({stepFeedback:{encounter:job.prop.id,appliedFrame:step.appliedFrame,observed:null,outcome:'unconfirmed'}});
+        job.step=null;
+      }
+    },
     moved(time = now()) {
       lastMove = time;
     },
@@ -401,7 +457,22 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         // pre-send frame cannot verify a send, even if it arrives afterward.
         const p = job.prop;
         const result = inspectPlacement(scene, job.effect, job.baseline);
-        if (result && placementReady && freshObservation(latest, time, lastMove)) {
+        if (job.step?.reviewFrame===frame) {
+          const step=job.step;
+          const outcome=freshObservation(latest,time,lastMove) ?
+            compareEncounterStep(step.scene,scene,result,job.effect.matches,step.key) : 'unconfirmed';
+          Object.assign(p.response,{checkedFrame:frame,outcome});
+          send({stepFeedback:{encounter:p.id,appliedFrame:step.appliedFrame,observed:frame,outcome}});
+          job.step=null;
+          if (outcome==='route-open') {
+            p.inPath=false;
+            p.observedReaction='sidestep';
+            p.reactedAt=at;
+            round.lastReaction={at,presentedAt:time,name:p.name,flinch:false};
+            closeJob(job,'off-path');
+          }
+        }
+        if (!job.closed && result && placementReady && freshObservation(latest, time, lastMove)) {
           job.lastChecked = frame;
           if (result.visible && !p.seen) {
             p.seenAt = at;
@@ -452,7 +523,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
             if (p.reactedAt) closeJob(job);
             job.wasInPath = true;
           } else if (job.wasInPath) {
-            closeJob(job, 'passed');
+            closeJob(job, result.visible ? 'off-path' : 'unverified');
           } else if (at - job.ackTime >= 1000) {
             const nearby = result.visible && scene.obstacles.find((o) =>
               o.relation === 'noticeable' && job.effect.matches(o.label) && box(o.box));
@@ -494,6 +565,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         if (blocked || (!scene.move?.avoiding && decision.reaction !== 'avoid')) return null;
       }
       job.lastCommandFrame = latest.frame;
+      if (['A','D','S'].includes(key)) job.proposedStep={key,basis:latest.frame,scene};
       if (['A','D'].includes(key)) {
         prop.avoidRequestedAt ??= at;
         return { ...command, encounter: prop.id, reaction: 'avoid', toward: key === 'A' ? 'left' : 'right' };

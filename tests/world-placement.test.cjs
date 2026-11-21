@@ -508,3 +508,62 @@ test('a light breeze can move existing paper from beside the aisle into the beam
   assert.equal(inspectPlacement(scene([crossing]),idea,[crossing]).inPath,false);
   assert.equal(inspectPlacement(scene([sheet(700,'crossing')]),idea,beside).inPath,false);
 });
+
+test('the confirmed live take cannot interrupt a one-step response at the old 25-frame timer',async()=>{
+  const {isEncounterStep,reviewableFrame,responseWatchdogMs}=await import('../apps/world/painted-door/response-window.mjs');
+  // Episode ep_01M7ZX23SV17CSRAZPS6F79KTT. The choice was made on 365,
+  // reached the wire at 423, and the old fixed stop was sent at frame 448.
+  assert.ok(isEncounterStep({key:'A',encounter:'obstacle'}));
+  assert.equal(isEncounterStep({key:'W',encounter:'obstacle'}),false);
+  assert.equal(isEncounterStep({key:'A'}),false);
+  assert.equal(reviewableFrame(423,435,24),false);
+  assert.equal(reviewableFrame(423,509,24),true);
+  assert.ok(responseWatchdogMs>(509-423)*1000/24);
+  assert.ok(responseWatchdogMs<=8000);
+});
+
+test('a checked sidestep needs two measured feet displaced beyond the same obstacle with a clear new route',async()=>{
+  const {compareEncounterStep,inspectPlacement,describeEffect}=await moduleUnderTest;
+  const item=chair(700,450,'crate');
+  const effect=describeEffect('A crate');
+  const before=scene([item],{feetVisible:true});
+  const shifted=(x,y=800,obstacles=[item])=>scene(obstacles,{feetVisible:true,feet:{left:[y,x-10],right:[y,x+10]},ahead:[y-220,x]});
+  function verdict(after,key='A') {
+    return compareEncounterStep(before,after,inspectPlacement(after,effect,[]),effect.matches,key);
+  }
+  assert.equal(verdict(before),'still-blocked');
+  assert.equal(verdict(shifted(340)),'route-open');
+  assert.equal(verdict(shifted(560),'D'),'route-open');
+  assert.equal(verdict(shifted(450,885),'S'),'backed-away');
+  assert.equal(verdict(shifted(560)),'unconfirmed','movement opposite the instruction');
+  assert.equal(verdict(shifted(450,800,[])),'unconfirmed','disappearing prop');
+  assert.equal(verdict(shifted(450,800,[chair(690,680,'crate')])),'unconfirmed','a moving obstacle alone');
+  assert.equal(verdict(shifted(340,800,[item,chair(680,340,'stool')])),'unconfirmed','new lane is blocked');
+  assert.equal(verdict({...shifted(340),feetVisible:false}),'unconfirmed','body movement alone cannot prove boot displacement');
+});
+
+test('only the independent image for the step actually sent can credit a sidestep',async()=>{
+  const {createPlacementController}=await moduleUnderTest;
+  for (const moved of [true,false]) {
+    const r={props:[],fear:0,deadline:60000},sent=[];
+    const q=createPlacementController(r,c=>sent.push(c),()=>{});
+    const effect=chair(700,450,'crate');
+    q.add('wood','A crate','Moss',1000);
+    q.observe(scene([],{feetVisible:true}),30,2000,2300);
+    q.acknowledged('wood',1,2400,51);
+    const blocked=scene([effect],{feetVisible:true});
+    q.observe(blocked,90,3800,6000);
+    assert.equal(q.characterCommand({action:{key:'A',holdMs:200}},6000)?.encounter,'wood');
+    assert.equal(r.props[0].observedReaction,undefined);
+    q.applied({encounter:'wood',key:'A',observed:90,appliedFrame:140});
+    q.reviewed({encounter:'wood',key:'A',basis:90,appliedFrame:140,observed:135,reason:'post-step pixels'});
+    assert.notEqual(r.props[0].response.outcome,'route-open');
+    const af={...blocked,feet:{left:[800,325],right:[800,345]},ahead:[580,340]};
+    q.reviewed({encounter:'wood',key:'A',basis:90,appliedFrame:140,observed:195,reason:'post-step pixels'});
+    q.observe(moved?af:blocked,195,8200,10500,false);
+    assert.equal(r.props[0].response.outcome,moved?'route-open':'still-blocked');
+    assert.equal(r.props[0].observedReaction,moved?'sidestep':undefined);
+    assert.equal(r.fear,0);
+    assert.equal(sent.some(c=>c.releaseEncounter==='wood'),moved);
+  }
+});

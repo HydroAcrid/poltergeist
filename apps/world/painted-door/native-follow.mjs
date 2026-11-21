@@ -501,11 +501,13 @@ export function characterInstruction(command) {
   ];
   if (command.key === "W")
     return "One continuous trailing shot: the existing foreground robot takes two small walking strides along the visible floor toward the exit. The observer travels in parallel above and behind its right shoulder at fixed distance and focal length. Keep its back and right flank in the lower left and the floor and obstacle ahead toward the upper right; retain the wider view as the room passes. Robot and viewpoint pause together.";
+  if (command.key === "S" && command.encounter)
+    return "The existing explorer takes exactly one full step backward away from the visible obstruction and plants both boots on the floor. Its flashlight stays trained on the obstruction. Hold the observer still so its change of position is clear.";
   if (command.key === "S")
     return "The existing foreground robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
   if (command.key === "A" || command.key === "D")
     return command.reaction === "avoid"
-      ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, keeping both boots clear. It plants its foot and points its flashlight along the open route.`
+      ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, moving its whole body across the floor into the clear strip on that side. Its trailing boot joins the leading boot. Both boots plant and remain there. The observer holds its position and the obstacle stays in view.`
       : `The robot takes one small sidestep to its ${dir}, then plants both boots on the floor.`;
   if (dir)
     return `The robot turns its shoulders and flashlight slightly to its ${dir} to inspect the next piece of walkable floor. Its feet stay planted.`;

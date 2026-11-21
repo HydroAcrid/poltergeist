@@ -4,7 +4,7 @@ import playerMoves from '../../brain/server/perception/player-moves.json' with {
 const previousFrames = new WeakMap();
 
 // This call receives only pixels and the navigation task. Audience submissions stay in World.
-export async function inspectRoom(ai, image, signal, playerReference, assessingEncounter = false) {
+export async function inspectRoom(ai, image, signal, playerReference, assessingEncounter = false, lastStep = null) {
   const point = {
     type: 'array',
     items: { type: 'integer' },
@@ -12,7 +12,16 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
     maxItems: 2,
   };
   const model = process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview';
-  const previous = previousFrames.get(ai);
+  const directions={A:'sidestep left',D:'sidestep right',S:'step backward',W:'walk forward',ArrowLeft:'turn left',ArrowRight:'turn right'};
+  const outcomes={
+    'awaiting-pixels':'Check whether the instructed movement actually happened.',
+    'still-blocked':'The last checked frame still showed the obstacle in the next stride.',
+    'backed-away':'The last check showed increased distance from the obstacle.',
+    'route-open':'The last check showed the original obstruction outside the new walking line.',
+    unconfirmed:'The previous check could not confirm the result.',
+  };
+  const sent = lastStep && directions[lastStep.key];
+  const previous = sent ? lastStep.basisImage : previousFrames.get(ai);
   const response = await ai.models.generateContent({
     model,
     contents: [
@@ -24,7 +33,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
             { inlineData: { mimeType: 'image/webp', data: playerReference } },
           ] : []),
           ...(previous ? [
-            { text: 'Previous live observation, for motion comparison only.' },
+            { text: sent ? 'Live image used to choose the last step, before any instruction was sent.' : 'Previous live observation, for motion comparison only.' },
             { inlineData: {mimeType: 'image/jpeg', data: previous} },
           ] : []),
           { text: 'Live world frame. Inspect and count actors ONLY in the following picture.' },
@@ -32,6 +41,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
           { text: [
             'You control the single player. Reach the signed exit. Compare the current view to the previous observation when supplied.',
             playerMoves.guidance,
+            ...(sent ? [`The last movement actually sent to the player was to ${sent}, then pause. ${outcomes[lastStep.outcome] || outcomes.unconfirmed} Compare boot contact, the obstacle, and fixed floor marks in the two images. Choose a new safe response based on visible movement and the route now available. The instruction itself is not evidence of a successful move.`] : []),
             ...(assessingEncounter ? ['With the explorer stopped, compare the next footsteps to the previous picture. Choose how to respond to what is visibly in its way, whether to wait for motion, look, back away, sidestep onto clear floor, or deliberately cross a harmless effect. Mark avoiding true when this choice responds to what you see.'] : []),
             'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame.',
           ].join(' ') },

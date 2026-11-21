@@ -60,7 +60,12 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
         result={playerCount:1,view:'right-shoulder',routeVisible:true,diagonal:true,standingOnFloor:true,bodyBox:[270,65,950,355]};
       } else {
         assert.ok(input===empty || placement);
-        visionReads.push({placement,frames,at:Date.now()});
+        const instructions=parts.filter(part=>part.text).map(part=>part.text).join(' ');
+        visionReads.push({placement,frames,at:Date.now(),
+          informed:instructions.includes('actually sent to the player was to sidestep left'),
+          knowsOutcome:instructions.includes('last checked frame still showed the obstacle'),
+          imageCount:images.length,
+          leaked:instructions.includes('A small cart rolls across the aisle.')});
         // Sri measured 3.1–4.7 seconds between native observations. Include
         // delayed pixel reads instead of advancing World and Brain in lockstep.
         await sleep(visionReads.length % 2 ? 2670 : 3150);
@@ -158,6 +163,22 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   assert.equal(round.fear,0,'a delivered motion command is not measured movement or fear');
   t.diagnostic('Post-effect frame '+round.lastMoveApplied.observed+' dispatched key A; the SDK WebSocket received the sidestep at native frame '+wire[reaction].frame+
     ' after observation gaps '+visionReads.slice(1).map((read,i)=>((read.at-visionReads[i].at)/1000).toFixed(1)).join(', ')+'s');
+  // Keep the fixture feet and obstacle fixed after the wire accepts the step.
+  // A checked next picture must produce a blocked result, never a scored dodge.
+  const reviewed=await eventually(async()=>{
+    const current=(await state()).round;
+    return current.props[0].response?.outcome==='still-blocked' && current;
+  });
+  const result=reviewed.props[0].response;
+  assert.equal(reviewed.props[0].observedReaction,undefined);
+  assert.equal(reviewed.fear,0);
+  const after=visionReads.find(read=>read.informed);
+  assert.ok(after && after.imageCount>=3 && !after.leaked,'the Brain receives the actual prior input and visual reference only');
+  await eventually(()=>visionReads.some(read=>read.knowsOutcome));
+  const stop=wire.slice(reaction+1).find(({event})=>event.content?.[0]?.text.startsWith('Stop the existing explorer'));
+  assert.ok(stop && stop.frame>result.checkedFrame && stop.frame-wire[reaction].frame>25);
+  assert.ok(result.checkedFrame>=result.appliedFrame+18);
+  t.diagnostic('The next picture at '+result.checkedFrame+' still showed the obstruction. The stop reached the wire at '+stop.frame+'.');
   await post('/rehearsal/stop');
   await eventually(async()=>!(await state()).providerClosing);
 });

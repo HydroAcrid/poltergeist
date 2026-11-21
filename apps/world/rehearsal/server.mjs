@@ -493,6 +493,8 @@ export async function registerStage(
               }
               if (m.moveHeld && m.moveHeld.observed >= (r.lastMoveHeld?.observed ?? -1))
                 r.lastMoveHeld = m.moveHeld;
+              if (r.phase==='playing' && m.navigationMoved && m.encounter) placement.applied(m);
+              if (r.phase==='playing' && m.stepReview) placement.reviewed(m.stepReview);
               if (m.navigationMoved && r.phase === 'playing' && m.observed >= (r.lastMoveApplied?.observed ?? -1))
                 r.lastMoveApplied = {observed:m.observed,key:m.key};
               if (m.cameraMoved) r.lastCameraAt = Date.now();
