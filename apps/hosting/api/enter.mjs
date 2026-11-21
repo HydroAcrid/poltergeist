@@ -1,4 +1,5 @@
 import { Sandbox } from '@vercel/sandbox';
+import { prepareColdHostLease } from '../world-lease.mjs';
 
 const views = new Set(['haunt', 'stage', 'team', 'debug']);
 const pause = ms => new Promise(done => setTimeout(done, ms));
@@ -23,6 +24,7 @@ async function startWorld(box, origin) {
     cwd: '/vercel/sandbox/app', detached: true,
     env: {
       PG_BIND_HOST: '0.0.0.0', PORT: '3000', PG_PUBLIC_URL: origin,
+      PG_WORLD_LEASE_END_MS: String(await prepareColdHostLease(box.currentSession())),
       PG_JOIN_URL: 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL,
       ...(process.env.PG_REHEARSAL_LIVE_MS ? {PG_REHEARSAL_LIVE_MS: process.env.PG_REHEARSAL_LIVE_MS} : {}),
       PG_VENUE_PHOTO: '/vercel/sandbox/plate.jpg',
