@@ -38,8 +38,13 @@ const sceneKinds: SceneObservation["producible"] = ["floor_prop", "airborne", "l
 describe("the live Crowd scheduler with a varied 300-phone burst", () => {
   it("ranks one checked idea per guest, keeps revisions private and dispatches diverse feasible effects", async () => {
     // Synthetic judgments via the shipping Gemini adapter. No external model or World session.
+    let rankings = 0;
     const request = vi.fn<typeof fetch>(async (_url, init) => {
       const body = JSON.parse(String(init?.body));
+      if (body.generationConfig.responseJsonSchema.properties.ranked) {
+        rankings++;
+        return Response.json({candidates: [{content: {parts: [{text: JSON.stringify({ranked: []})}]}}]});
+      }
       expect(body.generationConfig.responseJsonSchema.properties.staging).toBeDefined();
       const { idea: raw } = JSON.parse(body.contents[0].parts[0].text) as {idea: string};
       const fixture = byText.get(raw);
@@ -88,7 +93,7 @@ describe("the live Crowd scheduler with a varied 300-phone burst", () => {
       expect(revised.statusCode).toBe(200);
       await crowd.whenIdle();
       expect(crowd.eligible()).toHaveLength(281);
-      expect(request).toHaveBeenCalledTimes(301); // never an extra model call to rank the pool
+      expect(request).toHaveBeenCalledTimes(301); // the lobby does not rank unpublished slots
 
       collecting = false;
       world.startEpisode({maxDurationMs:90_000, match:{durationMs:180_000,clockMode:"active"}});
@@ -113,7 +118,8 @@ describe("the live Crowd scheduler with a varied 300-phone burst", () => {
       expect(families.every((family, i) => i === 0 || family !== families[i - 1])).toBe(true);
       expect(new Set(families).size).toBeGreaterThanOrEqual(9);
       expect(new Set(sent.map(h => h.hauntId)).size).toBe(12);
-      expect(request).toHaveBeenCalledTimes(301);
+      expect(rankings).toBe(12);
+      expect(request).toHaveBeenCalledTimes(301 + rankings);
     } finally {
       await mod.close?.();
       await app.close();

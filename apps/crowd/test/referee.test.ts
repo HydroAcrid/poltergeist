@@ -21,7 +21,16 @@ function load(name: string): RefereeInput {
 }
 const NOW = 1_800_000_000_000;
 
-describe.each(["clean-success", "lost-after-haunt", "world-forgot", "agent-wander", "haunt-but-irrelevant", "never-seen"])("%s", (name) => {
+describe.each([
+  "clean-success",
+  "lost-after-haunt",
+  "world-forgot",
+  "agent-wander",
+  "haunt-but-irrelevant",
+  "never-seen",
+  "hazard-after-haunt",
+  "no-hazard-after-haunt",
+])("%s", (name) => {
   const expected = JSON.parse(readFileSync(join(__dirname, "expected", `${name}.json`), "utf8"));
   const v = ruleVerdict(load(name), NOW);
 
@@ -32,6 +41,7 @@ describe.each(["clean-success", "lost-after-haunt", "world-forgot", "agent-wande
   it("is a valid provisional rule verdict", () => {
     expect(Verdict.parse(v)).toMatchObject({ stage: "provisional", model: "rule", overrodeRule: false });
     if (v.outcome === "failure") expect(v.ruleBlame).toBe(v.blame);
+    if (v.blame !== "adversary") expect(v.culpritHauntId).toBeUndefined();
   });
 });
 
@@ -71,7 +81,14 @@ describe("rule details", () => {
   });
 
   it("evidence notes stay within the contract limits", () => {
-    for (const name of ["lost-after-haunt", "world-forgot", "agent-wander", "never-seen"]) {
+    for (const name of [
+      "lost-after-haunt",
+      "world-forgot",
+      "agent-wander",
+      "never-seen",
+      "hazard-after-haunt",
+      "no-hazard-after-haunt",
+    ]) {
       const v = ruleVerdict(load(name), NOW);
       expect(v.evidence.length).toBeLessThanOrEqual(5);
       for (const e of v.evidence) expect(e.note.length).toBeLessThanOrEqual(80);
@@ -79,8 +96,7 @@ describe("rule details", () => {
   });
 });
 
-// Synthetic edge cases (no Brain bundle needed). All have a non-empty lost run L, so none depend on
-// the open question of how to score a timeout where the target stayed visible.
+// Synthetic edge cases (no Brain bundle needed).
 describe("rule edge cases (synthetic ticks)", () => {
   const EP = "ep_01JDPG00000000000000000099";
   type T = RefereeInput["ticks"][number];
@@ -160,5 +176,113 @@ describe("rule edge cases (synthetic ticks)", () => {
     }), NOW);
     expect(v.evidence[0]!.note.length).toBeLessThanOrEqual(80);
     Verdict.parse(v);
+  });
+
+  it("blames agent with no culprit on timeout when target stayed visible, even right after a visual haunting", () => {
+    const visibleToEnd = Array.from({ length: 20 }, (_, s) => tk(s, true)); // last tick at t = 9500
+    const v = ruleVerdict(input({
+      ticks: visibleToEnd,
+      injected: [{ hauntId: "ht_01JDPG00000000000000000077", t: 9000, ok: true }],
+      haunts: [haunt("ht_01JDPG00000000000000000077", ["visibility", "occlusion"])],
+    }), NOW);
+    expect(v).toMatchObject({ outcome: "failure", blame: "agent", ruleBlame: "agent", failureT: 9500 });
+    expect(v.culpritHauntId).toBeUndefined();
+    Verdict.parse(v);
+  });
+});
+
+describe("TickLog.decision evidence notes at failureT", () => {
+  const EP = "ep_01JDPG00000000000000000098";
+  type T = RefereeInput["ticks"][number];
+  const tk = (seq: number, visible: boolean, extra: Partial<T> = {}): T => ({
+    seq,
+    t: seq * 500,
+    perception: { visible, conf: visible ? 0.9 : 0.1 },
+    action: { key: "W", holdMs: 600 },
+    mode: visible ? "track" : "search",
+    ...extra,
+  });
+
+  it("notes when the player model chose to hold, without changing blame", () => {
+    const visibleToEnd = Array.from({ length: 20 }, (_, s) =>
+      tk(s, true, s === 19 ? { action: { key: "NOOP", holdMs: 0 }, decision: { source: "model", intent: "hold" } } : {}),
+    );
+    const v = ruleVerdict({
+      episode: { episodeId: EP },
+      ended: { episodeId: EP, reason: "timeout", durationMs: 10000 },
+      ticks: visibleToEnd,
+      injected: [],
+      haunts: [],
+    }, NOW);
+    expect(v).toMatchObject({ outcome: "failure", blame: "agent", failureT: 9500 });
+    expect(v.evidence).toContainEqual({ t: 9500, note: "Brain chose to hold" });
+    Verdict.parse(v);
+  });
+
+  it("notes when geometry held because multiple robots were in view, keeping world blame unchanged", () => {
+    const ticks = Array.from({ length: 20 }, (_, s) => {
+      if (s < 14) return tk(s, true);
+      if (s === 14) return tk(s, true, { action: { key: "NOOP", holdMs: 0 } });
+      return tk(s, true, {
+        action: { key: "NOOP", holdMs: 0 },
+        mode: "search",
+        rationale: "2 robots visible, holding",
+        decision: { source: "geometry", intent: "hold" },
+      });
+    });
+    const v = ruleVerdict({
+      episode: { episodeId: EP },
+      ended: { episodeId: EP, reason: "timeout", durationMs: 10000 },
+      ticks,
+      injected: [],
+      haunts: [],
+    }, NOW);
+    expect(v).toMatchObject({ outcome: "failure", blame: "world", failureT: 7500 });
+    expect(v.evidence).toContainEqual({ t: 7500, note: "Brain held: more than one robot in view" });
+    Verdict.parse(v);
+  });
+
+  it("omits any extra decision note for a geometry hold mid-stumble", () => {
+    const ticks = Array.from({ length: 20 }, (_, s) => {
+      if (s < 15) return tk(s, true);
+      return tk(s, true, {
+        action: { key: "NOOP", holdMs: 0 },
+        mode: "unstick",
+        rationale: "stumbled, waiting to recover",
+        ...(s === 15 ? { reaction: "stumble" } : {}),
+        decision: { source: "geometry", intent: "hold" },
+      });
+    });
+    const v = ruleVerdict({
+      episode: { episodeId: EP },
+      ended: { episodeId: EP, reason: "timeout", durationMs: 10000 },
+      ticks,
+      injected: [],
+      haunts: [],
+    }, NOW);
+    expect(v.evidence.map((e) => e.note)).not.toContain("Brain chose to hold");
+    expect(v.evidence.map((e) => e.note)).not.toContain("Brain held: more than one robot in view");
+    Verdict.parse(v);
+  });
+
+  it("notes when geometry vetoed a step into a solid obstacle", () => {
+    const visibleToEnd = Array.from({ length: 20 }, (_, s) =>
+      tk(s, true, s === 19 ? { reaction: "avoid", decision: { source: "veto", intent: "step_right", blocked: true } } : {}),
+    );
+    const v = ruleVerdict({
+      episode: { episodeId: EP },
+      ended: { episodeId: EP, reason: "timeout", durationMs: 10000 },
+      ticks: visibleToEnd,
+      injected: [],
+      haunts: [],
+    }, NOW);
+    expect(v).toMatchObject({ outcome: "failure", blame: "agent", failureT: 9500 });
+    expect(v.evidence).toContainEqual({ t: 9500, note: "Brain avoided a solid obstacle" });
+    Verdict.parse(v);
+  });
+
+  it("adds no decision note when decision is absent (rules mode)", () => {
+    const v = ruleVerdict(load("agent-wander"), NOW);
+    expect(v.evidence).toHaveLength(1);
   });
 });
