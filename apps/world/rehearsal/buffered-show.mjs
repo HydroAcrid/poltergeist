@@ -74,9 +74,12 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     const batch = picks.splice(0), n = ++sequence;
     firstPickAt = null;
     const durationMs = Math.min(durationFor(batch.length), deadline-now-flickerMs);
+    // A late confirmed obstacle may need one more independent camera reading.
+    // The driver uses this headroom only while a real response is in flight.
+    const reactionTailMs = Math.max(0,Math.min(8000,deadline-now-flickerMs-durationMs));
     const began = now;
     worker = Promise.resolve().then(() => render({seed:tail,picks:batch,durationMs,episodeId:id,
-      chapter:n,initialFear:tailFear,signal:controller.signal})).then(clip => {
+      chapter:n,initialFear:tailFear,reactionTailMs,signal:controller.signal})).then(clip => {
       if (stopped || controller.signal.aborted) {
         clip.dispose?.();
         for (const pick of batch) onReceipt(pick,false,'The round ended before this idea appeared.');
