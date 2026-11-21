@@ -44,22 +44,17 @@ function setup() {
   return { adapter, handler };
 }
 
-// World's current frames are ~93k base64 chars, over C04's 80k cap, so the
-// decision tests call run() (past request validation) until World re-exports
-// them (#2 REQUEST). The "rejects at the boundary" test below flips when they fit.
 async function once(file: string) {
   const { adapter, handler } = setup();
-  const res = await handler.run(req(0, b64(file)));
+  const res = await handler.handle(req(0, b64(file)));
   expect(TickResponse.safeParse(res).success).toBe(true);
   expect(adapter.inner.lastSource).toBe("scene");
   return res;
 }
 
 describe("third-person hallway: avoid, recover, arrive", () => {
-  it("rejects World's current frames at the HTTP boundary: over C04's 80 000-char b64 cap", async () => {
-    // When this fails, World's re-exported frames fit: switch the tests below from run() to handle().
-    const { handler } = setup();
-    for (const f of labels.frames) await expect(handler.handle(req(0, b64(f.file)))).rejects.toThrow(/80000/);
+  it("every frame fits C04's 80 000-char b64 cap, so ticks go through full request validation", () => {
+    for (const f of labels.frames) expect(b64(f.file).length, f.file).toBeLessThanOrEqual(80_000);
   });
 
   it("has all six scenarios World promised", () => {
@@ -100,9 +95,9 @@ describe("third-person hallway: avoid, recover, arrive", () => {
 
   it("arrived: claims arrival only after two ticks with the feet on the threshold", async () => {
     const { handler } = setup();
-    const first = await handler.run(req(0, b64("arrived.jpg")));
+    const first = await handler.handle(req(0, b64("arrived.jpg")));
     expect([first.mode, first.successClaim]).toEqual(["success", false]);
-    const second = await handler.run(req(1, b64("arrived.jpg")));
+    const second = await handler.handle(req(1, b64("arrived.jpg")));
     expect([second.mode, second.successClaim, second.action.key]).toEqual(["success", true, "NOOP"]);
     expect(second.rationale).toMatch(/^feet at exit threshold \(gap \d+\)$/);
   });
@@ -110,8 +105,8 @@ describe("third-person hallway: avoid, recover, arrive", () => {
   it("its arrival claims match World's labels on every frame", async () => {
     for (const f of labels.frames) {
       const { handler } = setup();
-      await handler.run(req(0, b64(f.file)));
-      const res = await handler.run(req(1, b64(f.file)));
+      await handler.handle(req(0, b64(f.file)));
+      const res = await handler.handle(req(1, b64(f.file)));
       expect(res.successClaim, f.file).toBe(f.arrived);
     }
   });
@@ -120,14 +115,14 @@ describe("third-person hallway: avoid, recover, arrive", () => {
     const { handler } = setup();
     const route = ["clear-aisle.jpg", "peel-in-path.jpg", "stumbling.jpg", "recovered.jpg", "arrived.jpg", "arrived.jpg"];
     const keys = [];
-    for (const [seq, file] of route.entries()) keys.push((await handler.run(req(seq, b64(file)))).action.key);
+    for (const [seq, file] of route.entries()) keys.push((await handler.handle(req(seq, b64(file)))).action.key);
     expect(keys).toEqual(["W", "A", "NOOP", "W", "NOOP", "NOOP"]);
   });
 
   it("gives the player only the frame and the task: no proposal, ghost cue or labels", async () => {
     const { adapter, handler } = setup();
     for (const [seq, f] of labels.frames.entries()) {
-      await handler.run(req(seq, b64(f.file), { recentHaunts: [{ hauntId: "ht_01JDPG00000000000000000002", t: 0, tags: ["geometry"] }] }));
+      await handler.handle(req(seq, b64(f.file), { recentHaunts: [{ hauntId: "ht_01JDPG00000000000000000002", t: 0, tags: ["geometry"] }] }));
     }
     expect(adapter.calls).toHaveLength(6);
     for (const { input, prompt } of adapter.calls) {
