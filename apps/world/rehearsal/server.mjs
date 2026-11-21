@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
 import { reviewPlayerSeed } from './seed-review.mjs';
+import { worldLeaseWarning } from '../../hosting/world-lease.mjs';
 import { canCrossThreshold, observedCrossing } from './crossing.mjs';
 import { checkpointEligible,validCheckpoint,matchDurationMs,fiveMinuteShowMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
 import { openLive } from './live.mjs';
@@ -686,6 +687,11 @@ export async function registerStage(
       return reply.code(409).send({ error: 'A round is already open.' });
     if (paid) {
       if (providerClosing()) return reply.code(409).send({ error: 'The previous live hallway is still closing.' });
+      const runway = () => worldLeaseWarning({mode:playMode, requestedAt, now:Date.now(),
+        durationMs:chaptered ? (showMinutes === 5 ? fiveMinuteShowMs : chapterTiming.matchMs) : liveMs,
+        openingMs:lobbyOpenedAt == null ? openingMs : 0, cutMs:chapterTiming.cutMs});
+      const beforeReview = runway();
+      if (beforeReview) return reply.code(409).send(beforeReview);
       if (custom && (!plateStatus().plateReady || req.body?.plateKey !== sourceKey))
         return reply.code(409).send({
           error: 'Prepare this photo for Genie before starting a live round.',
@@ -720,6 +726,8 @@ export async function registerStage(
       }
       if (showMinutes===5 && Date.now()>=requestedAt+fiveMinuteShowMs)
         return reply.code(408).send({error:'The five-minute show window ended before the opening was ready.'});
+      const beforeOpen = runway();
+      if (beforeOpen) return reply.code(409).send(beforeOpen);
       seed = candidate;
     }
     number++;

@@ -400,3 +400,16 @@ test('a slow vision result can hand off only a stationary frame taken after the 
   a.close('completed');h.tick(150);
   assert.deepEqual(h.providers[1].seed,image(5));
 });
+
+test('an expiring host keeps its lobby and opens no paid game when the selected duration cannot fit',async t=>{
+  const h=await stage(t,undefined,true,{autoStart:false});
+  const prev=process.env.PG_WORLD_LEASE_END_MS;
+  t.after(()=>{if(prev===undefined)delete process.env.PG_WORLD_LEASE_END_MS;else process.env.PG_WORLD_LEASE_END_MS=prev;});
+  process.env.PG_WORLD_LEASE_END_MS=String(Date.now()+20_000);
+  const res=await h.call('start',{mode:'genie',chapters:true,showMinutes:5,seed:image(0).toString('base64'),expectedPlayMode:'five-minute-demo'});
+  assert.equal(res.status,409);
+  assert.match(res.data.error,/renew/);
+  assert.equal(h.reviews(),0);
+  assert.equal(h.providers.length,0);
+  assert.equal((await h.call('state')).data.lobby.phase,'lobby');
+});
