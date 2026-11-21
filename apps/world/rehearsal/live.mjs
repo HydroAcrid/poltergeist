@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-export function openLive({ dir, seed, episodeId, onMessage, onClose }) {
+export function openLive({ dir, seed, episodeId, chapter, chapterMs, onMessage, onClose }) {
   if (!dir) throw Error('The local Genie broker is unavailable.');
   const capture = resolve(dir, 'capture.mjs'),
     envPath = process.env.PG_WORLD_ENV_FILE || resolve(dir, '../../../.env');
@@ -17,17 +17,20 @@ export function openLive({ dir, seed, episodeId, onMessage, onClose }) {
     ['--live', '--round', '--stage-pilot', '--photo', file],
     {
       cwd: dir,
-      env: { ...process.env, PG_WORLD_EPISODE_ID: episodeId },
+      env: { ...process.env, PG_WORLD_EPISODE_ID: episodeId, PG_WORLD_CHAPTER:String(chapter || 0),
+        ...(chapter ? {PG_REHEARSAL_LIVE_MS:String(chapterMs)} : {}) },
       execArgv: existsSync(envPath) ? ['--env-file=' + envPath] : [],
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     },
   );
+  let stopRequested=false;
   let terminal = null,
     errored = false;
   child.on('error', () => {
     errored = true;
   });
   child.on('message', (m) => {
+    if (m.controlsReady && stopRequested && child.connected) child.send('end',()=>{});
     if (m.terminal) terminal = m.terminal;
     onMessage(m);
   });
@@ -40,6 +43,7 @@ export function openLive({ dir, seed, episodeId, onMessage, onClose }) {
       if (child.connected) child.send(command, () => {});
     },
     stop() {
+      stopRequested=true;
       if (child.connected) child.send('end', () => {});
     },
   };

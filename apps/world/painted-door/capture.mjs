@@ -1,4 +1,6 @@
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
+import { checkpointEligible } from '../rehearsal/chapters.mjs';
+import { chapterSeed } from './chapter-seed.mjs';
 import { assessFraming } from './framing-report.mjs';
 import { audienceView, hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
@@ -43,6 +45,8 @@ async function capture() {
   }
   const autonomous = values['two-moves'] || values['chair-test'] || values.round;
   const stagePilot = values['stage-pilot'];
+  const chapterNumber = Number(process.env.PG_WORLD_CHAPTER) || 0;
+  const stageDurationMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
   const playerReference = stagePilot ? readFileSync(new URL('../rehearsal/explorer.webp', import.meta.url)).toString('base64') : null;
   if (stagePilot && (!values.round || !process.send)) throw Error('Start the spectator round from the World broker.');
   if (values.round) {
@@ -88,7 +92,7 @@ async function capture() {
     throw error;
   }
   const out = mkdtempSync(values.photo ? 'runs/photo-round-' : 'runs/painted-door-');
-  const log = { episodeId: process.env.PG_WORLD_EPISODE_ID, seed: values.photo ? basename(values.photo) : seed, proposal: trick, fps: 24, frames: 0, events: [], terminal: null };
+  const log = { episodeId: process.env.PG_WORLD_EPISODE_ID, ...(chapterNumber ? {chapter:chapterNumber} : {}), seed: values.photo ? basename(values.photo) : seed, proposal: trick, fps: 24, frames: 0, events: [], terminal: null };
   const save = () => writeFileSync(join(out, 'session.json'), JSON.stringify(log, null, 2));
   const record = (action, context = {}) => {
     if (values.round) publish({event: action, move: context.applied, observation: context.forwardObstacle});
@@ -104,6 +108,8 @@ async function capture() {
   let ending = false;
   const abort = new AbortController();
   const stop = () => abort.abort(new Error('Capture stopped.'));
+  const stopDuringSetup=command=>{if (command==='end') stop();};
+  if (values.round) process.on('message',stopDuringSetup);
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   if (values.drive || values.round) process.once('disconnect', stop);
@@ -195,9 +201,10 @@ async function capture() {
     }
     return held;
   }
-  if (autonomous) watchdog = setTimeout(stop, stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) + 35000 : values.round ? 60000 : 45000);
+  if (autonomous) watchdog = setTimeout(stop, stagePilot ? stageDurationMs + 35000 : values.round ? 60000 : 45000);
   try {
     interaction = await ai.interactions.create({ model: 'genie-4', api_version: 'v1beta' }, request);
+    abort.signal.throwIfAborted();
     log.interactionId = interaction.id;
     save();
     console.log('Recording in', out);
@@ -300,6 +307,7 @@ async function capture() {
         }
       } catch (error) { abort.abort(error); }
     });
+    if (values.round) { process.off('message',stopDuringSetup); publish({controlsReady:true}); }
     if (values.drive) {
       const controls = new Set(['key_w', 'key_a', 'key_s', 'key_d', 'arrow_left', 'arrow_right']);
       let stepping = false;
@@ -343,9 +351,12 @@ async function capture() {
         log.frames++;
         if (values.round && log.frames === 1) {
           moveWindow.start(Date.now());
-          const durationMs = stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) : 30000;
+          const durationMs = stagePilot ? stageDurationMs : 30000;
           publish({expiresAt: Date.now() + durationMs});
-          gameClock = setTimeout(() => { finish('audience').catch(error => abort.abort(error)); }, durationMs);
+          gameClock = setTimeout(() => {
+            if (chapterNumber) publish({chapterExpired:true});
+            finish(chapterNumber ? undefined : 'audience').catch(error => abort.abort(error));
+          }, durationMs);
         }
         if ((values.drive || values.round) && process.connected && (log.frames - 1) % (stagePilot ? 2 : 4) === 0) {
           process.send({ frame: delta.data }, error => { if (error) stop(); });
@@ -376,7 +387,10 @@ async function capture() {
                 await session.send(instruction);
                 record('Requested single-subject recovery',{observed,holdReason:lock.holdReason});
               }
-              publish({scene:verifiedScene,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady});
+              const checkpoint = chapterNumber && checkpointEligible(verifiedScene,held || !current)
+                ? chapterSeed(delta.data) : null;
+              publish({scene:verifiedScene,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady,
+                ...(checkpoint ? {checkpoint} : {})});
               record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }
           }).catch(error=>{
@@ -428,6 +442,7 @@ async function capture() {
     } finally {
       session?.detach();
       process.removeListener('SIGINT', stop);
+      process.off('message',stopDuringSetup);
       process.removeListener('SIGTERM', stop);
       process.removeListener('disconnect', stop);
       if ((values.drive || values.round) && process.connected) {

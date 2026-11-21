@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
 import { reviewPlayerSeed } from './seed-review.mjs';
 import { canCrossThreshold, observedCrossing } from './crossing.mjs';
+import { checkpointEligible,validCheckpoint,matchDurationMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
 import { createPlacementController } from './placement.mjs';
@@ -30,6 +31,7 @@ export async function registerStage(
     generatePlate,
     reviewSeed = reviewPlayerSeed,
     launchLive = openLive,
+    chapterTiming = {matchMs:matchDurationMs,cutMs:chapterCutMs,limitMs:chapterLimitMs},
     crowdPhone = false,
     hosted = false,
     internalBrainToken,
@@ -149,7 +151,8 @@ export async function registerStage(
     pendingWinner = null,
     providerRound = null,
     placement = null;
-  const viewers = new Set();
+  let activeTicket=null, continuation=null, nextChapterReady=false, chapterStartedAt=0, closing=false;
+  const viewers = new Map();
   const liveMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
   function sendFrame(stream, bytes) {
     if (stream.destroyed || stream.writableLength > bytes.length * 2) return;
@@ -162,13 +165,19 @@ export async function registerStage(
     stream.write('\r\n');
   }
   app.get('/rehearsal/video', async (req, reply) => {
+    const hasChapter=req.query?.chapter!=null;
+    const scoped=req.query?.round!=null || hasChapter;
+    if ((scoped && req.query?.round!==round?.id) ||
+        (round?.chapters && (!hasChapter || round.phase==='ended')) ||
+        (hasChapter && Number(req.query.chapter)!==(round?.chapter || 1)))
+      return reply.code(409).send({error:'That hallway view has closed.'});
     reply.hijack();
     const res = reply.raw;
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
       'Cache-Control': 'no-store',
     });
-    viewers.add(res);
+    viewers.set(res,scoped ? {id:round.id,chapter:round.chapter || 1} : null);
     if (liveFrame) sendFrame(res, liveFrame);
     res.once('close', () => viewers.delete(res));
   });
@@ -186,7 +195,7 @@ export async function registerStage(
     }
     if (
       e.type !== 'haunt.dispatch' ||
-      round?.phase !== 'playing' ||
+      (round?.phase !== 'playing' && !(round?.chapters && round.phase==='handoff')) ||
       h.episodeId !== round.id
     )
       return;
@@ -242,54 +251,136 @@ export async function registerStage(
     );
   }
   function endLiveGame(r, winner) {
-    if (r.phase !== 'playing') return;
+    if (r.phase !== 'playing' && !(r.chapters && r.startedAt && r.phase==='handoff')) return;
     const reason = winner === 'robot' ? 'exit'
       : winner === 'audience' ? (r.fear >= 3 ? 'fear' : 'time') : 'interrupted';
     const now = Date.now();
     const endedAt = reason === 'time' ? Math.max(r.startedAt, Math.min(r.deadline, now)) : now;
-    finish(r, winner, reason, endedAt);
+    if (r.chapters && r.phase==='playing') r.remainingMs=reason==='time' ? 0 : Math.max(0,r.deadline-now);
+    if (r.phase==='handoff') Object.assign(r,{phase:'ended',winner,reason,finishedAt:endedAt,action:'stopped'});
+    else finish(r, winner, reason, endedAt);
     placement?.finish();
+    if (r.chapters) {
+      liveFrame=null;
+      for (const [stream,scope] of viewers) if (!scope || scope.id===r.id) {
+        stream.end();
+        viewers.delete(stream);
+      }
+    }
     notifyEnd(r);
   }
   function providerClosing() {
     return providerRound?.phase === 'ended' && providerRound.providerClosedAt == null;
+  }
+  function interrupt(r,message) {
+    publicStatus=message;
+    nextChapterReady=false;
+    continuation=null;
+    if (r.startedAt) endLiveGame(r,null);
+    else Object.assign(r,{phase:'ended',reason:'interrupted',finishedAt:Date.now(),action:'stopped'});
+    live?.stop();
+  }
+  function checkChapter(r,now,atLimit=false) {
+    r.remainingMs=Math.max(0,r.deadline-now);
+    if (!r.remainingMs) {
+      const winner=pendingWinner || 'audience';
+      endLiveGame(r,winner);
+      live?.send({winner});
+      return true;
+    }
+    if (!atLimit && r.deadline<=chapterStartedAt+chapterTiming.limitMs) return false;
+    if (!atLimit && now<chapterStartedAt+chapterTiming.cutMs) return false;
+    const quiet=placement.holdForHandoff();
+    if (quiet && !pendingWinner && !activeTicket.settledFrom && !atLimit) {
+      // Preserve the current game state while the last clean native frame
+      // is verified. Reads already in flight can refer to a pre-stop view.
+      activeTicket.settledFrom=now;
+      live.send({pause:true,settleCamera:true});
+    }
+    if (quiet && continuation && activeTicket.settledFrom && continuation.at>=activeTicket.settledFrom &&
+        continuation.steady && now-continuation.at<=4000 && !pendingWinner) {
+      activeTicket.rotating=true;
+      activeTicket.closeBy=now+35000;
+      r.phase='handoff';
+      r.deadline=null;
+      r.action='Waiting for the next hallway';
+      r.intent=null;
+      live.stop();
+      return true;
+    }
+    if (atLimit || now>=chapterStartedAt+chapterTiming.limitMs) {
+      interrupt(r,'The hallway could not continue from a clear, settled view.');
+      return true;
+    }
+    return false;
   }
   async function update() {
     const r = round,
       now = Date.now();
     if (!r || r.phase === 'ended') return;
     if (r.live) {
+      if (r.chapters && ((activeTicket?.rotating && now>=activeTicket.closeBy) ||
+          (activeTicket && !activeTicket.firstFrame && now>=activeTicket.openBy))) {
+        interrupt(r,'The hallway connection did not complete in time.');
+        return;
+      }
+      if (r.chapters && r.phase==='playing' && checkChapter(r,now)) return;
       if (r.phase === 'playing') placement?.tick(now);
-      if (r.phase === 'opening' && now >= r.deadline) {
-        r.phase = 'preparing';
+      const resuming=r.chapters && r.phase==='handoff' && nextChapterReady && !activeTicket;
+      if (resuming || (r.phase === 'opening' && now >= r.deadline)) {
+        nextChapterReady=false;
+        if (!resuming) r.phase = 'preparing';
+        const ticket={chapter:resuming ? r.chapter+1 : 1,rotating:false,openBy:now+35000,firstFrame:false};
+        activeTicket=ticket;
         try {
           live = launchLive({
             episodeId: r.id,
             dir: captureDir,
-            seed,
+            seed:resuming ? continuation.bytes : seed,
+            ...(r.chapters ? {chapter:ticket.chapter,chapterMs:chapterTiming.limitMs} : {}),
             onMessage: (m) => {
-              if (r.phase === 'ended' || r !== round) return;
+              if (closing || ticket!==activeTicket || ticket.rotating || r.phase === 'ended' || r !== round) return;
+              if (m.chapterExpired && r.chapters && r.phase==='playing') {
+                checkChapter(r,Date.now(),true);
+                return;
+              }
               if (m.winner === 'robot' || m.winner === 'audience') {
+                if (r.chapters && (r.phase!=='playing' || pendingWinner!==m.winner)) return;
                 endLiveGame(r, m.winner);
                 return;
               }
               if (m.frame) {
+                ticket.firstFrame=true;
                 liveFrame = Buffer.from(m.frame, 'base64');
-                for (const stream of viewers) sendFrame(stream, liveFrame);
-                if (r.phase === 'preparing') {
+                if (r.phase === 'preparing' || r.phase==='handoff') {
+                  const first=!r.startedAt;
                   r.phase = 'playing';
-                  r.startedAt = Date.now();
-                  r.deadline = r.providerDeadline || r.startedAt + liveMs;
-                  publishStart(r, r.startedAt, liveMs);
+                  const frameAt=Date.now();
+                  if (first) r.startedAt=frameAt;
+                  if (r.chapters) {
+                    r.chapter=ticket.chapter;
+                    r.deadline=frameAt+r.remainingMs;
+                    chapterStartedAt=frameAt;
+                    continuation=null;
+                    crossing={};
+                    Object.assign(r,{observed:null,trackedAt:null,trackedFeet:null,trackedBody:null,trackedPose:null,
+                      trackedDoorwayProgress:null,trackedObstacles:[],intent:null,brainDecision:null,action:'Exploring the hallway'});
+                    if (!first) placement.resumeChapter();
+                  } else r.deadline=r.providerDeadline || r.startedAt+liveMs;
+                  if (first) publishStart(r,r.startedAt,r.chapters ? r.durationMs : liveMs);
+                }
+                for (const [stream,scope] of viewers) {
+                  if (scope && (scope.id!==r.id || scope.chapter!==(r.chapter || 1))) {stream.end();viewers.delete(stream);}
+                  else sendFrame(stream,liveFrame);
                 }
               }
-              if (m.expiresAt) {
+              if (m.expiresAt && !r.chapters) {
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
               if (m.cameraMoved) r.lastCameraAt = Date.now();
               if (m.navigationMoved && r.phase === 'playing' && m.observed === r.observed) {
-                const prop = r.props.find(p => p.inPath && p.confirmedFrame === m.observed && !p.reactedAt);
+                const prop = r.props.find(p => (!r.chapters || p.chapter===r.chapter) && p.inPath && p.confirmedFrame === m.observed && !p.reactedAt);
                 if (prop) r.intent = { hauntId: prop.id, key: m.key, observed: m.observed, at: Date.now() };
               }
               if (m.navigationMoved && m.key === 'W') crossing.forwardAt = Date.now();
@@ -304,6 +395,11 @@ export async function registerStage(
                 Date.now() < r.deadline &&
                 !pendingWinner
               ) {
+                if (r.chapters) {
+                  const checkpoint=m.checkpoint && checkpointEligible(m.scene,m.trackingNavigationHeld) && Buffer.from(m.checkpoint,'base64');
+                  continuation=validCheckpoint(checkpoint) && Number.isFinite(m.observedAt) && m.observedAt<=Date.now()
+                    ? {bytes:checkpoint,at:m.observedAt,steady:m.trackingPlacementReady===true} : null;
+                }
                 r.trackedFeet = m.scene.visible && m.scene.feetVisible !== false
                   ? [0, 1].map((i) => Math.round((m.scene.feet.left[i] + m.scene.feet.right[i]) / 2))
                   : null;
@@ -324,12 +420,15 @@ export async function registerStage(
                 if (crossed || r.fear >= 3) {
                   pendingWinner = crossed ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
+                } else if (ticket.settledFrom) {
+                  r.action='Holding the hallway view';
+                  r.intent=null;
                 } else if (m.trackingNavigationHeld) {
                   r.action = m.scene.visible ? 'Camera catching up to the robot' : 'Looking for the robot';
                   r.intent = null;
                 } else if (placement?.navigationPaused()) {
                   r.action = 'Assessing the path';
-                  const prop = r.props.find(p => p.acked && p.sentAt <= m.observedAt && !p.reactedAt &&
+                  const prop = r.props.find(p => (!r.chapters || p.chapter===r.chapter) && p.acked && p.sentAt <= m.observedAt && !p.reactedAt &&
                     !['off-path', 'passed', 'failed', 'unverified'].includes(p.placement));
                   if (m.scene.visible && prop)
                     r.intent = { hauntId: prop.id, key: 'assess', observed: m.observed, at: Date.now() };
@@ -341,28 +440,37 @@ export async function registerStage(
                 }
               }
               if (m.observationFailed) {
+                if (r.chapters) continuation=null;
                 r.action = 'Waiting for a clear observation';
                 r.intent = null;
                 r.trackedBody = null;
               }
             },
             onClose: (terminal) => {
+              if (ticket!==activeTicket) return;
+              activeTicket=null;
               live = null;
+              if (!closing && r===round && r.phase==='handoff' && ticket.rotating && terminal==='completed') {
+                r.providerClosedAt=Date.now();
+                nextChapterReady=true;
+                return;
+              }
               r.terminal = terminal || 'unconfirmed';
               const closedAt = Date.now();
               if (['completed', 'canceled', 'cancelled', 'failed'].includes(terminal))
                 r.providerClosedAt = closedAt;
-              if (r.phase === 'playing') endLiveGame(r, null);
+              if (r.chapters && r.phase==='handoff') interrupt(r,'The next hallway could not open cleanly.');
+              else if (r.phase === 'playing') endLiveGame(r, null);
               else if (r.phase === 'preparing') {
                 Object.assign(r, {phase: 'ended', finishedAt: closedAt, reason: 'interrupted'});
               }
             },
           });
           providerRound = r;
+          if (resuming) r.providerClosedAt=null;
         } catch {
-          r.phase = 'ended';
-          r.reason = 'interrupted';
-          publicStatus = 'The Genie session could not open.';
+          activeTicket=null;
+          interrupt(r,'The Genie session could not open.');
         }
       }
       return;
@@ -455,15 +563,16 @@ export async function registerStage(
   }
   const timer = setInterval(() => void update(), 150);
   app.addHook('onClose', async () => {
+    closing=true;
     clearInterval(timer);
     unsubscribe();
     live?.stop();
-    for (const stream of viewers) stream.end();
+    for (const stream of viewers.keys()) stream.end();
   });
   function lobbyState() {
     const plate = plateStatus();
     const phase = round?.phase === 'ended' ? 'ended'
-      : round?.phase === 'playing' ? 'playing'
+      : ['playing','handoff'].includes(round?.phase) ? 'playing'
       : round ? 'starting' : lobbyOpenedAt == null ? 'before-photo' : 'lobby';
     return {
       phase, openedAt: lobbyOpenedAt,
@@ -536,6 +645,8 @@ export async function registerStage(
     number++;
     liveFrame = null;
     pendingWinner = null;
+    continuation=null;
+    nextChapterReady=false;
     crossing = {};
     placement = null;
     publicStatus = '';
@@ -545,6 +656,7 @@ export async function registerStage(
       round.deadline = Date.now();
     }
     round.live = paid;
+    if (paid && req.body?.chapters===true) Object.assign(round,{chapters:true,chapter:1,durationMs:chapterTiming.matchMs,remainingMs:chapterTiming.matchMs});
     pilot = paid ? makePilot() : null;
     if (paid) {
       const r=round;
@@ -556,6 +668,12 @@ export async function registerStage(
       }, { cueLeadMs: 1800 });
     }
     return { id: round.id, openingMs: lobbyOpenedAt == null ? openingMs : 0 };
+  });
+  app.post('/rehearsal/stop', async (req,reply)=>{
+    if(req.headers['x-show-control']!=='1') return reply.code(403).send();
+    if (!round?.live || round.phase==='ended') return reply.code(409).send({error:'There is no live round to stop.'});
+    interrupt(round,'The host stopped the hallway.');
+    return {id:round.id,phase:round.phase};
   });
   app.addContentTypeParser(
     'image/jpeg',

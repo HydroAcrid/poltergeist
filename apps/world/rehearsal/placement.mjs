@@ -190,6 +190,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     pauseUntil = 0,
     inspectUntil = 0;
   const jobs = new Map();
+  let holdNewPlacements = false;
   const now = () => Date.now();
 
   function pauseForAssessment(time) {
@@ -244,6 +245,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
   function pump(time) {
     for (const job of jobs.values()) {
       if (job.closed) continue;
+      if (holdNewPlacements && job.prop.attempt===0) break;
       if (job.prop.cueAt === null) {
         const reaction = round.lastReaction;
         if (cueLeadMs && reaction && time - (reaction.presentedAt ?? reaction.at) < 3000) break;
@@ -266,6 +268,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       if (jobs.has(id)) return;
       const prop = {
         id,
+        ...(round.chapters ? {chapter:round.chapter} : {}),
         name: text,
         by,
         selectedAt: time,
@@ -279,6 +282,25 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       round.props.push(prop);
       jobs.set(id, { prop, effect: describeEffect(text) });
       pump(time);
+    },
+    holdForHandoff() {
+      holdNewPlacements=true;
+      return [...jobs.values()].every(job=>job.closed || job.prop.attempt===0);
+    },
+    resumeChapter() {
+      latest=null;
+      lastMove=0;
+      pauseUntil=0;
+      inspectUntil=0;
+      holdNewPlacements=false;
+      for (const job of jobs.values()) {
+        if (job.closed) continue;
+        job.prop.chapter=round.chapter;
+        job.prop.cueAt=null;
+        job.baseline=null;
+        job.deferredFrame=null;
+        job.retryAfter=0;
+      }
     },
     tick(time = now()) { pump(time); },
     navigationPaused(time = now()) {
