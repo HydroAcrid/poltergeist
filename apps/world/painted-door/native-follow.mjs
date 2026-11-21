@@ -156,6 +156,7 @@ export function mustStopTravel(subject) {
     !subject.known ||
     subject.lost ||
     !subject.grounded ||
+    subject.distanceHeld ||
     subject.x < 0.055 ||
     subject.x > 0.94
   );
@@ -214,6 +215,12 @@ export function shoulderStride(subject) {
 
 export function cameraStep(subject) {
   if (!subject.known || subject.lost || !subject.grounded) return null;
+  if (subject.distanceHeld) {
+    if (!subject.cameraRecovery) return null;
+    // Physically move the observer along the hallway. One pulse per live reading.
+    return {key:'key_w', ms:clamp(Math.round((shoulderFrame.width-subject.bodyWidth)*1250),95,265),
+      reason:'recover shoulder distance'};
+  }
   const { x, scale, vx, vh, top } = subject;
   if (top < 0.045)
     return { key: "arrow_up", ms: 70, reason: "headroom" };
@@ -279,7 +286,9 @@ export function createNativeFollow() {
   let anchor = { ...neutral },
     lastGrounding = -1,
     lastBox = null,
-    lastStaticCorrection = -1;
+    lastStaticCorrection = -1,
+    lastRecovery = -1;
+  let distanceHeld = false, approachClear = false, semanticThrough = -1, semanticAnchor = null;
   let nextCamera = 0,
     lost = true,
     rangeTrend = false,
@@ -287,20 +296,26 @@ export function createNativeFollow() {
     clearLane = false,
     reacquiring = false,
     holdReason = 'waiting for live subject';
-  function lose(reason) {
+  function suspend(reason) {
     holdReason = reason;
     lost = true;
     reacquiring = true;
     anchor.known = false;
     anchor.vx = 0;
-    lastBox = null;
     rangeTrend = false;
     localRatio = null;
     clearLane = false;
   }
+  function lose(reason) {
+    suspend(reason);
+    lastBox = null;
+    semanticThrough = -1;
+    distanceHeld = false;
+    approachClear = false;
+  }
   function advance(previous, current) {
     anchor = locate(previous, current, anchor);
-    if (!anchor.known) lose('subject texture lost');
+    if (!anchor.known) suspend('subject texture lost');
     current.track = { ...anchor };
     const base = history.findLast(
       (frame) =>
@@ -314,7 +329,10 @@ export function createNativeFollow() {
     const frame = sampleFrame(bytes, number),
       prev = history.at(-1);
     if (prev && number <= prev.number) return;
-    if (lastGrounding >= 0 && number - lastGrounding > 24 * 4) lose('stale observation');
+    if (lastGrounding >= 0 && number-lastGrounding > 24*4) {
+      semanticThrough = -1;
+      suspend('stale observation');
+    }
     if (prev && anchor.known) advance(prev, frame);
     history.push(frame);
     // Keep more than ER2's request timeout to align each delayed measurement
@@ -333,7 +351,7 @@ export function createNativeFollow() {
     const match = history.findIndex((f) => f.number >= number);
     const index = match < 0 ? history.length - 1 : match;
     lastGrounding = number;
-    if (history.at(-1).number-number > 24*4) { lose('stale observation'); return; }
+    if (history.at(-1).number-number > 24*4) { semanticThrough=-1; suspend('stale observation'); return; }
     if (scene.playerCount !== 1 || !scene.visible || !scene.playerMatch || scene.shoulderView !== 'rear-right') {
       lose(scene.playerCount > 1 ? 'duplicate players' : !scene.visible || !scene.playerMatch ? 'identity unconfirmed' : 'shoulder view unconfirmed');
       return;
@@ -343,60 +361,76 @@ export function createNativeFollow() {
     if (!validBodyBox(scene.bodyBox)) { lose('body unlocated'); return; }
     const [top, left, bottom, right] = scene.bodyBox;
     const bodyWidth = (right-left)/1000, bodyX = (right+left)/2000;
-    // The opening seed supplies the identity anchor. A small, distant lookalike
-    // cannot acquire it, including while recovering after an ambiguous sighting.
-    if (!lastBox || reacquiring) {
-      if (Math.abs(bodyX-shoulderFrame.x) > .16 || bodyWidth < .23 || bodyWidth > .56 || top > 570 || bottom < 810) {
-        lose('outside seed shoulder position');
-        return;
-      }
-    }
+    const prior=lastBox && number-lastBox.number<=24*4 ? lastBox : null;
+    const continuous = prior && Math.abs(bodyX-prior.bodyX)<.15 &&
+      bodyWidth/prior.bodyWidth>=.6 && bodyWidth/prior.bodyWidth<=1.65;
+    const nearSeed = Math.abs(bodyX-shoulderFrame.x)<=.16 && bodyWidth>=.23 &&
+      bodyWidth<=.56 && top<=570 && bottom>=810;
+    if (prior && !continuous) { lose('discontinuous subject'); return; }
+    if (!prior && !nearSeed) { lose('outside seed shoulder position'); return; }
     const h=(b[2]-b[0])/1000;
     const x=(b[1]+b[3])/2000;
     const scale=(b[3]-b[1])/1000/(upper?shoulderFrame.packWidth:shoulderFrame.width);
-    const prior=lastBox?.upper===upper ? lastBox : null;
-    // Compare at the observed frame, not at the later time the vision answer arrived.
-    const aligned = history[index].track;
-    if (prior && !reacquiring && aligned?.known && (Math.abs(x-aligned.x) > .16 ||
-        scale/prior.scale < .58 || scale/prior.scale > 1.75)) {
-      lose('discontinuous subject');
-      return;
-    }
     const dt=prior?Math.max(1/24,(number-prior.number)/24):1;
-    const vh=prior?clamp((scale-prior.scale)/dt,-.8,.8):0;
+    const vh=prior?.upper===upper?clamp((scale-prior.scale)/dt,-.8,.8):0;
     const vx=prior?clamp((x-prior.x)/dt,-.6,.6):0;
-    rangeTrend=Boolean(prior && number-prior.number<=24*12 &&
+    rangeTrend=Boolean(prior?.upper===upper &&
       scale<prior.scale-.02 && scale<prior.scale*.97 && vh<-.004);
     clearLane=Boolean(placementTarget(scene)) && scene.threat!=='startling' &&
       scene.pose!=='stumbling' && scene.pose!=='startled' &&
       !scene.obstacles?.some(o=>o.relation==='crossing');
     localRatio=null;
-    if (reacquiring && prior && Math.abs(prior.x - x) < .12 &&
-        Math.abs(prior.scale - scale) < .25) reacquiring = false;
+    if (continuous) reacquiring = false;
     lost = reacquiring;
     holdReason = reacquiring ? 'confirming returning subject' : null;
-    lastBox={upper,number,scale,x};
+    // Body width is more stable across flashlight/arm poses than upper-body width.
+    // Hysteresis keeps commands paused until a new reading verifies the restored crop.
+    distanceHeld = bodyWidth < shoulderFrame.width * (distanceHeld ? .84 : .78);
+    approachClear = Boolean(continuous && scene.rightFloorVisible && scene.pose==='upright' &&
+      scene.threat!=='startling' && bodyWidth>=.1 && bodyX>=.1 && bodyX<=.56 &&
+      !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) &&
+        o.box[2]>=bottom-20 && o.box[1]<=550 && o.box[3]>=Math.min(450,bodyX*1000+50)));
+    lastBox={upper,number,scale,x,bodyX,bodyWidth};
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
+    semanticAnchor = { ...anchor, clearLane };
     history[index].track = { ...anchor };
     for (let i = index + 1; i < history.length && anchor.known; i++)
       advance(history[i - 1], history[i]);
+    // An ER2 result can arrive two seconds after its pixels. Two consecutive
+    // matching readings can authorize one immediate decision even if optical
+    // flow could not bridge those earlier frames. Native travel still expires
+    // on stale pixels and camera recovery waits for another visual reading.
+    semanticThrough = continuous ? Math.min(number+96, history.at(-1).number+8) : -1;
+    if (continuous && !anchor.known) reacquiring = false;
   }
   function status() {
+    const semantic = semanticThrough>=0 && history.at(-1)?.number<=semanticThrough;
+    const opticallyLocated = anchor.known && !lost;
+    const usable = opticallyLocated || semantic;
+    const measured = !opticallyLocated && semantic ? semanticAnchor : anchor;
     return {
-      ...anchor,
-      lost,
+      ...measured,
+      known: anchor.known || semantic,
+      lost: !usable,
       rangeTrend,
       localRatio,
-      clearLane,
+      clearLane: !opticallyLocated && semantic ? semanticAnchor.clearLane : clearLane,
+      distanceHeld,
+      bodyWidth:lastBox?.bodyWidth,
+      cameraRecovery:Boolean(usable && distanceHeld && approachClear),
       grounded: lastGrounding >= 0,
       observed: lastGrounding,
-      holdReason,
+      holdReason: usable ? distanceHeld ? 'recovering shoulder distance' : null : holdReason,
     };
   }
   function correction(now, allowCamera = true) {
     if (!allowCamera || now < nextCamera) return null;
     const step = cameraStep(status());
     if (!step) return null;
+    if (step.reason === 'recover shoulder distance') {
+      if (lastRecovery === lastGrounding) return null;
+      lastRecovery = lastGrounding;
+    }
     const translation = ["key_d", "key_a", "key_w"].includes(step.key);
     if (!translation && lastStaticCorrection === lastGrounding) return null;
     if (!translation) lastStaticCorrection = lastGrounding;

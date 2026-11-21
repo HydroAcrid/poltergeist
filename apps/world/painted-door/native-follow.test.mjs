@@ -253,3 +253,39 @@ test('duplicate, distant replacement and sudden identity jumps cannot restart th
   tracker.observe(opening,52);
   assert.equal(tracker.permits('W'),false);
 });
+
+test('hosted return cadence retains one semantic actor through optical loss and paces only the camera until reframed',()=>{
+  const tracker=createNativeFollow();
+  const dark=uniform(0), light=uniform(255);
+  let next=1;
+  function deliver(observed, received, box, overrides={}) {
+    for(;next<=received;next+=5)
+      tracker.push(next<60 || next%10===1 ? dark : light,next);
+    tracker.observe({...sighting(box),rightFloorVisible:true,pose:'upright',threat:'ordinary',
+      ahead:[731,529],obstacles:[],...overrides},observed);
+  }
+  // The first three pairs and body boxes are native ER2 source/return frames
+  // from the hosted rehearsal. Alternating pixels simulate an unreliable patch.
+  deliver(1,59,[291,54,1000,396]);
+  assert.equal(tracker.permits('W'),true);
+  deliver(71,123,[299,109,1000,432]);
+  assert.equal(tracker.permits('W'),true,'a failed patch must not delete the preceding semantic match');
+  deliver(135,180,[324,157,1000,417]);
+  assert.equal(tracker.permits('W'),false);
+  const pulse=tracker.correction(8000);
+  assert.equal(pulse.key,'key_w');
+  assert.equal(pulse.reason,'recover shoulder distance');
+  assert.equal(pulse.lateralKey,undefined);
+  assert.ok(pulse.ms>=95 && pulse.ms<=265);
+  assert.equal(tracker.correction(9900),null,'one bounded camera approach per source observation');
+  deliver(191,238,[340,190,996,432],{obstacles:[{label:'bench',box:[875,300,1000,590]}]});
+  assert.equal(tracker.correction(10500),null,'an obstruction between camera and subject blocks an approach');
+  assert.equal(tracker.permits('D'),false);
+  deliver(250,298,[325,145,1000,446]);
+  assert.equal(tracker.permits('W'),false,'await measured restoration before allowing the actor to advance');
+  deliver(310,355,[300,78,1000,416]);
+  assert.equal(tracker.permits('W'),true);
+  deliver(366,418,[300,78,1000,416],{playerCount:2});
+  assert.equal(tracker.permits('W'),false);
+  assert.equal(tracker.correction(20000),null);
+});

@@ -128,7 +128,7 @@ async function capture() {
   }
   async function aim(step,frame) {
     if(ending || cameraPress || Date.now()<steadyUntil) return;
-    const press={keys:[step.key,step.lateralKey].filter(Boolean), stride:step.reason==='match forward stride'};
+    const press={keys:[step.key,step.lateralKey].filter(Boolean), stride:step.reason==='match forward stride', recovery:step.reason==='recover shoulder distance'};
     cameraPress=press;
     press.down=(async()=>{for(const key of press.keys) await session.send({event_type:'user_action',action:'key_down',input:key});})();
     await press.down;
@@ -138,6 +138,7 @@ async function capture() {
   }
   function unsafeForwardPress(subject) {
     if (!cameraPress?.keys.includes('key_w')) return false;
+    if (cameraPress.recovery) return !subject.cameraRecovery;
     return cameraPress.stride ? !shoulderStride(subject) : !receding(subject);
   }
   async function stopActor(force=false) {
@@ -145,6 +146,25 @@ async function capture() {
     actorMoving=false;
     await session.send("Hold the current view. The existing foreground figure finishes its step and stays in place. Preserve the same lit flashlight and room.");
     record('Paused robot travel');
+  }
+  async function updateShot(frame) {
+    const lock = follow.status();
+    if (unsafeForwardPress(lock) || lock.distanceHeld && cameraPress && !cameraPress.recovery)
+      await releaseCamera();
+    if (lock.cameraRecovery) {
+      await stopActor();
+      if (!cameraPress && Date.now()>=steadyUntil) {
+        const step = follow.correction(Date.now());
+        if (step) await aim(step,frame);
+      }
+      return true; // The camera alone can recover distance, while Brain and placement wait.
+    }
+    const held = await holdIfUntracked(lock,releaseCamera,stopActor);
+    if (!held && !cameraPress && Date.now()>=steadyUntil) {
+      const step=follow.correction(Date.now());
+      if (step) await aim(step,frame);
+    }
+    return held;
   }
   if (autonomous) watchdog = setTimeout(stop, stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) + 35000 : values.round ? 60000 : 45000);
   try {
@@ -291,12 +311,7 @@ async function capture() {
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
         if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
           follow.push(bytes, log.frames);
-          const lock = follow.status();
-          if(unsafeForwardPress(lock)) await releaseCamera();
-          if(!await holdIfUntracked(lock,releaseCamera,stopActor) && !cameraPress && Date.now()>=steadyUntil){
-            const step=follow.correction(Date.now());
-            if(step) await aim(step,log.frames);
-          }
+          await updateShot(log.frames);
         }
         if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>=1) {
           looking=true;
@@ -304,9 +319,8 @@ async function capture() {
           inspectRoom(ai,delta.data,abort.signal,playerReference).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
+              const held = await updateShot(log.frames);
               const lock=follow.status();
-              if(unsafeForwardPress(lock)) await releaseCamera();
-              const held = await holdIfUntracked(lock,releaseCamera,stopActor);
               const current = lock.observed === observed;
               const currentScene = !held && current ? scene : { visible:false, playerCount:scene.playerCount, obstacles:[] };
               if (!held && current) recoveryRequested = false;
