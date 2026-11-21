@@ -32,3 +32,17 @@ test('reduced motion dims evenly and continuously without pulsing light', async 
     prior=ctx.fills[0].alpha;
   }
 });
+test('the practicals visibly dip and recover before the complete blackout', async () => {
+  const {hallwayBlackout}=await render;
+  const lamp={};
+  const read=(amount) => {
+    const ctx=recordingContext();
+    let lampAlpha=0;
+    ctx.drawImage=image=>{ assert.equal(image,lamp); lampAlpha=ctx.globalAlpha; };
+    hallwayBlackout(ctx,1280,720,amount,'close',false,lamp);
+    return {practical:(1-lampAlpha)*(1-ctx.fills[0].alpha),room:1-ctx.fills[0].alpha};
+  };
+  const dip=read(.21),recovery=read(.42), late=read(.82);
+  assert.ok(dip.practical < .2 && recovery.practical>.75 && late.practical<.3);
+  assert.ok(dip.room>.9 && recovery.room>.9);
+});

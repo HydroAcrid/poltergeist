@@ -1,5 +1,5 @@
 import { createHallwayLighting, openingCrop, shoulderFrame } from './look.mjs';
-import { hallwayBlackout, createGhostVeil, createMotionGate } from './veil.mjs';
+import { hallwayBlackout, practicalLightMask, createGhostVeil, createMotionGate } from './veil.mjs';
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const smooth = (v) => {
   v = clamp(v);
@@ -100,16 +100,17 @@ export async function createScene(canvas) {
     const incoming=round.chapter || 1;
     if (round.chapters && !seam && (round.phase==='handoff' || incoming>chapter)) {
       outgoing.getContext('2d').drawImage(canvas,0,0);
-      seam={closedAt:now,from:chapter,reveal:null};
+      seam={closedAt:now,from:chapter,reveal:null,
+        lamps:reduced.matches ? null : practicalLightMask(outgoing)};
       motion.reset();
     }
     chapter=incoming;
     if (seam) {
-      const still=reduced.matches, closeMs=still?320:950, openMs=still?350:1100;
+      const still=reduced.matches, closeMs=still?320:1250, openMs=still?350:1100;
       const elapsed=Math.max(0,now-seam.closedAt);
       if (elapsed<closeMs) {
         screen.drawImage(outgoing,0,0);
-        hallwayBlackout(screen,W,H,elapsed/closeMs,'close',still);
+        hallwayBlackout(screen,W,H,elapsed/closeMs,'close',still,seam.lamps);
         return false;
       }
       if (seam.reveal===null && round.phase==='playing' && chapter>seam.from &&

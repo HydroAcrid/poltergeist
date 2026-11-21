@@ -346,8 +346,32 @@ export function createGhostVeil(width, height) {
 }
 
 
+// Measure the outgoing shot once. Black alpha over its lit surfaces lets the
+// practical lamps and their pool on the floor falter before the room loses power.
+export function practicalLightMask(frame) {
+  const mask=document.createElement('canvas');
+  mask.width=120;mask.height=68;
+  const g=mask.getContext('2d',{willReadFrequently:true});
+  g.drawImage(frame,0,0,mask.width,mask.height);
+  const sample=g.getImageData(0,0,mask.width,mask.height);
+  for (let y=0;y<mask.height;y++) for (let x=0;x<mask.width;x++) {
+    const i=(y*mask.width+x)*4, data=sample.data;
+    const r=data[i],green=data[i+1],b=data[i+2];
+    const brightness=.2126*r+.7152*green+.0722*b;
+    const u=x/(mask.width-1),v=y/(mask.height-1);
+    const lane=Math.exp(-.5*(((u-.64)/.29)**2+((v-.52)/.54)**2));
+    // Bright practical bulbs can be nearly white; warmly lit floor is darker.
+    const glow=limit((brightness-42)/130);
+    const warmth=limit((r-b+5)/56);
+    data[i]=2;data[i+1]=4;data[i+2]=6;
+    data[i+3]=255*lane*glow*(.55+.45*Math.max(warmth,glow));
+  }
+  g.putImageData(sample,0,0);
+  return mask;
+}
+
 // Only the hallway loses power. The projector's DOM remains legible above the canvas.
-export function hallwayBlackout(ctx, width, height, progress, phase, still) {
+export function hallwayBlackout(ctx, width, height, progress, phase, still, practicalLights) {
   const p=limit(progress);
   if (p===0) return;
   ctx.save();
@@ -355,16 +379,15 @@ export function hallwayBlackout(ctx, width, height, progress, phase, still) {
     ctx.fillStyle='#020405';ctx.fillRect(0,0,width,height);
     ctx.restore();return;
   }
-  const dark=ease(p);
-  if (!still) {
-    // The dim pools under the overhead lamps briefly sag, well below a flash.
-    const sag=phase==='close' ? .12*Math.exp(-Math.pow((p-.23)/.12,2)) : 0;
-    const lamps=ctx.createLinearGradient(0,0,width,height*.25);
-    lamps.addColorStop(0,'rgba(2,4,6,0)');
-    lamps.addColorStop(.44,'rgba(2,4,6,'+(.17*Math.sin(Math.PI*p))+')');
-    lamps.addColorStop(.72,'rgba(2,4,6,'+(.26*Math.sin(Math.PI*p)+sag)+')');
-    lamps.addColorStop(1,'rgba(2,4,6,0)');
-    ctx.fillStyle=lamps;ctx.fillRect(0,0,width,height);
+  let dark=ease(p);
+  if (!still && phase==='close') {
+    // One short drop, a partial recovery, then complete loss of power.
+    const sag=.94*ease((p-.045)/.12)*(1-ease((p-.24)/.17));
+    if (practicalLights && sag>0) {
+      ctx.globalAlpha=sag;
+      ctx.drawImage(practicalLights,0,0,width,height);
+    }
+    dark=.08*ease(p/.42)+.92*ease((p-.43)/.57);
   }
   ctx.globalAlpha=dark;ctx.fillStyle='#020405';ctx.fillRect(0,0,width,height);
   if (!still && phase==='open') {
