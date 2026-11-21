@@ -45,6 +45,18 @@ navigation:
   preferSidestep: true
   sidestepWithin: 0.6    # obstacle within this fraction of the way to the exit row
   sidestepShift: 100     # lateral frame units one A/D step is assumed to move the boots
+  # Camera rig. "trail": boots visible (World's trail view, or its robot-centred
+  # projection). "shoulder": Sri's target POV, a tight over-the-right-shoulder
+  # shot with the robot on the left third and its boots below the frame, so its
+  # ground position is an estimated anchor and arrival is the exit threshold
+  # reaching the foreground. Calibrated on synthetic frames until World's Genie
+  # frames in this POV exist (fixtures/media/fixture-zero/shoulder).
+  rig: trail
+  shoulder:
+    anchor: [1000, 220]  # estimated ground point under the robot (bottom edge)
+    headingX: 700        # where the route converges (the hall's vanishing point)
+    pathHalfWidth: 110   # the robot is large in this shot, so its corridor is wide
+    arriveRow: 800       # exit threshold at or below this row = arrived
   # ER 2's forward floor point varied between runs on the same frames (live probe
   # 2026-11-21), so facing comes from the follow camera until a calibration pair.
   useForwardPoint: false

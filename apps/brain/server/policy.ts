@@ -54,6 +54,13 @@ export const Policy = z.object({
     preferSidestep: z.boolean(),
     sidestepWithin: unit,
     sidestepShift: z.number().positive(),
+    rig: z.enum(["trail", "shoulder"]),
+    shoulder: z.object({
+      anchor: z.tuple([z.number().int().min(0).max(1000), z.number().int().min(0).max(1000)]),
+      headingX: z.number().min(0).max(1000),
+      pathHalfWidth: z.number().positive(),
+      arriveRow: z.number().min(0).max(1000),
+    }),
     useForwardPoint: z.boolean(),
   }),
 });
@@ -67,4 +74,9 @@ export function parsePolicy(yamlText: string): Policy {
 
 export function loadPolicy(version = "v1"): Policy {
   return parsePolicy(readFileSync(resolve(policiesDir, `${version}.yaml`), "utf8"));
+}
+
+/** The same policy with a different camera rig (e.g. PG_CAMERA_RIG=shoulder). */
+export function withRig(policy: Policy, rig: Policy["navigation"]["rig"]): Policy {
+  return { ...policy, navigation: { ...policy.navigation, rig } };
 }

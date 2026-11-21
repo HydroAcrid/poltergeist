@@ -10,6 +10,7 @@
 //   PORT            8790 by default
 //   PG_DATA_DIR     where frames/<seq>.jpg and ticks.jsonl go (default apps/brain/data, git-ignored)
 //   PG_TARGET_LABEL / PG_INSTRUCTION   the task (default: the hallway exit)
+//   PG_CAMERA_RIG   trail | shoulder (default: the policy's rig)
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,7 @@ import { buildServer } from "./http.js";
 import { DEFAULT_MODEL, Er2Perception } from "./perception/er2.js";
 import { FixturePerception } from "./perception/fixture.js";
 import type { PerceptionAdapter } from "./perception/types.js";
-import { loadPolicy } from "./policy.js";
+import { loadPolicy, withRig } from "./policy.js";
 import { TickHandler } from "./tick.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,14 +28,18 @@ if (existsSync(join(repoRoot, ".env"))) process.loadEnvFile(join(repoRoot, ".env
 
 const env = process.env;
 const policyVersion = env.PG_POLICY ?? "v1";
-const policy = loadPolicy(policyVersion);
+const basePolicy = loadPolicy(policyVersion);
+const rig = env.PG_CAMERA_RIG;
+if (rig && rig !== "trail" && rig !== "shoulder") throw new Error(`PG_CAMERA_RIG must be trail or shoulder, got ${rig}`);
+const policy = rig ? withRig(basePolicy, rig as "trail" | "shoulder") : basePolicy;
 const kind = env.PG_PERCEPTION ?? (env.GEMINI_API_KEY ? "er2" : "fixture");
 const model = env.PG_MODEL_PERCEPTION || DEFAULT_MODEL;
 
 let adapter: PerceptionAdapter;
 if (kind === "er2") {
   if (!env.GEMINI_API_KEY) throw new Error("PG_PERCEPTION=er2 needs GEMINI_API_KEY (run `pnpm --dir apps/brain set-key`).");
-  adapter = new Er2Perception(new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: "v1beta" }), model);
+  const anchor = policy.navigation.rig === "shoulder" ? policy.navigation.shoulder.anchor : undefined;
+  adapter = new Er2Perception(new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, apiVersion: "v1beta" }), model, undefined, anchor);
 } else if (kind === "fixture") {
   adapter = new FixturePerception();
 } else {
@@ -57,4 +62,4 @@ const app = buildServer({
 const host = env.HOST ?? "127.0.0.1";
 const port = Number(env.PORT ?? 8790);
 await app.listen({ host, port });
-console.log(`Brain tick server: http://${host}:${port}/api/brain/tick · perception ${kind === "er2" ? `er2 (${model})` : "fixture"} · policy ${policy.version}`);
+console.log(`Brain tick server: http://${host}:${port}/api/brain/tick · perception ${kind === "er2" ? `er2 (${model})` : "fixture"} · policy ${policy.version} · rig ${policy.navigation.rig}`);

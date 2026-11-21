@@ -28,6 +28,8 @@ export interface Candidate {
  */
 export interface Scene {
   feet: { left: Point; right: Point };
+  /** True when the boots were out of frame and `feet` is the camera rig's estimated ground anchor. */
+  feetEstimated?: boolean;
   obstacles: { point: Point; box?: Box }[];
   goal?: Point;
   /** Floor point about two strides straight ahead of the boots (the robot's facing). */

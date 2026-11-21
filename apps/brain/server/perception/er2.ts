@@ -24,7 +24,7 @@ export function buildScenePrompt(input: PlayerInput, promptAddenda: string[] = [
     `This is a third-person game frame. The player is ${ROBOT_DESCRIPTION}. A camera trails behind and to the robot's right.`,
     `Goal: ${input.targetLabel}. Task: ${input.instruction}`,
     "Report only what is visible in this image. Coordinates are integers [y, x] normalized to 0-1000, origin top-left; boxes are [ymin, xmin, ymax, xmax].",
-    "robotVisible: whether the robot is in frame. feet: the points where its left and right boots touch the floor.",
+    "robotVisible: whether the robot is in frame. feet: the points where its left and right boots touch the floor; omit feet if the boots are outside the frame.",
     "forward: a floor point about two robot strides straight ahead of its boots, in the direction its body faces.",
     "obstacles: up to 5 solid objects on the floor near the robot's route (furniture, objects, people). Box each one down to where it touches the floor and give a short label.",
     "exit: whether the exit doorway is visible, and the floor point at the middle of its threshold, beneath the exit sign.",
@@ -91,7 +91,7 @@ export interface ParsedScene {
 }
 
 /** Parse ER 2's reply defensively: strip fences, clamp to range, drop invalid parts. Throws on non-JSON. */
-export function parseScene(text: string): ParsedScene {
+export function parseScene(text: string, anchor?: Point): ParsedScene {
   const raw = JSON.parse(stripFences(text)) as Record<string, any>;
   const left = toPoint(raw.feet?.left);
   const right = toPoint(raw.feet?.right);
@@ -100,7 +100,13 @@ export function parseScene(text: string): ParsedScene {
     .map((o: any) => ({ label: String(o?.label ?? "obstacle").slice(0, 30) || "obstacle", box: toBox(o?.box) }))
     .filter((o: { box?: Box }) => o.box)
     .slice(0, 5) as { label: string; box: Box }[];
-  const robotVisible = raw.robotVisible === true && !!left && !!right;
+  // Shoulder rig (anchor given): the boots are below the frame by design, so always
+  // use the rig's estimated ground anchor. ER 2 still returns boot points for
+  // hidden boots (live probe on synthetic POV frames, 8/8), which are guesses.
+  const estimated = raw.robotVisible === true && anchor !== undefined;
+  const feetL = estimated ? ([anchor![0], Math.max(0, anchor![1] - 15)] as Point) : left;
+  const feetR = estimated ? ([anchor![0], Math.min(1000, anchor![1] + 15)] as Point) : right;
+  const robotVisible = raw.robotVisible === true && !!feetL && !!feetR;
   const forward = toPoint(raw.forward);
   return {
     robotVisible,
@@ -109,7 +115,8 @@ export function parseScene(text: string): ParsedScene {
     ...(robotVisible
       ? {
           scene: {
-            feet: { left: left!, right: right! },
+            feet: { left: feetL!, right: feetR! },
+            ...(estimated ? { feetEstimated: true } : {}),
             obstacles: obstacles.map((o) => ({ point: [Math.round((o.box[0] + o.box[2]) / 2), Math.round((o.box[1] + o.box[3]) / 2)] as Point, box: o.box })),
             ...(exit ? { goal: exit } : {}),
             ...(forward ? { forward } : {}),
@@ -131,6 +138,8 @@ export class Er2Perception implements PerceptionAdapter {
     private readonly client: GenAiLike,
     private readonly model = DEFAULT_MODEL,
     private readonly now: () => number = () => performance.now(),
+    /** Camera rig ground anchor used when the boots are out of frame (shoulder rig). */
+    private readonly anchor?: Point,
   ) {}
 
   async perceive(input: PlayerInput, opts: PerceiveOptions): Promise<PerceptionResult> {
@@ -169,7 +178,7 @@ export class Er2Perception implements PerceptionAdapter {
       this.lastRaw = text;
       let parsed: ParsedScene;
       try {
-        parsed = parseScene(text);
+        parsed = parseScene(text, this.anchor);
       } catch {
         continue; // parse failure: retry once if budget allows
       }
