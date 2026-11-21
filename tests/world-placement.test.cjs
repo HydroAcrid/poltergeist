@@ -688,3 +688,34 @@ test('late visibility on an invalid landing does not send an unverifiable last-s
   assert.equal(sent.filter(m=>m.haunt).length,1);
   assert.equal(r.props[0].placement,'off-path');assert.equal(r.fear,0);
 });
+
+test('an observed floor base on the stepping boot can establish a diagonal encounter without inventing contact or movement',async()=>{
+  const {inspectPlacement,describeEffect,observedFootprint}=await moduleUnderTest;
+  // photo-round-bWaBIZ, ER2 observation 380. The wheel-floor contacts are
+  // annotated on the retained native JPEG; the rest are its recorded ER2 coordinates.
+  const cart={solid:true,label:'cart',relation:'ordinary',box:[351,344,929,502]};
+  const stool={solid:true,label:'stool',relation:'ordinary',box:[677,712,951,797]};
+  const pose=scene([],{playerCount:1,playerMatch:true,feetVisible:true,feet:{left:[862,260],right:[912,305]},
+    ahead:[645,480],move:{intent:'step_right',target:[705,597],avoiding:true}});
+  const effect=describeEffect('a cart');
+  const assess=(o,details={},baseline=[])=>inspectPlacement({...pose,...details,obstacles:[o,stool]},effect,baseline);
+  assert.equal(assess(cart).inPath,false,'the archive had no measured footprint');
+  const observed={...cart,floorBox:[895,388,929,486]};
+  assert.deepEqual(assess(observed),{visible:true,inPath:true,contact:false,soleThreat:false});
+  assert.equal(assess(observed,{feet:{left:[936,256],right:[966,300]}}).inPath,true,'soles visible in the same JPEG');
+  for (const floorBox of [null,[],cart.box,[700,380,740,460],[895,300,929,486],[950,388,990,486]])
+    assert.equal(assess({...cart,floorBox}).inPath,false,'invalid, hidden, or elevated contact');
+  const beside={...cart,box:[350,710,929,850],floorBox:[891,733,929,820]};
+  assert.equal(assess(beside).inPath,false,'visible furniture beside the line');
+  assert.equal(assess(observed,{},[observed]).inPath,false,'pre-existing object');
+  assert.equal(assess(observed,{move:{...pose.move,avoiding:false}}).inPath,false);
+  assert.equal(assess(observed,{feetVisible:false}).inPath,false);
+  assert.equal(observedFootprint({...cart,floorBox:[895,340,929,486]}),null);
+});
+
+test('unknown ground contact never proves a static solid intervention, even on the legacy ray',async()=>{
+  const {inspectPlacement,describeEffect}=await moduleUnderTest;
+  const item={...chair(630,450,'crate'),solid:true}, effect=describeEffect('A crate');
+  assert.ok(inspectPlacement(scene([item]),effect,[]).inPath);
+  assert.equal(inspectPlacement(scene([{...item,floorBox:null}]),effect,[]).inPath,false);
+});

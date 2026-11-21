@@ -53,3 +53,19 @@ test('each live player compares its own last frame and sends its chosen movement
   assert.equal(scene.move.avoiding,true);
   assert.equal(scene.obstacles[0].solid,true);
 });
+
+test('ER2 supplies independent floor-contact geometry and missing or implausible bases remain unknown',async()=>{
+  const {inspectRoom}=await import('../apps/world/rehearsal/live-perception.mjs');
+  const full=[351,344,929,502], base=[895,388,929,486];
+  const response={playerCount:1,playerMatch:true,robotVisible:true,shoulderView:'rear-right',feetVisible:true,
+    bodyBox:[372,194,969,411],left:[862,260],right:[912,305],ahead:[645,480],
+    obstacles:[base,[],full].map((floorBox,i)=>({label:'object '+i,box:full,floorBox,solid:true,relation:'ordinary'}))};
+  const frame=await inspectRoom({models:{generateContent:async request=>{
+    const schema=request.config.responseJsonSchema.properties.obstacles.items;
+    assert.ok(schema.required.includes('floorBox'));
+    assert.match(request.contents[0].parts.map(p=>p.text??'').join(' '),/underside of each boot sole/i);
+    return {text:JSON.stringify(response)};
+  }}},'recorded');
+  assert.deepEqual(frame.obstacles.map(o=>o.floorBox),[base,null,null]);
+  assert.deepEqual(frame.obstacles[0].point,[912,437]);
+});

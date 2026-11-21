@@ -1,3 +1,4 @@
+import {observedFootprint} from './placement.mjs';
 import playerMoves from '../../brain/server/perception/player-moves.json' with { type: 'json' };
 
 // Each live interaction owns its own Gemini client. Retain just its previous observation.
@@ -45,8 +46,9 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
             ...(assessingEncounter ? ['With the explorer stopped, compare the next footsteps to the previous picture. Choose how to respond to what is visibly in its way, whether to wait for motion, look, back away, sidestep onto clear floor, or deliberately cross a harmless effect. For a sidestep or retreat, give target as the clear floor patch where both boots should LAND, beyond the obstacle on the chosen side or behind the current feet. Give the obstruction separately in obstacles. If the landing area or feet are hidden, inspect or wait. Mark avoiding true when this choice responds to what you see.'] : []),
             'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame.',
           ].join(' ') },
+          {text:'For every obstacle additionally return floorBox: [top,left,bottom,right] around only the visible footprint on the FLOOR from its backmost to nearest visible contact, in the same 0–1000 coordinates. For a wheeled or legged object use where its visible wheels or legs meet the floor. Exclude its handle, body, cast shadow and surrounding floor. For a flat effect use the visibly occupied floor. If contact is hidden or the effect is airborne, return an empty array. An object’s silhouette alone is not a footprint.'},
           {
-            text: 'Count all separate versions of the player in the live frame, including a second robot farther down the aisle. Check whether the visible foreground character matches the reference when provided. Classify the camera as rear-right only if the backpack and right flank are both visible from behind; a face-on or pure profile view is other. Independently classify the physical aisleHeading from floor seams and furniture: diagonal-right when the path leads into depth from the lower-left player toward the upper right; head-on for a centered straight-ahead tunnel, diagonal-left for the opposite diagonal, side-on for a horizontal side-scroller, or unclear if occluded. Use the hallway direction, even while the robot temporarily turns its flashlight to inspect something. If two separate matching robots are visible, report playerCount=2. Exclude unrelated toys, wall art and reflections. Locate the player and the passable signed exit. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; when cropped use [0,0] placeholders for left and right. In a wider diagonal trailing shot both boots can be visible. Measure them when visible; leave them unknown when either boot is obscured. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if floor for the next few steps is visible ahead of the player in the right-hand lane. An obstacle can occupy part of this visible lane. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
+            text: 'Count all separate versions of the player in the live frame, including a second robot farther down the aisle. Check whether the visible foreground character matches the reference when provided. Classify the camera as rear-right only if the backpack and right flank are both visible from behind; a face-on or pure profile view is other. Independently classify the physical aisleHeading from floor seams and furniture: diagonal-right when the path leads into depth from the lower-left player toward the upper right; head-on for a centered straight-ahead tunnel, diagonal-left for the opposite diagonal, side-on for a horizontal side-scroller, or unclear if occluded. Use the hallway direction, even while the robot temporarily turns its flashlight to inspect something. If two separate matching robots are visible, report playerCount=2. Exclude unrelated toys, wall art and reflections. Locate the player and the passable signed exit. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; report left/right at the UNDERSIDE of each boot sole where it touches the floor, not the centre of the shoe or ankle. When cropped use [0,0] placeholders for left and right. In a wider diagonal trailing shot both boots can be visible. Measure them when visible; leave them unknown when either boot is obscured. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if floor for the next few steps is visible ahead of the player in the right-hand lane. An obstacle can occupy part of this visible lane. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
           },
         ],
       },
@@ -89,6 +91,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
                 label: { type: 'string' },
                 solid: {type:'boolean'},
                 relation: { type: 'string', enum: ['crossing', 'noticeable', 'ordinary'] },
+                floorBox: {type:'array',items:{type:'integer'},maxItems:4},
                 box: {
                   type: 'array',
                   items: { type: 'integer' },
@@ -96,7 +99,7 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
                   maxItems: 4,
                 },
               },
-              required: ['label', 'box', 'relation', 'solid'],
+              required: ['label', 'box', 'floorBox', 'relation', 'solid'],
             },
           },
         },
@@ -154,12 +157,14 @@ export async function inspectRoom(ai, image, signal, playerReference, assessingE
       .filter(
         (o) => valid(o.box, 4) && o.box[0] <= o.box[2] && o.box[1] <= o.box[3],
       )
-      .map(({ label, box, relation, solid }) => ({
-        solid: solid !== false,
-        relation,
-        label: String(label).slice(0, 30),
-        box,
-        point: [box[2], Math.round((box[1] + box[3]) / 2)],
-      })),
+      .map(({ label, box, floorBox, relation, solid }) => {
+        const base=validBox(floorBox) ? observedFootprint({box,floorBox,solid}) : null;
+        return {
+          solid: solid !== false, relation, label:String(label).slice(0,30), box,
+          ...(floorBox!==undefined && {floorBox:base}),
+          point:base ? [Math.round((base[0]+base[2])/2),Math.round((base[1]+base[3])/2)] :
+            [box[2], Math.round((box[1]+box[3])/2)],
+        };
+      }),
   };
 }

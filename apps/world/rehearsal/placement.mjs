@@ -137,6 +137,24 @@ function intervalHits(corridor, b, start, end, radius, airborne = false) {
   }
   return true;
 }
+export function observedFootprint(o) {
+  const f=o.floorBox, b=o.box;
+  if (!box(f) || !box(b) || f[0]<b[0] || f[1]<b[1] || f[2]>b[2] || f[3]>b[3]) return null;
+  // A solid object's body and handle can span most of the screen. A reported
+  // base that reaches into the upper half cannot establish ground contact.
+  if (o.solid!==false && (f[0] < (b[0]+b[2])/2 || b[2]-f[2] > f[2]-f[0])) return null;
+  return f;
+}
+function obstacleHits(c, o, start, end, radius, {credit=false, airborne=false}={}) {
+  if (airborne && o.relation==='crossing') return intervalHits(c,o.box,start,end,radius,true);
+  if (Object.hasOwn(o,'floorBox')) {
+    const base=observedFootprint(o);
+    if (base) return intervalHits(c,base,start,end,radius,true);
+    if (credit) return false; // Unknown floor contact cannot prove an audience intervention.
+  }
+  return intervalHits(c,o.box,start,end,radius);
+}
+
 export function placementTarget(scene, exclude = () => false) {
   const c = floorCorridor(scene);
   if (!c) return null;
@@ -149,7 +167,7 @@ export function placementTarget(scene, exclude = () => false) {
     const sideMargin = Math.max(80, 2 * c.radius / aspect);
     if (p[0] < 60 || p[0] > 910 || p[1] < sideMargin || p[1] > 1000 - sideMargin) continue;
     if (
-      !obstacles.some((o) => intervalHits(c, o.box, 0.12, step, c.radius * 0.6))
+      !obstacles.some((o) => obstacleHits(c,o,0.12,step,c.radius*.6))
     )
       return p;
   }
@@ -184,8 +202,10 @@ export function inspectPlacement(
       (matches.length > before.length &&
         !before.some((prior) => sameFootprint(prior, o))),
   );
+  if (scene.feetVisible===false || scene.playerMatch===false || scene.playerCount > 1)
+    return {visible:candidates.length>0,inPath:false,contact:false,soleThreat:false};
   const inPath = candidates.filter((o) =>
-    intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'),
+    obstacleHits(c,o,0.17,1.45,c.radius,{credit:true,airborne:true}),
   );
   // In a diagonal shot the distant aisle point and the explorer's next
   // landing can be quite different directions. A sidestep can confront a
@@ -195,12 +215,12 @@ export function inspectPlacement(
   const blocksLanding = !inPath.length && candidates.length === 1 &&
     blocksChosenLanding(scene,c,candidates[0],effect.matches);
   const near = inPath.filter((o) =>
-    intervalHits(c, o.box, 0, 0.48, c.radius * 0.72),
+    obstacleHits(c,o,0,0.48,c.radius*.72,{credit:true}),
   );
   const otherNear = (scene.obstacles || []).some(
     (o) =>
       !candidates.includes(o) &&
-      intervalHits(c, o.box, 0, 0.48, c.radius * 0.72),
+      obstacleHits(c,o,0,.48,c.radius*.72),
   );
   return {
     visible: candidates.length > 0,
@@ -209,7 +229,7 @@ export function inspectPlacement(
     soleThreat:
       inPath.length === 1 &&
       !(scene.obstacles || []).some(
-        (o) => o !== inPath[0] && intervalHits(c, o.box, 0.17, 1.45, c.radius),
+        (o) => o !== inPath[0] && obstacleHits(c,o,.17,1.45,c.radius),
       ),
   };
 }
@@ -228,8 +248,15 @@ function blocksChosenLanding(scene, route, obstacle, matches) {
   const routeLength = Math.hypot(route.dy,route.dx*aspect);
   const forward = step.dy*route.dy + step.dx*route.dx*aspect*aspect;
   if (forward <= .5*length*routeLength || length > 1.5*routeLength) return false;
-  const intersects = o => intervalHits(step,o.box,.12,.95,step.radius*.65);
-  return intersects(obstacle) && !scene.obstacles.some(o => o !== obstacle && o.solid !== false && intersects(o));
+  const sweep = corridor => obstacleHits(corridor,obstacle,.12,.95,step.radius*.65,{credit:true}) &&
+    !scene.obstacles.some(o => o!==obstacle && o.solid!==false && obstacleHits(corridor,o,.12,.95,step.radius*.65));
+  if (sweep(step)) return true;
+  if (!observedFootprint(obstacle)) return false;
+  // The midpoint of an offset stance can miss the stepping boot. Only a
+  // visible measured base and a valid, chosen lateral landing can use that boot.
+  const boots=[scene.feet.left,scene.feet.right].sort((a,b)=>a[1]-b[1]);
+  const foot=key==='A' ? boots[0] : boots[1];
+  return sweep({...step,feet:foot,dy:move.target[0]-foot[0],dx:move.target[1]-foot[1]});
 }
 
 // A sidestep opens a route only when the same obstacle is still visible and
@@ -250,9 +277,13 @@ export function encounterLanding(scene, matches, key, target = scene?.move?.targ
   }
   if (key === 'A' && target[1] >= obstacle[1] - margin ||
       key === 'D' && target[1] <= obstacle[3] + margin) return null;
-  if (scene.obstacles.some(o => o.solid !== false && box(o.box) &&
-      target[0] >= o.box[2] - corridor.radius && target[0] <= o.box[2] + corridor.radius &&
-      target[1] >= o.box[1] - margin && target[1] <= o.box[3] + margin)) return null;
+  if (scene.obstacles.some(o => {
+    if (o.solid===false || !box(o.box)) return false;
+    const base=observedFootprint(o);
+    const [top,left,bottom,right]=base ?? [o.box[2],o.box[1],o.box[2],o.box[3]];
+    return target[0]>=top-corridor.radius && target[0]<=bottom+corridor.radius &&
+      target[1]>=left-margin && target[1]<=right+margin;
+  })) return null;
   return {target: target.map(Math.round), obstacle: obstacle.map(Math.round)};
 }
 
@@ -283,7 +314,7 @@ export function compareEncounterStep(before, after, result, matches, key) {
   const boots = [after.feet.left[1],after.feet.right[1]];
   const feetClear = key === 'A' ? Math.max(...boots)<next[1] : Math.min(...boots)>next[3];
   const routeClear = !(after.obstacles || []).some(o => (o.solid!==false || o.relation==='crossing') &&
-    intervalHits(b,o.box,.17,1.45,b.radius,o.relation==='crossing'));
+    obstacleHits(b,o,.17,1.45,b.radius,{airborne:true}));
   return feetClear && routeClear && footDx*side>minTravel && (footDx-propShift)*side>minTravel
     ? 'route-open' : 'unconfirmed';
 }
@@ -627,7 +658,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         // walk into a solid obstruction, cannot serve as an encounter response.
         const c = floorCorridor(scene);
         const blocked = !c || scene.obstacles.some(o => (o.solid !== false || o.relation === 'crossing') &&
-          intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'));
+          obstacleHits(c,o,.17,1.45,c.radius,{airborne:true}));
         if (blocked || (!scene.move?.avoiding && decision.reaction !== 'avoid')) return null;
       }
       let landing;
@@ -643,7 +674,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
           if (veto) {
             const lateral = floorCorridor({...scene,ahead:landing.target});
             if (!lateral || scene.obstacles.some(o => o.solid !== false &&
-                intervalHits(lateral,o.box,.1,1,lateral.radius))) return null;
+                obstacleHits(lateral,o,.1,1,lateral.radius))) return null;
             const boots = [scene.feet.left[1],scene.feet.right[1]];
             landing.alreadyBeside = key === 'A' ? Math.max(...boots)<landing.obstacle[1] :
               key === 'D' && Math.min(...boots)>landing.obstacle[3];
