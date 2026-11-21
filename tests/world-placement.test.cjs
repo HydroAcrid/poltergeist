@@ -496,3 +496,15 @@ test('a stalled placement is released once and gives the next proposal its own s
   q.observe(scene(),510,30_205,30_220,true);
   assert.equal(sent.filter(c=>c.haunt).at(-1).haunt.id,'next');
 });
+
+test('a light breeze can move existing paper from beside the aisle into the beam without spawning more sheets',async()=>{
+  const {describeEffect,inspectPlacement}=await moduleUnderTest;
+  const idea=describeEffect('A cool breeze nudges loose papers down the hallway.');
+  assert.match(idea.hint,/gentle/);
+  const sheet=(x,relation)=>({label:'loose sheet',box:[600,x-15,650,x+15],relation});
+  const beside=[sheet(735,'beside')], crossing=sheet(450,'crossing');
+  assert.ok(inspectPlacement(scene([crossing]),idea,beside).inPath);
+  assert.equal(inspectPlacement(scene([beside[0]]),idea,beside).inPath,false);
+  assert.equal(inspectPlacement(scene([crossing]),idea,[crossing]).inPath,false);
+  assert.equal(inspectPlacement(scene([sheet(700,'crossing')]),idea,beside).inPath,false);
+});

@@ -12,6 +12,11 @@ const box = (b) =>
   b[1] < b[3];
 const effects = [
   [
+    /\b(?:breezes?|light drafts?)\b/i,
+    /paper|sheet|leaf|leaves|debris/i,
+    'Let the light breeze carry a few loose sheets across the next footsteps in the flashlight beam. Keep the breeze gentle.',
+  ],
+  [
     /\b(?:gusts?|hurricanes?|wind(?:s|y)?|tornado(?:es)?)\b|\bpaper storm\b/i,
     /paper|sheet|leaf|leaves|debris/i,
     'Blow a clearly visible stream of loose papers across the next footsteps, from one side of the walking lane to the other.',
@@ -158,6 +163,9 @@ export function inspectPlacement(
   const candidates = matches.filter(
     (o) =>
       (tipped(o) && !before.some(tipped)) ||
+      (o.relation === 'crossing' && before.length > 0 &&
+        !before.some(prior => sameFootprint(prior,o) || intervalHits(c,prior.box,0.17,1.45,c.radius,true)) &&
+        intervalHits(c,o.box,0.17,1.45,c.radius,true)) ||
       (matches.length > before.length &&
         !before.some((prior) => sameFootprint(prior, o))),
   );
