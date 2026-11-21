@@ -386,6 +386,36 @@ describe("referee and scoreboard on episode end", () => {
     expect(board.killFeed[0].text).toMatch(/^💀 .+: Thick fog rolls down the hallway → robot lost the target$/);
     expect(hub.bus.history({ types: ["scoreboard.updated"] }).length).toBeGreaterThan(0);
   });
+
+  it("tolerates TickLog 1.2.0 ticks carrying Brain's optional `decision` and scores them the same", async () => {
+    // Shape from Brain's fixtures/tick-log/valid/model-decision.json (brain/contracts 59bcdd7).
+    // Crowd ignores `decision` for now (verdicts don't cite it yet; asked Brain on #2).
+    const a = await phone();
+    await a.submit({ text: "fog lol" });
+    await hub.crowd.whenIdle();
+    const episodeId = hub.world.startEpisode({ maxDurationMs: 60_000 });
+    const tick = (seq: number, visible: boolean) =>
+      hub.bus.publish("tick", "brain", {
+        episodeId, seq, t: seq * 500, driver: "brain", framePath: `f/${seq}.jpg`, frameDiff: 0.07,
+        perception: { visible, point: [420, 610], box: [300, 560, 560, 660], conf: visible ? 0.86 : 0.1, hazards: [], model: "fixture", latencyMs: 640 },
+        action: { key: "W", holdMs: 600 }, mode: visible ? "track" : "search", rationale: "flat strip, stepping over it", successClaim: false, policyVersion: "v1",
+        decision: visible
+          ? { source: "model", intent: "walk", target: [700, 520], observed: "a flat shiny strip appeared across the floor" }
+          : { source: "veto", intent: "walk", blocked: true },
+      }, episodeId);
+    for (let s = 0; s < 16; s++) tick(s, true);
+    hub.clock.advance(8_000);
+    hub.crowd.tick();
+    await hub.world.flush();
+    for (let s = 18; s < 30; s++) tick(s, false);
+    hub.world.endEpisode("timeout");
+
+    const v = hub.bus.history({ types: ["verdict.provisional"] }).at(-1)!.payload as Record<string, unknown>;
+    const fogId = (await a.state()).mine[0]!.hauntId;
+    expect(v).toMatchObject({ blame: "adversary", culpritHauntId: fogId, failureT: 9000, model: "rule" });
+    expect(JSON.stringify(v)).not.toContain("decision");
+    expect(JSON.stringify(v)).not.toContain("shiny strip");
+  });
 });
 
 describe("operator and page", () => {
