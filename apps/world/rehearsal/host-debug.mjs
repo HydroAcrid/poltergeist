@@ -18,7 +18,7 @@ export function privateReceipt(receipt) {
   if (receipt.status === 'rejected') return receipt.moderated?.reason || 'Please revise this idea.';
   const labels = {
     submitted: 'Checking your idea…', approved: 'Approved', queued: 'Waiting in the queue',
-    dispatched: 'Selected for the hallway', injected: 'Delivered to World', failed: 'Could not place this idea',
+    withdrawn: 'Replaced by your newer idea', dispatched: 'Selected for the hallway', injected: 'Delivered to World', failed: 'Could not place this idea',
   };
   const label = labels[receipt.status] || 'Waiting for an update';
   return receipt.moderated?.safe && receipt.moderated.text

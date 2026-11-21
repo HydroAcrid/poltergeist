@@ -75,6 +75,13 @@ describe("pickCard keeps the four World stages distinct", () => {
     expect(M.pickCard(crowd("injected"), world({ reactedAt: 3, reaction: "Robot steps right around it" })).reaction).toBe("Robot steps right around it");
   });
 
+  it("shows the conductor's public reason on the Up next card", () => {
+    const q = crowd("injected").queue;
+    const c = M.pickCard({ hallway: [], queue: q, upNext: { hauntId: q[0]!.hauntId, reason: "It will roll right through the flashlight beam", mode: "conductor" } }, null);
+    expect(c).toMatchObject({ stage: "upnext", why: "It will roll right through the flashlight beam" });
+    expect(M.pickCard({ hallway: [], queue: q, upNext: { hauntId: q[0]!.hauntId, reason: "Next in line", mode: "fifo" } }, null).why).toBeUndefined();
+  });
+
   it("falls back to Up next when nothing has been sent", () => {
     expect(M.pickCard({ hallway: [], queue: crowd("injected").queue }, null)).toMatchObject({ stage: "upnext", who: "Rainy Lamp" });
     expect(M.pickCard({ hallway: [], queue: [] }, null)).toBeNull();

@@ -276,6 +276,11 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
+              if (m.cameraMoved) r.lastCameraAt = Date.now();
+              if (m.navigationMoved && r.phase === 'playing' && m.observed === r.observed) {
+                const prop = r.props.find(p => p.inPath && p.confirmedFrame === m.observed && !p.reactedAt);
+                if (prop) r.intent = { hauntId: prop.id, key: m.key, observed: m.observed, at: Date.now() };
+              }
               if (m.navigationMoved && m.key === 'W') crossing.forwardAt = Date.now();
               if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') placement?.moved();
               if (m.injected && r.phase === 'playing')
@@ -291,6 +296,8 @@ export async function registerStage(
                   ? [0, 1].map((i) => Math.round((m.scene.feet.left[i] + m.scene.feet.right[i]) / 2))
                   : null;
                 r.trackedAt = m.observedAt;
+                r.trackedDoorwayProgress = m.scene.doorwayProgress;
+                if (!m.scene.visible) r.intent = null;
                 r.trackedBody = m.scene.visible ? m.scene.bodyBox ?? null : null;
                 r.trackedPose = m.scene.visible ? m.scene.pose ?? null : null;
                 r.trackedObstacles = m.scene.obstacles.map((obstacle) => obstacle.box);
@@ -305,6 +312,10 @@ export async function registerStage(
                   live.send({ winner: pendingWinner });
                 } else if (placement?.navigationPaused()) {
                   r.action = 'Assessing the path';
+                  const prop = r.props.find(p => p.acked && p.sentAt <= m.observedAt && !p.reactedAt &&
+                    !['off-path', 'passed', 'failed', 'unverified'].includes(p.placement));
+                  if (m.scene.visible && prop)
+                    r.intent = { hauntId: prop.id, key: 'assess', observed: m.observed, at: Date.now() };
                 } else if (canCrossThreshold(crossing, m.scene, decision)) {
                   r.action = 'Stepping through the exit';
                   live.send({ key: 'W', ms: 260, observed: m.observed });
@@ -312,8 +323,11 @@ export async function registerStage(
                   live.send({ ...placement.characterCommand(decision), observed: m.observed });
                 }
               }
-              if (m.observationFailed)
+              if (m.observationFailed) {
                 r.action = 'Waiting for a clear observation';
+                r.intent = null;
+                r.trackedBody = null;
+              }
             },
             onClose: (terminal) => {
               live = null;
@@ -593,4 +607,5 @@ export async function registerStage(
     app.get(route, async (_, reply) =>
       reply.type(mime).send(readFileSync(resolve(root, file))),
     );
+  return () => round;
 }

@@ -9,6 +9,7 @@ import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import type { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import type { Verdict } from "@poltergeist/contracts/verdict.js";
 import { GhostNames } from "./ghost-names.js";
+import { conduct, kindOf, POLICY, type Candidate, type Decision, type RecentHaunt, type SceneObservation } from "./conductor.js";
 import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
 import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
@@ -72,6 +73,8 @@ export interface CrowdDeps {
   now?: () => number;
   config?: Partial<CrowdConfig>;
   log?: (msg: string, extra?: object) => void;
+  /** Latest scene for the conductor (World's rehearsal state today). Missing or stale → FIFO. */
+  scene?: () => SceneObservation | undefined;
 }
 
 /** Display-safe copy. `forAuthor` keeps private moderation feedback. */
@@ -97,6 +100,11 @@ export class CrowdService {
   private injectedLog: (RefInjected & { episodeId: Id })[] = [];
   private verdicts = new Map<Id, Verdict>(); // one per episode (final replaces provisional)
   private policyVersion = "v1";
+  // Conductor: one reserved pick, stable until it's sent or becomes impossible.
+  private reserved: { hauntId: Id; reason: string; mode: "conductor" | "fifo" } | null = null;
+  private waitingReasons = new Map<Id, string>();
+  private skips = new Map<Id, number>();
+  private sentAt = new Map<Id, number>();
   private board: Scoreboard | null = null;
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, { time: number; hauntId: Id; revised: boolean }[]>();
@@ -158,6 +166,15 @@ export class CrowdService {
       }
     }
 
+    // One waiting idea each: a new idea replaces the author's waiting one, except their reserved
+    // Up next, which stays put so the public pick never jumps.
+    const waiting = [...this.haunts.values()].filter(
+      (h) => h.deviceId === deviceId && !h.seeded && (h.status === "submitted" || h.status === "approved" || h.status === "queued"),
+    );
+    if (waiting.some((h) => h.hauntId === this.reserved?.hauntId)) {
+      return { ok: false, code: "INVALID", message: "Your idea is up next. Send another once it goes in." };
+    }
+
     const hauntId = newId("ht", now);
     const limited = this.rateLimit(deviceId, now, hauntId, req.revisionOf);
     if (limited) return { ok: false, code: "RATE_LIMITED", message: limited };
@@ -176,6 +193,10 @@ export class CrowdService {
     this.haunts.set(haunt.hauntId, haunt);
     if (req.revisionOf !== undefined) this.revisions.set(req.revisionOf, hauntId);
     this.publishPublic(haunt);
+    for (const old of waiting) {
+      this.setStatus(old, "withdrawn");
+      this.waitingReasons.delete(old.hauntId);
+    }
 
     const job = this.moderate(haunt, preset).finally(() => this.pending.delete(job));
     this.pending.add(job);
@@ -232,15 +253,13 @@ export class CrowdService {
     return [...this.haunts.values()].filter((h) => h.status === "queued").sort(fifo);
   }
 
-  state(deviceId: string, requestedPage?: number): CrowdState & {
-    waiting?: { page: number; size: number; total: number; myPositions: Record<string, number> }
-  } {
+  state(deviceId: string, requestedPage?: number): CrowdState {
     this.expireStaleRound();
     const mine = [...this.haunts.values()]
       .filter((h) => h.deviceId === deviceId)
       .sort((a, b) => fifo(b, a))
       .map((h) => toPublic(h, true));
-    let queue = this.eligible();
+    let queue = this.orderedQueue();
     let waiting;
     if (requestedPage !== undefined) {
       const size = 15;
@@ -254,14 +273,20 @@ export class CrowdService {
       waiting = { page, size, total, myPositions };
       queue = [...queue.slice(0, 1), ...queue.slice(start, start + size)];
     }
+    const shown = waiting ? new Set([...queue, ...mine].map((h) => h.hauntId)) : null;
+    const reasons = [...this.waitingReasons]
+      .filter(([id]) => !shown || shown.has(id))
+      .map(([hauntId, reason]) => ({ hauntId, reason }));
     return {
-      ...(waiting ? { waiting } : {}),
+      ...(waiting ? { waiting, waitingReasons: reasons } : reasons.length ? { waiting: reasons } : {}),
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
       ...(this.active ? { roundEndsAt: this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       you: { ghostName: this.ghostName(deviceId) },
       mine,
       queue: queue.map((h) => toPublic(h)),
+      slotsPerRound: this.config.maxPerEpisode,
+      ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
     };
   }
@@ -293,13 +318,29 @@ export class CrowdService {
 
   tick(): void {
     this.expireStaleRound();
+    this.reserve();
     const ep = this.active;
     if (!ep || ep.dispatched >= this.config.maxPerEpisode) return;
     const t = this.now() - ep.startedAt;
     if (t < ep.nextSlotT) return;
 
-    const pick = this.eligible()[0] ?? (this.config.seededFallback ? this.takeSeeded() : undefined);
-    if (!pick) return; // the slot stays open until something is eligible
+    // Re-check the reserved pick's hard rules right before sending; if it's now impossible,
+    // release it (with its public reason) and pick again. The public pick changes only here.
+    if (this.reserved) {
+      const h = this.haunts.get(this.reserved.hauntId);
+      const check = h ? this.decide([h]) : undefined;
+      if (!h || h.status !== "queued" || (check && !check.pick)) {
+        if (check?.waiting[0]) this.waitingReasons.set(this.reserved.hauntId, check.waiting[0].reason);
+        this.reserved = null;
+        this.reserve();
+      }
+    }
+    const reservedHaunt = this.reserved ? this.haunts.get(this.reserved.hauntId) : undefined;
+    const pick = reservedHaunt ?? (this.eligible().length === 0 && this.config.seededFallback ? this.takeSeeded() : undefined);
+    if (!pick) return; // the slot stays open until something feasible is eligible
+    this.reserved = null;
+    this.waitingReasons.delete(pick.hauntId);
+    this.sentAt.set(pick.hauntId, this.now());
 
     // Reserve before publishing, so a re-entrant tick can never send it twice.
     this.setStatus(pick, "dispatched", { episodeId: ep.episodeId });
@@ -308,6 +349,74 @@ export class CrowdService {
     ep.nextSlotT = Math.max(ep.nextSlotT, t) + this.config.intervalMs;
     const dispatch = HauntDispatch.parse({ hauntId: pick.hauntId, episodeId: ep.episodeId, text: pick.moderated!.text, tags: pick.moderated!.tags });
     this.deps.bus.publish("haunt.dispatch", "crowd", dispatch, ep.episodeId);
+  }
+
+  /** Reserved pick first, then the rest in FIFO order. */
+  private orderedQueue(): Haunt[] {
+    const list = this.eligible();
+    const id = this.reserved?.hauntId;
+    const head = id ? list.find((h) => h.hauntId === id) : undefined;
+    return head ? [head, ...list.filter((h) => h !== head)] : list;
+  }
+
+  private decide(list: Haunt[]): Decision {
+    const scene = this.deps.scene?.();
+    const round = new Set(this.hallwayIds);
+    const picksBy = new Map<string, number>();
+    for (const id of round) {
+      const d = this.haunts.get(id)?.deviceId;
+      if (d) picksBy.set(d, (picksBy.get(d) ?? 0) + 1);
+    }
+    const candidates: Candidate[] = list.map((h) => ({
+      hauntId: h.hauntId,
+      createdAt: h.createdAt,
+      text: h.moderated?.text ?? "",
+      tags: h.moderated?.tags ?? [],
+      ...(h.preset ? { preset: h.preset } : {}),
+      skips: this.skips.get(h.hauntId) ?? 0,
+      authorPicksThisRound: picksBy.get(h.deviceId) ?? 0,
+    }));
+    const recent: RecentHaunt[] = this.hallwayIds.slice(-4).map((id) => {
+      const h = this.haunts.get(id);
+      return {
+        hauntId: id,
+        kind: kindOf({ preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "" }),
+        primaryTag: h?.moderated?.tags?.[0] ?? "other",
+        sentAt: this.sentAt.get(id) ?? 0,
+        seen: scene?.seenHauntIds.includes(id) ?? false,
+      };
+    });
+    return conduct(candidates, scene, recent, this.now());
+  }
+
+  /** Keep exactly one reserved pick while ideas are eligible, and refresh the public waiting reasons. */
+  private reserve(): void {
+    const eligible = this.eligible();
+    const ids = new Set(eligible.map((h) => h.hauntId));
+    for (const id of [...this.waitingReasons.keys()]) if (!ids.has(id)) this.waitingReasons.delete(id);
+    if (this.reserved && !ids.has(this.reserved.hauntId)) this.reserved = null;
+    // Changing camera availability changes the basis for the pick shown to the room.
+    if (this.reserved) {
+      const scene = this.deps.scene?.();
+      const mode = scene && this.now() - scene.observedAt <= POLICY.sceneMaxAgeMs ? "conductor" : "fifo";
+      if (this.reserved.mode !== mode) this.reserved = null;
+    }
+    const others = eligible.filter((h) => h.hauntId !== this.reserved?.hauntId);
+    if (!others.length && this.reserved) return;
+    const d = this.decide(others);
+    for (const w of d.waiting) {
+      if (d.mode === "conductor") this.waitingReasons.set(w.hauntId, w.reason);
+      else this.waitingReasons.delete(w.hauntId);
+    }
+    // A feasible idea behind the reserved pick has no hold reason any more.
+    if (d.pick) this.waitingReasons.delete(d.pick.hauntId);
+    for (const w of d.waiting) if (w.code === "ranked_lower") this.waitingReasons.delete(w.hauntId);
+    if (!this.reserved && d.pick) {
+      this.reserved = { hauntId: d.pick.hauntId, reason: d.pick.reason, mode: d.mode };
+      this.waitingReasons.delete(d.pick.hauntId);
+      // Fair turns: anything feasible that was passed over gets closer to its guaranteed turn.
+      for (const w of d.waiting) if (w.code === "ranked_lower") this.skips.set(w.hauntId, (this.skips.get(w.hauntId) ?? 0) + 1);
+    }
   }
 
   private takeSeeded(): Haunt | undefined {

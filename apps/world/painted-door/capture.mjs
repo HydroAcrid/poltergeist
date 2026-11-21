@@ -219,7 +219,7 @@ async function capture() {
           }
           actorMoving=['W','A','S','D'].includes(command.key);
           await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]);
-          publish({navigationMoved:true,key:command.key});
+          publish({navigationMoved:true,key:command.key,observed:command.observed});
           record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();

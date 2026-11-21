@@ -142,7 +142,11 @@ export function pickCard(crowd, world) {
     if (stage) return card(worldLatest.hauntId, stage, worldLatest.text, worldLatest.by ?? "anon", worldLatest);
   }
   const next = crowd?.queue?.[0];
-  if (next) return card(next.hauntId, "upnext", next.moderated?.text ?? "", next.displayName ?? "anon");
+  if (next) {
+    const c = card(next.hauntId, "upnext", next.moderated?.text ?? "", next.displayName ?? "anon");
+    if (crowd?.upNext?.hauntId === next.hauntId && crowd.upNext.mode === "conductor") c.why = crowd.upNext.reason;
+    return c;
+  }
   const worldNext = world?.queue?.[0];
   if (worldNext) return card(worldNext.hauntId, "upnext", worldNext.text, worldNext.by);
   return null;

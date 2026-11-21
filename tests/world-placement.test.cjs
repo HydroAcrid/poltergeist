@@ -346,3 +346,19 @@ test('a second committed haunting gets its own advance notice after the first en
   q.tick(17300);
   assert.equal(sent.filter(x=>x.haunt).length,2);
 });
+
+test('the live card only shows an intent tied to this obstacle and observation', async () => {
+  const { hauntCue } = await import('../apps/world/rehearsal/haunt-cue.mjs');
+  const prop = { id: 'prop', name: 'A windup penguin', selectedAt: 100, seen: true, inPath: true, seenAt: 150 };
+  const r = { phase: 'playing', live: true, observed: 12, trackedAt: 1200, trackedBody: [20, 40, 280, 180],
+    props: [prop], intent: { hauntId: 'prop', observed: 12, at: 1300, key: 'D' } };
+  assert.equal(hauntCue(r, 1400).intent, 'Trying a step right');
+  assert.equal(hauntCue({ ...r, observed: 13 }, 1400).intent, undefined);
+  assert.equal(hauntCue({ ...r, intent: null }, 1400).intent, undefined);
+  assert.equal(hauntCue({ ...r, trackedAt: -2000 }, 1400).intent, undefined);
+  assert.equal(hauntCue({ ...r, intent: { ...r.intent, hauntId: 'other' } }, 1400).intent, undefined);
+  assert.equal(hauntCue({ ...r, intent: { ...r.intent, key: 'assess' } }, 1400).intent, 'Checking the path');
+  prop.reactedAt = 1400;
+  r.lastReaction = { at: 1400, flinch: true };
+  assert.deepEqual(hauntCue(r, 1500), { label: 'The robot flinched', text: prop.name, by: undefined });
+});

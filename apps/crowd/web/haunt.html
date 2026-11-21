@@ -78,6 +78,7 @@ textarea::placeholder{color:#8f857c}
 .label{font:600 12px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
 .spot .text{font:normal 1.35rem/1.25 Georgia,serif;margin:6px 0 4px}
 .empty{color:var(--muted);font-size:15px;padding:6px 0}
+.why{font-size:13px;color:var(--muted);margin-top:3px}
 .switch{display:flex;gap:6px;margin:0 0 10px}
 .switch button{min-height:40px;padding:0 16px;border-radius:30px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
 .switch [aria-pressed=true]{background:var(--paper);color:#201a18;border-color:var(--paper)}
@@ -145,6 +146,7 @@ ol,ul{list-style:none;margin:0;padding:0}
         <button class="btn" id="send" type="submit">Send</button>
       </div>
       <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      <p class="why" id="replace-hint" hidden>You have an idea waiting. Sending a new one replaces it.</p>
     </form>
     <h2 id="h-presets">Or try one</h2>
     <div class="chips" id="chips" role="group" aria-labelledby="h-presets"><a class="chip more" href="#ideas">+ More ideas</a></div>
@@ -373,6 +375,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     injected: ["Sent to the hallway", "p-ok"],
     failed: ["Didn't make it in", "p-bad"],
     rejected: ["Not approved", "p-bad"],
+    withdrawn: ["Replaced by your newer idea", ""],
   };
   const STEPS = ["Checking", "Approved", "Up next", "Sent to the hallway"];
 
@@ -391,6 +394,13 @@ ol,ul{list-style:none;margin:0;padding:0}
     steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
     STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
     card.append(steps);
+    // Where a waiting idea stands: carries over between rounds, about N rounds away.
+    if (h.status === "queued") {
+      const pos = state.waiting?.myPositions?.[h.hauntId] ?? (state.queue.findIndex((q) => q.hauntId === h.hauntId) + 1);
+      const per = state.slotsPerRound || 6;
+      if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
+      else if (pos > per) card.append(el("div", "why", "#" + pos + " in line · may carry over to the next round"));
+    }
   }
 
   function byLine(h, mineIds) {
@@ -451,6 +461,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   function render() {
     const mineIds = new Set(state.mine.map((h) => h.hauntId));
     const head = state.queue[0];
+    const reserved = head && state.upNext?.hauntId === head.hauntId ? head : null;
     const hall = state.hallway || [];
 
     if (state.you) { const y = $("you"); y.textContent = ""; y.append("You are ", el("b", "", state.you.ghostName), " 👻"); }
@@ -462,7 +473,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (live) {
       hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
       hap.href = "#hallway";
-    } else if (head && mineIds.has(head.hauntId)) {
+    } else if (reserved && mineIds.has(reserved.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
       hap.href = "#next";
     }
@@ -472,7 +483,10 @@ ol,ul{list-style:none;margin:0;padding:0}
     const up = $("upnext");
     up.textContent = "";
     if (head) {
-      up.append(el("div", "label", mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next"), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
+      const label = reserved ? (mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next") : "Waiting for a turn";
+      up.append(el("div", "label", label), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
+      const why = reserved ? state.upNext.reason : state.waitingReasons?.find((w) => w.hauntId === head.hauntId)?.reason;
+      if (why) up.append(el("div", "why", why));
     } else {
       up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
     }
@@ -492,6 +506,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       const li = el("li");
       const b = el("div", "body");
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds));
+      const why = (state.waitingReasons || []).find((w) => w.hauntId === h.hauntId);
+      if (why) b.append(el("div", "why", why.reason));
       li.append(el("span", "pos", String(i)), b);
       q.append(li);
     }
@@ -524,8 +540,10 @@ ol,ul{list-style:none;margin:0;padding:0}
         rejection(b, h, raw);
       } else if (h.status === "failed") {
         b.append(el("span", "pill p-bad", STATUS.failed[0]));
+      } else if (h.status === "withdrawn") {
+        b.append(el("span", "pill", STATUS.withdrawn[0]));
       } else {
-        progress(b, h, head);
+        progress(b, h, reserved);
       }
       li.append(b);
       m.append(li);
@@ -543,12 +561,13 @@ ol,ul{list-style:none;margin:0;padding:0}
       if (sentItem.status === "rejected") {
         rejection(sc, sentItem, raw);
       } else {
-        progress(sc, sentItem, head);
+        progress(sc, sentItem, reserved);
       }
     } else {
       sc.append(el("div", "empty", "Send an idea and it will show up here."));
     }
 
+    $("replace-hint").hidden = !state.mine.some((h) => ["submitted", "approved", "queued"].includes(h.status) && h.hauntId !== state.upNext?.hauntId);
     badge("b-mine", screen === "mine" ? 0 : state.mine.filter((h) => seen.mine[h.hauntId] && seen.mine[h.hauntId] !== h.status).length);
     badge("b-hallway", screen === "hallway" ? 0 : hall.filter((h) => !seen.hallway.includes(h.hauntId + ":" + h.status)).length);
     badge("b-next", screen === "next" || !head || head.hauntId === seen.next ? 0 : 1);

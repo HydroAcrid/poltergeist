@@ -429,6 +429,9 @@ describe("operator and page", () => {
     expect(page.body).toContain('location.hash = "#sent"');
     // Speech to text, shown only where the browser supports it.
     expect(page.body).toContain('id="mic"');
+    // One waiting idea each: the replace hint and the replaced label are on the page.
+    expect(page.body).toContain('id="replace-hint"');
+    expect(page.body).toContain("Replaced by your newer idea");
     expect(page.body).toMatch(/SpeechRecognition \|\| window\.webkitSpeechRecognition/);
     // Delivery (haunt.injected) is only "Sent to the hallway"; "In the hallway" and reaction credit
     // need separate camera evidence (World, #2).

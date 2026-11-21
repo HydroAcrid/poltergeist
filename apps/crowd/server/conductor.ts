@@ -11,10 +11,10 @@ export type EffectKind = "floor_prop" | "airborne" | "lighting" | "visibility" |
 export interface SceneObservation {
   t: number; // ms since episode start
   observedAt: number; // epoch ms
-  robotProgress: number; // 0 = start of the aisle, 1 = signed exit threshold
+  robotProgress?: number; // 0 = start of the aisle, 1 = signed exit threshold
   timeRemainingMs: number;
   cameraStable: boolean;
-  obstacles: { label: string; kind: EffectKind; inBeam: boolean; progress: number }[];
+  obstacles: { label: string; kind: EffectKind; inBeam: boolean; progress?: number }[];
   producible: EffectKind[]; // effect kinds World can render and the camera can show right now
   seenHauntIds: string[]; // hauntings World has visual evidence for
 }
@@ -66,7 +66,7 @@ const PRESET_KIND: Record<string, EffectKind> = {
 export function kindOf(c: { preset?: string; tags: HauntTag[]; text: string }): EffectKind {
   if (c.preset && PRESET_KIND[c.preset]) return PRESET_KIND[c.preset]!;
   if (/ceiling|chandelier|overhead|roof|from above/i.test(c.text)) return "overhead";
-  if (/balloon|paper|leaves|confetti|gust|wind/i.test(c.text)) return "airborne";
+  if (/balloon|paper|leaves|confetti|gust|\bwind(?:s|y|storm)?\b(?![- ]?up\b)/i.test(c.text)) return "airborne";
   if (c.tags.includes("lighting")) return "lighting";
   if (c.tags.includes("visibility")) return "visibility";
   if (c.tags.includes("sign_change")) return "sign";
@@ -117,7 +117,7 @@ export function conduct(candidates: Candidate[], scene: SceneObservation | undef
       waiting.push({ hauntId: c.hauntId, code: "not_in_shot", reason: "Great idea, but this camera can't show it" });
       continue;
     }
-    if (scene.timeRemainingMs < POLICY.minTimeLeftMs || scene.robotProgress > POLICY.latestProgress[kind]) {
+    if (scene.timeRemainingMs < POLICY.minTimeLeftMs || (scene.robotProgress !== undefined && scene.robotProgress > POLICY.latestProgress[kind])) {
       waiting.push({ hauntId: c.hauntId, code: "too_late", reason: "Too close to the exit for this one" });
       continue;
     }
@@ -132,12 +132,12 @@ export function conduct(candidates: Candidate[], scene: SceneObservation | undef
       continue;
     }
     const novel = !lastTwoTags.includes(c.tags[0]!);
-    const roomy = kind === "lighting" || kind === "visibility" || scene.robotProgress <= POLICY.roomyProgress;
+    const roomy = kind === "lighting" || kind === "visibility" || (scene.robotProgress !== undefined && scene.robotProgress <= POLICY.roomyProgress);
     const starving = now - c.createdAt >= POLICY.starveAfterMs;
     const fresh = c.authorPicksThisRound === 0; // fair airtime
     const score = (novel ? 2 : 0) + (roomy ? 1 : 0) + (fresh ? 1 : 0) + (starving ? 1 : 0);
     const priority = c.skips >= POLICY.priorityAfterSkips;
-    const why = REASON[kind];
+    const why = kind === "floor_prop" && scene.robotProgress === undefined ? "A floor obstacle fits this shot" : REASON[kind];
     feasible.push({ c, kind, score, why, priority });
   }
 

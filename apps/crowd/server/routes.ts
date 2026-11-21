@@ -47,7 +47,10 @@ export interface RouteOptions {
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
   let compressedPage: Buffer | undefined;
-  const loadPage = () => (page ??= readFileSync(opts.hauntPagePath, "utf8"));
+  // Phones are on venue Wi-Fi: serve the page without each line's leading indentation and blank
+  // lines (the source stays readable). The page has no <pre> or multi-line strings, so this is safe.
+  const compact = (html: string) => html.replace(/^[ \t]+/gm, "").replace(/\n{2,}/g, "\n");
+  const loadPage = () => (page ??= compact(readFileSync(opts.hauntPagePath, "utf8")));
 
   app.post("/api/crowd/haunt", { bodyLimit: 2048 }, async (req, reply) => {
     const deviceId = deviceOf(req, reply);
@@ -66,16 +69,15 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
       return fail(reply, 400, "INVALID", "Choose a valid waiting page.");
     }
     const state = crowd.state(deviceOf(req, reply), page === undefined ? undefined : Number(page));
-    const { waiting, ...core } = state;
-    const checked = opts.validateResponses ? CrowdState.parse(core) : core;
-    if (!waiting) {
+    const checked = opts.validateResponses ? CrowdState.parse(state) : state;
+    if (page === undefined) {
       reply.header("cache-control", "no-store");
       return checked;
     }
     reply.header("cache-control", "private, no-store");
     // The validator includes the author's own receipts, page, round and current
     // order. Two phones must never reuse one another's cached representation.
-    const body = JSON.stringify({ ...checked, waiting });
+    const body = JSON.stringify(checked);
     const tag = '"' + createHash("sha256").update(body).digest("base64url") + '"';
     reply.header("vary", "Cookie").header("etag", tag);
     if (req.headers["if-none-match"] === tag) return reply.code(304).send();

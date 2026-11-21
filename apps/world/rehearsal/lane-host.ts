@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { MemoryBus } from '../../crowd/dev/memory-bus';
 import { createCrowdModule } from '../../crowd/server/index';
+import { sceneFromRehearsal } from '../../crowd/server/scene';
 import { newId } from '../../crowd/server/ids';
 import { stepNav } from '../../brain/server/navigate';
 import { initialState } from '../../brain/server/controller';
@@ -21,9 +22,6 @@ const app = requireCrowd('fastify')();
 const access = hostSettings(process.env);
 registerHostAccess(app, access);
 const bus = new MemoryBus();
-const crowd = createCrowdModule({
-  config: { firstDispatchMs: 1200, seededFallback: false },
-});
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = Number(process.env.PG_STAGE_PORT || process.env.PORT || 8914);
 const tasks = new Map<string, PlayerTask>();
@@ -66,7 +64,7 @@ const makePilot = () => {
     return trailInput(decision);
   };
 };
-await registerStage(app, {
+const currentRound = await registerStage(app, {
   bus,
   root,
   newId,
@@ -79,6 +77,10 @@ await registerStage(app, {
   defaultPhoto: process.env.PG_VENUE_PHOTO,
   brainUrl:
     process.env.PG_BRAIN_URL || `http://127.0.0.1:${port}/api/brain/tick`,
+});
+const crowd = createCrowdModule({
+  config: { firstDispatchMs: 1200, seededFallback: false },
+  scene: process.env.PG_CROWD_SCENE_URL ? undefined : () => sceneFromRehearsal(currentRound(), Date.now()),
 });
 await crowd.register(app, {
   bus,

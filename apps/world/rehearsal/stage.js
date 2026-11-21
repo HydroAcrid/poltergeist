@@ -277,7 +277,7 @@ function paint() {
         if (card) {
           cue = card.label;
           caption = card.text;
-          by = card.by || '';
+          by = [card.by, card.intent].filter(Boolean).join(' · ');
         } else if (r.live && !worldVisible && now-r.startedAt > 4500) {
           caption = 'Opening the hallway…';
         }

@@ -43,7 +43,9 @@ describe("assigned ghost names", () => {
     expect((await post({ preset: "banana-peel", displayName: "<CELEB_NAME>" })).statusCode).toBe(200);
     await hub.crowd.whenIdle();
     const { state } = await join(a.cookie);
-    expect(state.queue.map((h) => h.displayName)).toEqual([name, name]);
+    // One waiting idea each: the preset replaced the text idea, so check both of the author's items.
+    expect(state.mine.map((h) => h.displayName)).toEqual([name, name]);
+    expect(state.queue.map((h) => h.displayName)).toEqual([name]);
     expect(JSON.stringify(state)).not.toMatch(/Kevin|CELEB_NAME/);
   });
 
