@@ -38,6 +38,7 @@ function recordTick(dataDir: string, req: TickRequest, res: TickResponse, reacti
     successClaim: res.successClaim,
     policyVersion: res.policyVersion,
     ...(reaction ? { reaction } : {}),
+    ...(res.decision ? { decision: res.decision } : {}),
   });
   appendFileSync(join(dir, "ticks.jsonl"), JSON.stringify(log) + "\n");
 }

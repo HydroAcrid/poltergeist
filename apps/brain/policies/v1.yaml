@@ -3,6 +3,10 @@ parent: null
 createdBy: human
 rationale: baseline
 perception: { adapter: er2, thinking: low, timeoutMs: 2500, promptAddenda: [] }
+# Who chooses the move. "rules": Brain's controller from ER 2's scene (default).
+# "model": the player model chooses from the current and previous frame
+# (server/react.ts), and geometry only vetoes a step into something solid.
+decision: { mode: rules }
 controller:
   emaAlpha: 0.5
   maxPointJump: 300

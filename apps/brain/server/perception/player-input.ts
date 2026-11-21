@@ -12,12 +12,14 @@ export interface PlayerTask {
  * allowed fields. Takes the task on its own (never the whole Episode) so the
  * seed prompt and haunting text cannot ride along.
  */
-export function buildPlayerInput(req: TickRequest, task: PlayerTask): PlayerInput {
+export function buildPlayerInput(req: TickRequest, task: PlayerTask, previousFrame?: TickRequest["frame"]): PlayerInput {
   if (task.targetLabel.length > 40) throw new Error("targetLabel over 40 chars");
   if (task.instruction.length > 140) throw new Error("instruction over 140 chars");
+  const copy = (f: TickRequest["frame"]) => ({ mime: f.mime, width: f.width, height: f.height, b64: f.b64 });
   return {
-    frame: { mime: req.frame.mime, width: req.frame.width, height: req.frame.height, b64: req.frame.b64 },
+    frame: copy(req.frame),
     targetLabel: task.targetLabel,
     instruction: task.instruction,
+    ...(previousFrame ? { previousFrame: copy(previousFrame) } : {}),
   };
 }

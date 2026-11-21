@@ -2,7 +2,7 @@
 import type { Point } from "@poltergeist/contracts/common.js";
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import type { Reaction } from "@poltergeist/contracts/tick-log.js";
-import type { Action, TickMode } from "@poltergeist/contracts/tick-response.js";
+import type { Action, Decision, TickMode } from "@poltergeist/contracts/tick-response.js";
 import type { Resolved } from "./perception/resolve.js";
 import type { Policy } from "./policy.js";
 
@@ -28,6 +28,8 @@ export interface ControllerOutput {
   successClaim: boolean;
   /** TickLog 1.1.0 `reaction`, only on the tick it was observed. */
   reaction?: Reaction;
+  /** TickResponse 1.1.0 `decision`: how the action was chosen (decision mode "model"). */
+  decision?: Decision;
 }
 
 export const initialState = (): ControllerState => ({ lost: 0, searchSteps: 0, stuckTicks: 0, successTicks: 0, verifySteps: 0 });

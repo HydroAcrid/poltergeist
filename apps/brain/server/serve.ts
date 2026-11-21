@@ -11,6 +11,7 @@
 //   PG_DATA_DIR     where frames/<seq>.jpg and ticks.jsonl go (default apps/brain/data, git-ignored)
 //   PG_TARGET_LABEL / PG_INSTRUCTION   the task (default: the hallway exit)
 //   PG_CAMERA_RIG   trail | shoulder (default: the policy's rig)
+//   PG_DECISION     rules | model (default: the policy's decision mode)
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,7 @@ import { buildServer } from "./http.js";
 import { DEFAULT_MODEL, Er2Perception } from "./perception/er2.js";
 import { FixturePerception } from "./perception/fixture.js";
 import type { PerceptionAdapter } from "./perception/types.js";
-import { loadPolicy, withRig } from "./policy.js";
+import { loadPolicy, withDecision, withRig } from "./policy.js";
 import { TickHandler } from "./tick.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +32,10 @@ const policyVersion = env.PG_POLICY ?? "v1";
 const basePolicy = loadPolicy(policyVersion);
 const rig = env.PG_CAMERA_RIG;
 if (rig && rig !== "trail" && rig !== "shoulder") throw new Error(`PG_CAMERA_RIG must be trail or shoulder, got ${rig}`);
-const policy = rig ? withRig(basePolicy, rig as "trail" | "shoulder") : basePolicy;
+const decisionMode = env.PG_DECISION;
+if (decisionMode && decisionMode !== "rules" && decisionMode !== "model") throw new Error(`PG_DECISION must be rules or model, got ${decisionMode}`);
+const rigged = rig ? withRig(basePolicy, rig as "trail" | "shoulder") : basePolicy;
+const policy = decisionMode ? withDecision(rigged, decisionMode as "rules" | "model") : rigged;
 const kind = env.PG_PERCEPTION ?? (env.GEMINI_API_KEY ? "er2" : "fixture");
 const model = env.PG_MODEL_PERCEPTION || DEFAULT_MODEL;
 
@@ -62,4 +66,4 @@ const app = buildServer({
 const host = env.HOST ?? "127.0.0.1";
 const port = Number(env.PORT ?? 8790);
 await app.listen({ host, port });
-console.log(`Brain tick server: http://${host}:${port}/api/brain/tick · perception ${kind === "er2" ? `er2 (${model})` : "fixture"} · policy ${policy.version} · rig ${policy.navigation.rig}`);
+console.log(`Brain tick server: http://${host}:${port}/api/brain/tick · perception ${kind === "er2" ? `er2 (${model})` : "fixture"} · policy ${policy.version} · rig ${policy.navigation.rig} · decision ${policy.decision.mode}`);

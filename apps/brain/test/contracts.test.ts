@@ -41,8 +41,8 @@ describe.each(Object.entries(schemas))("%s fixtures", (name, schema) => {
 });
 
 it("ships every TickResponse scenario CONTRACTS §8 requires", () => {
-  expect(list(join(fixtures, "tick-response/valid")).sort()).toEqual(
-    ["fallback-timeout.json", "search.json", "success.json", "track.json", "unstick.json"],
+  expect(list(join(fixtures, "tick-response/valid"))).toEqual(
+    expect.arrayContaining(["fallback-timeout.json", "search.json", "success.json", "track.json", "unstick.json"]),
   );
   expect(list(join(fixtures, "tick-log/valid"))).toEqual(expect.arrayContaining(["lost.json", "track.json"]));
 });

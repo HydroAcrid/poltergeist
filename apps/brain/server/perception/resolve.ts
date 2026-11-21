@@ -19,7 +19,7 @@ export interface Resolved {
  *   as unconfirmed so the controller changes viewpoint instead of choosing.
  */
 export function resolvePerception(result: PerceptionResult): Resolved {
-  const { candidates, scene, ...rest } = result;
+  const { candidates, scene, decision: _decision, ...rest } = result;
   if (scene && !result.error) return { perception: rest, scene };
   if (!candidates || candidates.length < 2 || result.error) return { perception: rest };
 

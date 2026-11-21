@@ -4,6 +4,7 @@ import { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import { initialState, step, type ControllerState } from "./controller.js";
 import { stepNav } from "./navigate.js";
+import { stepReact } from "./react.js";
 import { buildPlayerInput, type PlayerTask } from "./perception/player-input.js";
 import { resolvePerception } from "./perception/resolve.js";
 import type { PerceptionAdapter, PerceptionResult } from "./perception/types.js";
@@ -19,6 +20,8 @@ export interface TickDeps {
 
 export class TickHandler {
   private readonly states = new Map<string, ControllerState>();
+  /** The last frame Brain received per episode, shown to the model next tick (decision mode). */
+  private readonly lastFrames = new Map<string, TickRequest["frame"]>();
   constructor(private readonly deps: TickDeps) {}
 
   /** HTTP boundary: validate the request (C04), then decide. */
@@ -39,13 +42,15 @@ export class TickHandler {
     if (!task) throw new Error(`no task for episode ${req.episodeId}`);
 
     const { policy, adapter } = this.deps;
-    const input = buildPlayerInput(req, task);
+    const modelDecides = policy.decision.mode === "model";
+    const input = buildPlayerInput(req, task, modelDecides ? this.lastFrames.get(req.episodeId) : undefined);
     const result = await withTimeout(
       (signal) =>
         adapter.perceive(input, {
           timeoutMs: policy.perception.timeoutMs,
           promptAddenda: policy.perception.promptAddenda,
           thinking: policy.perception.thinking,
+          decide: modelDecides,
           signal,
         }),
       policy.perception.timeoutMs,
@@ -54,8 +59,14 @@ export class TickHandler {
 
     const seen = resolvePerception(result);
     const prev = this.states.get(req.episodeId) ?? initialState();
-    const ctl = seen.scene ? stepNav(prev, seen.scene, req, policy) : step(prev, seen, req, policy);
+    const ctl =
+      seen.scene && modelDecides && result.decision
+        ? stepReact(prev, seen.scene, result.decision, req, policy)
+        : seen.scene
+          ? stepNav(prev, seen.scene, req, policy)
+          : step(prev, seen, req, policy);
     this.states.set(req.episodeId, ctl.state);
+    if (modelDecides) this.lastFrames.set(req.episodeId, req.frame);
 
     const response = TickResponse.parse({
       episodeId: req.episodeId,
@@ -68,12 +79,14 @@ export class TickHandler {
       successClaim: ctl.successClaim,
       policyVersion: policy.version,
       brainLatencyMs: Math.round(now() - started),
+      ...(ctl.decision ? { decision: ctl.decision } : {}),
     });
     return ctl.reaction ? { response, reaction: ctl.reaction } : { response };
   }
 
   reset(episodeId: string): void {
     this.states.delete(episodeId);
+    this.lastFrames.delete(episodeId);
   }
 }
 
