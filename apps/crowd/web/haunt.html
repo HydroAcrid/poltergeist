@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Haunt the hallway</title>
+<style>
+:root{--bg:#f6f4fb;--card:#fff;--ink:#1d1830;--muted:#6b6580;--line:#e3dff0;--accent:#6c3df4;--accent-ink:#fff;--ok:#127a4a;--ok-bg:#e3f6ec;--warn:#9a5b00;--warn-bg:#fff2dc;--bad:#b3261e;--bad-bg:#fde8e7;--chip:#efeafd}
+@media (prefers-color-scheme:dark){:root{--bg:#120f1d;--card:#1c1830;--ink:#efeaff;--muted:#a59fc0;--line:#2e2847;--accent:#9b7bff;--accent-ink:#120f1d;--ok:#5fd59a;--ok-bg:#12301f;--warn:#ffc46b;--warn-bg:#33240b;--bad:#ff8a80;--bad-bg:#3a1513;--chip:#2a2445}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 14px}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}
+h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.round{font-size:14px;color:var(--muted);white-space:nowrap}
+.round b{color:var(--ink);font-variant-numeric:tabular-nums}
+.live{color:var(--ok);font-weight:600}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:14px;color:var(--muted);margin:0 0 6px}
+.field{position:relative}
+textarea,input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+textarea{resize:none;height:76px}
+textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.count{position:absolute;right:10px;bottom:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.row{display:flex;gap:10px;margin-top:10px}
+.row input{flex:1;min-width:0}
+button{font:inherit;border:0;border-radius:12px;cursor:pointer}
+.send{background:var(--accent);color:var(--accent-ink);font-weight:600;padding:0 18px;min-height:46px}
+.send:disabled{opacity:.5;cursor:default}
+.msg{font-size:14px;margin:10px 0 0;min-height:1.4em}
+.msg.bad{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--chip);color:var(--ink);padding:9px 12px;font-size:14px;min-height:40px}
+.chip:active{transform:scale(.97)}
+.tabs{display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:4px;margin-bottom:10px}
+.tab{flex:1;background:transparent;color:var(--muted);padding:8px;font-size:14px;font-weight:600}
+.tab[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+ol,ul{list-style:none;margin:0;padding:0}
+li{padding:10px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+li:first-child{border-top:0}
+.pos{flex:none;width:26px;height:26px;border-radius:50%;background:var(--chip);display:grid;place-items:center;font-size:13px;font-weight:600;color:var(--muted)}
+.body{flex:1;min-width:0}
+.text{overflow-wrap:anywhere}
+.by{font-size:13px;color:var(--muted)}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 8px;margin-top:4px}
+.p-wait{background:var(--chip);color:var(--muted)}
+.p-ok{background:var(--ok-bg);color:var(--ok)}
+.p-go{background:var(--warn-bg);color:var(--warn)}
+.p-bad{background:var(--bad-bg);color:var(--bad)}
+.next{background:var(--accent);color:var(--accent-ink)}
+.reason{font-size:14px;color:var(--bad);margin-top:4px}
+.edit{background:transparent;color:var(--accent);font-size:14px;font-weight:600;padding:6px 0 0}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.consent{font-size:13px;color:var(--muted);text-align:center;margin:4px 8px}
+.offline{display:none;font-size:13px;color:var(--warn);text-align:center;margin-bottom:10px}
+.offline.on{display:block}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Haunt the hallway 👻</h1>
+    <div class="round" id="round" aria-live="polite">&nbsp;</div>
+  </header>
+  <div class="offline" id="offline">Reconnecting…</div>
+
+  <section aria-labelledby="send-h">
+    <h2 id="send-h">Send a haunting</h2>
+    <form id="form" autocomplete="off">
+      <label for="text">What happens in the hallway?</label>
+      <div class="field">
+        <textarea id="text" maxlength="80" placeholder="A banana peel lands in the aisle" enterkeyhint="send"></textarea>
+        <span class="count" id="count">0/80</span>
+      </div>
+      <div class="row">
+        <input id="nick" maxlength="16" placeholder="Nickname (optional)" aria-label="Nickname (optional)">
+        <button class="send" id="send" type="submit">Send</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+    <label>Or tap one to send it</label>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section aria-labelledby="queue-h">
+    <h2 id="queue-h">Round queue</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-all" aria-selected="true">All ideas</button>
+      <button class="tab" role="tab" id="tab-mine" aria-selected="false">Mine</button>
+    </div>
+    <ol id="queue"></ol>
+  </section>
+
+  <section aria-labelledby="mine-h">
+    <h2 id="mine-h">My ideas</h2>
+    <ul id="mine"></ul>
+  </section>
+
+  <p class="consent">Approved hauntings may appear on the big screen with your nickname.</p>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  const rawById = store.get("pg_raw", {}); // my own typed text, kept on this phone only
+  let state = { episodeActive: false, mine: [], queue: [] };
+  let filter = "all";
+  let pendingMine = [];
+  let sending = false;
+
+  $("nick").value = store.get("pg_nick", "");
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  async function api(path, opts) {
+    const res = await fetch(path, { credentials: "same-origin", headers: { "content-type": "application/json" }, ...opts });
+    const body = await res.json().catch(() => ({}));
+    return { ok: res.ok, body };
+  }
+
+  let sayTimer = 0;
+  function say(text, bad) {
+    const m = $("msg");
+    m.textContent = text || "";
+    m.className = "msg" + (bad ? " bad" : "");
+    clearTimeout(sayTimer);
+    if (text) sayTimer = setTimeout(() => { m.textContent = ""; }, bad ? 8000 : 4000);
+  }
+
+  async function send(payload, rawText) {
+    if (sending) return;
+    sending = true;
+    $("send").disabled = true;
+    const nick = $("nick").value.trim();
+    store.set("pg_nick", nick);
+    if (nick) payload.displayName = nick;
+    try {
+      const { ok, body } = await api("/api/crowd/haunt", { method: "POST", body: JSON.stringify(payload) });
+      if (!ok) { say(body.error?.message || "That didn't send. Try again.", true); return; }
+      rawById[body.hauntId] = rawText;
+      store.set("pg_raw", rawById);
+      pendingMine.push({ hauntId: body.hauntId, status: "submitted" });
+      if (payload.text) { $("text").value = ""; updateCount(); }
+      say("Got it! Checking your idea…");
+      render();
+      refresh();
+    } catch {
+      say("No connection. Try again in a moment.", true);
+    } finally {
+      sending = false;
+      $("send").disabled = false;
+    }
+  }
+
+  function updateCount() { $("count").textContent = $("text").value.length + "/80"; }
+
+  const STATUS = {
+    submitted: ["Checking…", "p-wait"],
+    approved: ["Approved · waiting for the host", "p-ok"],
+    queued: ["In the queue", "p-ok"],
+    dispatched: ["Sending to the hallway…", "p-go"],
+    injected: ["Sent to world", "p-ok"],
+    failed: ["Didn't make it in", "p-bad"],
+    rejected: ["Not approved", "p-bad"],
+  };
+
+  function render() {
+    // Round status
+    const r = $("round");
+    r.textContent = "";
+    if (state.episodeActive) {
+      r.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
+    } else if (state.nextRoundAt) {
+      const s = Math.max(0, Math.round((state.nextRoundAt - Date.now()) / 1000));
+      r.append("Next round in ", el("b", "", Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")));
+    }
+
+    // Queue
+    const mineIds = new Set(state.mine.map((h) => h.hauntId));
+    const q = $("queue");
+    q.textContent = "";
+    const items = state.queue
+      .map((h, i) => ({ h, i }))
+      .filter(({ h }) => filter === "all" || mineIds.has(h.hauntId));
+    if (!items.length) {
+      q.append(el("li", "empty", filter === "all" ? "No ideas in the queue yet. Send one!" : "None of your ideas are in the queue right now."));
+    }
+    for (const { h, i } of items) {
+      const li = el("li");
+      li.append(el("span", "pos", String(i + 1)));
+      const b = el("div", "body");
+      b.append(el("div", "text", h.moderated?.text || ""));
+      b.append(el("div", "by", (h.displayName || "anon") + (mineIds.has(h.hauntId) ? " · you" : "")));
+      if (i === 0) b.append(el("span", "pill next", "Up next"));
+      li.append(b);
+      q.append(li);
+    }
+
+    // My ideas (server list, plus anything just sent that the server hasn't returned yet)
+    const serverIds = new Set(state.mine.map((h) => h.hauntId));
+    pendingMine = pendingMine.filter((p) => !serverIds.has(p.hauntId));
+    const mine = [...pendingMine, ...state.mine];
+    const m = $("mine");
+    m.textContent = "";
+    if (!mine.length) m.append(el("li", "empty", "Your ideas show up here, privately, as soon as you send them."));
+    const queuePos = new Map(state.queue.map((h, i) => [h.hauntId, i]));
+    for (const h of mine) {
+      const li = el("li");
+      const b = el("div", "body");
+      const raw = rawById[h.hauntId];
+      const shown = h.status !== "rejected" && h.moderated?.text ? h.moderated.text : raw || "Your idea";
+      b.append(el("div", "text", shown));
+      let [label, cls] = STATUS[h.status] || [h.status, "p-wait"];
+      if (h.status === "queued" && queuePos.has(h.hauntId)) {
+        const p = queuePos.get(h.hauntId);
+        label = p === 0 ? "Up next" : "In the queue · #" + (p + 1);
+        if (p === 0) cls = "next";
+      }
+      b.append(el("span", "pill " + cls, label));
+      if (h.status === "rejected") {
+        if (h.moderated?.reason) b.append(el("div", "reason", h.moderated.reason));
+        if (raw) {
+          const edit = el("button", "edit", "Edit & resubmit");
+          edit.type = "button";
+          edit.onclick = () => { $("text").value = raw; updateCount(); $("text").focus(); say(""); };
+          b.append(edit);
+        }
+      }
+      li.append(b);
+      m.append(li);
+    }
+  }
+
+  let inflight = false;
+  async function refresh() {
+    if (inflight) return;
+    inflight = true;
+    try {
+      const { ok, body } = await api("/api/crowd/state");
+      if (ok) { state = body; $("offline").classList.remove("on"); render(); }
+    } catch {
+      $("offline").classList.add("on");
+    } finally {
+      inflight = false;
+    }
+  }
+
+  async function loadPresets() {
+    try {
+      const { ok, body } = await api("/api/crowd/presets");
+      if (!ok) return;
+      const box = $("chips");
+      for (const p of body) {
+        const c = el("button", "chip", p.label);
+        c.type = "button";
+        c.onclick = () => send({ preset: p.id }, p.label);
+        box.append(c);
+      }
+    } catch {}
+  }
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $("text").value.trim();
+    if (!text) { say("Type an idea, or tap one below.", true); return; }
+    send({ text }, text);
+  });
+  $("text").addEventListener("input", updateCount);
+  $("text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+  });
+  for (const [id, f] of [["tab-all", "all"], ["tab-mine", "mine"]]) {
+    $(id).addEventListener("click", () => {
+      filter = f;
+      $("tab-all").setAttribute("aria-selected", String(f === "all"));
+      $("tab-mine").setAttribute("aria-selected", String(f === "mine"));
+      render();
+    });
+  }
+  addEventListener("online", refresh);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+  loadPresets();
+  refresh();
+  setInterval(refresh, 2000);
+  setInterval(() => { if (!state.episodeActive) render(); }, 1000);
+})();
+</script>
+</body>
+</html>
