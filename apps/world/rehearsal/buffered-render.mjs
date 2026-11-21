@@ -140,7 +140,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
       if (message.cameraMoved || message.navigationMoved) placement.moved(now);
       if (message.navigationMoved) {
         if (message.key === 'W') crossing.forwardAt = now;
-        evidence.moves.push({observed:message.observed, key:message.key});
+        evidence.moves.push({observed:message.observed, key:message.key, wireFrame:message.appliedFrame});
       }
       if (message.injected) {
         placement.acknowledged(message.injected, message.attempt ?? 1, message.injectedAt ?? now, message.injectedFrame);
@@ -281,9 +281,16 @@ export async function renderSegment({
     }
     for (const move of evidence.moves) {
       const event = session.events?.find(e => e.observed === move.observed && e.action === 'Player applied '+move.key);
-      if (Number.isSafeInteger(event?.frame)) {
-        move.appliedFrame = event.frame;
-        move.appliedOffsetMs = presentationTime(event.frame);
+      // The raw event frame counts decoded images. When the provider
+      // buffers video, motionBoundary can be several frames ahead of it.
+      // Both sides must corroborate one watermark before claiming motion.
+      const {wireFrame} = move;
+      delete move.wireFrame;
+      const watermark = event?.appliedFrame ?? event?.frame;
+      if (Number.isSafeInteger(watermark) && watermark >= move.observed && watermark <= frameCount &&
+          (wireFrame == null || wireFrame === watermark)) {
+        move.appliedFrame = watermark;
+        move.appliedOffsetMs = presentationTime(watermark);
       }
     }
     evidence.winnerOffsetMs = evidence.winnerFrame == null ? null : presentationTime(evidence.winnerFrame);

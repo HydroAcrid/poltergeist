@@ -408,7 +408,7 @@ async function capture() {
           }
           publish({navigationMoved:true,key:command.key,observed:command.observed,appliedFrame,
             ...(command.encounter ? {encounter:command.encounter} : {})});
-          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,...(command.landing && {landing:command.landing}),transport:'world action',frame:log.frames});
+          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,appliedFrame,reaction:command.reaction,...(command.landing && {landing:command.landing}),transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {

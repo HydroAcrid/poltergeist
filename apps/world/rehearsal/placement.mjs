@@ -172,6 +172,13 @@ export function inspectPlacement(
   const inPath = candidates.filter((o) =>
     intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'),
   );
+  // In a diagonal shot the distant aisle point and the explorer's next
+  // landing can be quite different directions. A sidestep can confront a
+  // new object when the object's floor contact lies between the visible
+  // boots and the independently chosen landing. This is placement evidence
+  // only; contact, fear and a successful bypass still need their own pixels.
+  const blocksLanding = !inPath.length && candidates.length === 1 &&
+    blocksChosenLanding(scene,c,candidates[0],effect.matches);
   const near = inPath.filter((o) =>
     intervalHits(c, o.box, 0, 0.48, c.radius * 0.72),
   );
@@ -182,7 +189,7 @@ export function inspectPlacement(
   );
   return {
     visible: candidates.length > 0,
-    inPath: inPath.length > 0,
+    inPath: inPath.length > 0 || blocksLanding,
     contact: near.length === 1 && !otherNear,
     soleThreat:
       inPath.length === 1 &&
@@ -192,12 +199,29 @@ export function inspectPlacement(
   };
 }
 
+function blocksChosenLanding(scene, route, obstacle, matches) {
+  const move = scene.move;
+  const key = {step_left:'A',step_right:'D'}[move?.intent];
+  if (!key || move.avoiding !== true || scene.playerCount !== 1 || !scene.playerMatch ||
+      !scene.feetVisible || scene.pose !== 'upright' || obstacle.solid === false ||
+      !encounterLanding(scene,matches,key)) return false;
+  const step = floorCorridor({...scene,ahead:move.target});
+  if (!step) return false;
+  // A proposal about something behind the player or far down the aisle
+  // cannot turn that object into an obstacle at the current footstep.
+  const length = Math.hypot(step.dy,step.dx*aspect);
+  const routeLength = Math.hypot(route.dy,route.dx*aspect);
+  const forward = step.dy*route.dy + step.dx*route.dx*aspect*aspect;
+  if (forward <= .5*length*routeLength || length > 1.5*routeLength) return false;
+  const intersects = o => intervalHits(step,o.box,.12,.95,step.radius*.65);
+  return intersects(obstacle) && !scene.obstacles.some(o => o !== obstacle && o.solid !== false && intersects(o));
+}
+
 // A sidestep opens a route only when the same obstacle is still visible and
 // both boots have moved to clear floor on the instructed side of it.
 // The Brain chooses an observed open patch. Use the camera coordinates from
 // that same image and reject a patch inside a solid obstacle's footprint.
-export function encounterLanding(scene, matches, key) {
-  const target = scene?.move?.target;
+export function encounterLanding(scene, matches, key, target = scene?.move?.target) {
   if (!point(target) || scene.feetVisible === false) return null;
   const corridor = floorCorridor(scene);
   const targets = scene.obstacles.filter(o => matches(o.label) && box(o.box));
@@ -558,7 +582,11 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               job.lastReactionFrame = frame;
               send({ reaction: 'notice', toward, encounter: p.id, observed: frame });
             }
-            if (p.attempt === 1 && round.deadline - time > 1800) {
+            // A correction needs time for at least one fresh independent
+            // reading. The response reserve belongs only to a step sent on
+            // the wire; it cannot rescue an unseen last-second relocation.
+            const nextReadMs = Math.max(1800,time-at);
+            if (p.attempt === 1 && round.deadline - time > nextReadMs) {
               p.placement = 'correcting';
               job.ackTime = null;
             } else {
@@ -590,9 +618,21 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       let landing;
       if (['A','D','S'].includes(key)) {
         if (scene.feetVisible === false) return null;
-        if (scene.move?.target) {
-          landing = encounterLanding(scene, job.effect.matches, key);
+        const veto = decision.decision?.source === 'veto';
+        if (scene.move?.target || veto) {
+          // A veto authorizes its replacement direction, never the rejected
+          // destination. An ungrounded replacement holds for another image.
+          if (veto && !decision.geometryLanding) return null;
+          landing = encounterLanding(scene, job.effect.matches, key, veto ? decision.geometryLanding : scene.move.target);
           if (!landing) return null;
+          if (veto) {
+            const lateral = floorCorridor({...scene,ahead:landing.target});
+            if (!lateral || scene.obstacles.some(o => o.solid !== false &&
+                intervalHits(lateral,o.box,.1,1,lateral.radius))) return null;
+            const boots = [scene.feet.left[1],scene.feet.right[1]];
+            landing.alreadyBeside = key === 'A' ? Math.max(...boots)<landing.obstacle[1] :
+              key === 'D' && Math.min(...boots)>landing.obstacle[3];
+          }
         }
       }
       job.lastCommandFrame = latest.frame;

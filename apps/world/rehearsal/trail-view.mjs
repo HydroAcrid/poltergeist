@@ -46,6 +46,18 @@ export function fromShoulderView(scene, [y, x]) {
   };
 }
 
+// The Brain can reject the model's proposed destination and choose the
+// other side. Carry the landing that its sideClear test actually checked.
+export function withShoulderLanding(decision, view, shift) {
+  const key = decision.action.key;
+  if (decision.decision?.source !== 'veto' || !['A','D'].includes(key) ||
+      view.feetEstimated || !Number.isFinite(shift) || shift <= 0) return decision;
+  const dx = key === 'A' ? -shift : shift;
+  const [left,right] = [view.feet.left,view.feet.right];
+  if ([left,right].some(boot => boot[1]+dx < 0 || boot[1]+dx > 1000)) return decision;
+  return {...decision,geometryLanding:[Math.round((left[0]+right[0])/2),Math.round((left[1]+right[1])/2+dx)]};
+}
+
 // Genie trains movement and camera orientation as different native controls.
 export function trailInput(choice) {
   const key = choice.action.key;

@@ -521,7 +521,9 @@ export function characterInstruction(command) {
     return [
       `The explorer sees the obstruction at ${percent(left)}–${percent(right)} across the frame, touching the floor at ${percent(bottom)} from the top.`,
       `It bends its knees, swings its flashlight toward the clear patch on its ${dir} and steps around the near edge.`,
-      `Both boots cross that edge and plant on the clear patch at ${percent(x)} from the left and ${percent(y)} from the top.`,
+      command.landing.alreadyBeside
+        ? `Both boots shuffle further ${dir}, away from the object, and plant together at ${percent(x)} from the left and ${percent(y)} from the top. The object stays in place.`
+        : `Both boots cross that edge and plant on the clear patch at ${percent(x)} from the left and ${percent(y)} from the top.`,
       "Keep the observer still at the same focal length, showing both boots, the object and landing floor together. The explorer stops there.",
     ].join(" ");
   }

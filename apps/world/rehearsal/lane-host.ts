@@ -12,7 +12,7 @@ import { loadPolicy, withRig } from '../../brain/server/policy';
 import { FixturePerception } from '../../brain/server/perception/fixture';
 import { TickHandler } from '../../brain/server/tick';
 import type { PlayerTask } from '../../brain/server/perception/player-input';
-import { fromShoulderView, fromTrailView, trailInput } from './trail-view.mjs';
+import { fromShoulderView, fromTrailView, trailInput, withShoulderLanding } from './trail-view.mjs';
 import { registerStage } from './server.mjs';
 import { hostSettings, registerHostAccess } from './host-access.mjs';
 
@@ -64,6 +64,8 @@ const makePilot = () => {
       ? stepNav(state, view, tick, policy)
       : stepReact(state, view, scene.move, tick, policy);
     state = decision.state;
+    if (decision.decision && policy.navigation.rig === 'shoulder')
+      return withShoulderLanding(decision,view,policy.navigation.sidestepShift);
     return decision.decision ? decision : trailInput(decision);
   };
 };

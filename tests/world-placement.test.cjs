@@ -613,3 +613,69 @@ test('a buffered take may hold its cut only for an applied step still awaiting i
   assert.equal(reviewableFrame(500,535,24),false);
   assert.equal(reviewableFrame(500,536,24),true);
 });
+
+test('a diagonal obstruction reaches the stationary encounter and preserves the Brain-selected alternative landing',async()=>{
+  const {createPlacementController,inspectPlacement,compareEncounterStep,describeEffect}=await moduleUnderTest;
+  const {withShoulderLanding,fromShoulderView}=await import('../apps/world/rehearsal/trail-view.mjs');
+  const {characterInstruction}=await import('../apps/world/painted-door/native-follow.mjs');
+  // ep_01M7ZZ2XER0YNBZ50TYKBAMXM5, capture KKrhHB. Native send 210,
+  // read 289 during drift, settled read 364 arrived on frame 423.
+  const item={label:'rolling cart',box:[483,430,750,529],solid:true};
+  const sight=scene([item],{playerCount:1,playerMatch:true,feetVisible:true,feet:{left:[744,301],right:[763,347]},
+    ahead:[510,528],goal:[386,735],move:{intent:'step_right',avoiding:true,target:[670,600]}});
+  const effect=describeEffect('a rolling cart');
+  assert.equal(inspectPlacement({...sight,move:undefined},effect,[]).inPath,false,'the distant centre ray misses');
+  assert.deepEqual(inspectPlacement(sight,effect,[]),{visible:true,inPath:true,contact:false,soleThreat:false});
+  for(const invalid of [
+    {...sight,move:{...sight.move,avoiding:false}},
+    {...sight,move:{...sight.move,target:[680,320]}},
+    {...sight,move:{...sight.move,target:[420,980]}},
+    {...sight,obstacles:[item,{label:'stool',solid:true,box:[410,540,682,640]}]},
+    {...sight,feetVisible:false},
+    {...sight,playerCount:2},
+  ]) assert.equal(inspectPlacement(invalid,effect,[]).inPath,false);
+  assert.equal(inspectPlacement(sight,effect,[item]).inPath,false,'an existing object is not a fresh intervention');
+
+  let now=1;
+  const messages=[], r={props:[],fear:0,deadline:24000};
+  const q=createPlacementController(r,m=>messages.push(m),()=>{},()=>now);
+  q.add('cart','a rolling cart','guest',now);
+  q.observe({...sight,obstacles:[]},146,6000,now=8600,true);
+  q.acknowledged('cart',1,8750,210);
+  q.observe(sight,289,12042,now=14542,false);
+  assert.equal(q.canRespond(289),false);
+  q.observe(sight,364,15167,now=17625,true);
+  assert.equal(q.canRespond(364),true);
+  const veto={action:{key:'A',holdMs:600},decision:{source:'veto',intent:'step_right'}};
+  const view=fromShoulderView(sight,[800,250]);
+  assert.equal(q.characterCommand(veto,now),null,'original rightward destination cannot authorize the vetoed left step');
+  const choice=withShoulderLanding(veto,view,100);
+  assert.deepEqual(choice.geometryLanding,[754,224]);
+  assert.equal(withShoulderLanding(veto,{...view,feetEstimated:true},100).geometryLanding,undefined);
+  const command=q.characterCommand(choice,now);
+  assert.equal(command.key,'A');assert.deepEqual(command.landing.target,[754,224]);
+  assert.match(characterInstruction(command),/further left.*22%/);
+  assert.equal(messages.filter(m=>m.haunt).length,1,'respond instead of relocating an existing obstacle');
+  assert.equal(q.characterCommand(choice,now),null);
+  assert.equal(r.props[0].observedReaction,undefined);assert.equal(r.fear,0);
+
+  // In the actual, uncommanded end frame the bucket moved right and the player did not dodge it.
+  const displaced={...sight,obstacles:[{...item,box:[484,582,762,680]}],
+    feet:{left:[725,331],right:[732,385]},ahead:[545,502],move:{intent:'walk',avoiding:false,target:[632,532]}};
+  assert.equal(compareEncounterStep(sight,displaced,inspectPlacement(displaced,effect,[]),effect.matches,'A'),'unconfirmed');
+});
+
+test('late visibility on an invalid landing does not send an unverifiable last-second correction',async()=>{
+  const {createPlacementController}=await moduleUnderTest;
+  const sent=[], r={props:[],fear:0,deadline:24000};
+  const q=createPlacementController(r,m=>sent.push(m),()=>{});
+  q.add('cart','a cart','guest',1000);
+  q.observe(scene(),341,14208,16583,true);
+  q.acknowledged('cart',1,16625,399);
+  // sQMaOp: observed at frame 469, the inference returned on frame 528.
+  q.observe(scene([{label:'cart',solid:true,box:[453,548,825,693]}],
+    {feetVisible:true,playerCount:1,playerMatch:true,feet:{left:[743,317],right:[773,355]},ahead:[570,480],
+      move:{intent:'step_right',target:[700,520],avoiding:true}}),469,19542,22000,true);
+  assert.equal(sent.filter(m=>m.haunt).length,1);
+  assert.equal(r.props[0].placement,'off-path');assert.equal(r.fear,0);
+});

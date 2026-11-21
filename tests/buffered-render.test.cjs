@@ -64,6 +64,7 @@ test('one closed take encodes the complete native archive and timestamps only co
         await sleep(4);
         observed(4,shot([{label:'toppled chair',box:[490,425,620,475],solid:true}]));
         publish({navigationMoved:true,observed:4,key:'A',encounter:'idea-1',appliedFrame:5});
+        publish({navigationMoved:true,observed:7,key:'ArrowLeft',appliedFrame:10});
         await sleep(opts.durationMs+20);
         publish({reactionTailStarted:true});
         publish({stepReview:{encounter:'idea-1',key:'A',basis:4,appliedFrame:5,observed:9,reason:'post-step pixels'}});
@@ -75,7 +76,10 @@ test('one closed take encodes the complete native archive and timestamps only co
         await mkdir(run,{recursive:true});
         await Promise.all(pictures.map((p,i)=>writeFile(join(run,String(i+1).padStart(5,'0')+'.frame'),p)));
         await writeFile(join(run,'session.json'),JSON.stringify({episodeId:opts.episodeId,chapter:opts.chapter,
-          playMode:native.playMode,frames:pictures.length,fps:24,terminal:'completed'}));
+          playMode:native.playMode,frames:pictures.length,fps:24,terminal:'completed',events:[
+            {action:'Player applied A',observed:4,frame:4,appliedFrame:5},
+            {action:'Player applied ArrowLeft',observed:7,frame:7,appliedFrame:8},
+          ]}));
         native.onClose('completed');
       } catch(error) {calls.push(error); native.onClose('failed');}
     });
@@ -92,7 +96,10 @@ test('one closed take encodes the complete native archive and timestamps only co
   assert.deepEqual(result.evidence.observations.at(-1),{frame:9,playerCount:1,visible:true,ready:true,
     subjectTracked:true,subjectCompared:true,feetVisible:true,shoulderView:'rear-right',doorwayProgress:'unclear'});
   assert.equal(result.evidence.finalFear,1);
-  assert.deepEqual(result.evidence.moves,[{observed:4,key:'A'}]);
+  assert.deepEqual(result.evidence.moves,[
+    {observed:4,key:'A',appliedFrame:5,appliedOffsetMs:167},
+    {observed:7,key:'ArrowLeft'},
+  ],'the conservative watermark survives buffered pixels, and disagreement cannot prove a move');
   const p=result.evidence.picks[0];
   assert.equal(p.deliveredFrame,3);
   assert.equal(p.deliveredOffsetMs,83);
