@@ -4,6 +4,8 @@
 
 A game for the Gemini 4 NYC Hackathon. Genie 4 builds a world from a photo of a real hallway. Gemini steers toward the exit. The audience plays the poltergeist and chooses what happens along the way.
 
+[Open the four-slide demo presentation](docs/poltergeist-demo.pdf) · [Join the haunting](https://poltergeist-world.vercel.app/haunt)
+
 Start with the [feature map](FEATURES.md) and [lane assignments](KICKOFF.md#team-assignments). Share blockers and ready fixtures in the [lane handoffs issue](https://github.com/HydroAcrid/poltergeist/issues/2). The [review workflow kit](docs/workflows/README.md) is available for anyone who wants to try Kevin’s checks in Claude Code.
 
 ## Play the third-person prototype
