@@ -35,6 +35,25 @@ export async function createScene(canvas) {
     grade(1, now);
     return true;
   }
+  let maskUpdated=-Infinity;
+  function composeNative(img, now) {
+    if (!img.matches?.('img.decode-source') || !canvas.closest('.viewport')) return followLive(img,null,now);
+    const first=!canvas.classList.contains('stream-mask');
+    canvas.classList.add('stream-mask');
+    if (first || now-maskUpdated>=700) {
+      // The browser paints arriving MJPEG frames directly. This white multiply
+      // layer carries the hallway lighting without redrawing the JPEG every RAF.
+      screen.fillStyle='#fff';screen.fillRect(0,0,W,H);
+      grade(1,now,first,img);maskUpdated=now;
+    }
+    return true;
+  }
+  function freezeLive(img, now) {
+    if (!canvas.classList.contains('stream-mask')) return;
+    canvas.classList.remove('stream-mask');
+    if (img?.naturalWidth) followLive(img,null,now);
+    else { screen.fillStyle='#020405';screen.fillRect(0,0,W,H); }
+  }
   let source = await image('/rehearsal/source'),
     reduced = matchMedia('(prefers-reduced-motion: reduce)');
   function aislePoint(img, expected) {
@@ -153,8 +172,9 @@ export async function createScene(canvas) {
       return false;
     }
     if(!img?.naturalWidth)return hasShownWorld;
-    followLive(img,round,now);
     const progress=clamp((now-revealedAt)/(still?420:1450));
+    if (progress===1) return composeNative(img,now);
+    followLive(img,round,now);
     veil(screen,'reveal',progress,elapsed,still);
     hasShownWorld ||= progress>0;
     return hasShownWorld;
@@ -352,7 +372,7 @@ export async function createScene(canvas) {
     grade(amount, now, forceGame);
   }
   return {
-    paint,drawLive:followLive,presentLive,
+    paint,drawLive:followLive,presentLive,freezeLive,
     async setPlate(key, aisle) {
       if (!key) { preparedHall=null; return; }
       const plate=await image('/rehearsal/plate?key='+encodeURIComponent(key));

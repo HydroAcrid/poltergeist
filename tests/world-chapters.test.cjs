@@ -58,7 +58,9 @@ async function stage(t,timing={matchMs:8000,cutMs:3000,limitMs:6000},chapters=tr
   async function feed(query) {
     let status=200;
     const stream=Object.assign(new EventEmitter(),{frames:[],closed:false,writableLength:0,
-      writeHead(){},write(chunk){if (Buffer.isBuffer(chunk)) this.frames.push(chunk);},
+      writeHead(){},write(chunk,done){
+        this.frames.push(chunk.subarray(chunk.indexOf('\r\n\r\n')+4,-2));done?.();return true;
+      },
       end(){this.closed=true;this.emit('close');}});
     const reply={raw:stream,hijack(){},code(n){status=n;return this;},send(){}};
     await routes.get('/rehearsal/video')({query},reply);

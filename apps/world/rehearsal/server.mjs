@@ -1,3 +1,4 @@
+import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -154,15 +155,19 @@ export async function registerStage(
   let activeTicket=null, continuation=null, nextChapterReady=false, chapterStartedAt=0, closing=false;
   const viewers = new Map();
   const liveMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
-  function sendFrame(stream, bytes) {
-    if (stream.destroyed || stream.writableLength > bytes.length * 2) return;
-    stream.write(
-      '--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' +
-        bytes.length +
-        '\r\n\r\n',
-    );
-    stream.write(bytes);
-    stream.write('\r\n');
+  let videoChapter='', videoSequence=0;
+  const playout=createPlayout(packet=>{
+    liveFrame=packet;
+    for (const viewer of viewers.values()) viewer.sink.offer(packet);
+  });
+  function nextVideoChapter(r) {
+    const key=r.id+'/'+(r.chapter || 1);
+    if (key===videoChapter) return;
+    videoChapter=key;videoSequence=0;liveFrame=null;playout.reset();
+    for (const [stream,viewer] of viewers) if (viewer.scope &&
+        (viewer.scope.id!==r.id || viewer.scope.chapter!==(r.chapter || 1))) {
+      viewer.sink.close();stream.end();viewers.delete(stream);
+    }
   }
   app.get('/rehearsal/video', async (req, reply) => {
     const hasChapter=req.query?.chapter!=null;
@@ -175,11 +180,14 @@ export async function registerStage(
     const res = reply.raw;
     res.writeHead(200, {
       'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'no-store, no-transform',
+      'X-Accel-Buffering': 'no',
     });
-    viewers.set(res,scoped ? {id:round.id,chapter:round.chapter || 1} : null);
-    if (liveFrame) sendFrame(res, liveFrame);
-    res.once('close', () => viewers.delete(res));
+    res.flushHeaders?.();
+    const sink=frameSink((packet,done)=>res.write(packet,done));
+    viewers.set(res,{sink,scope:scoped ? {id:round.id,chapter:round.chapter || 1} : null});
+    if (liveFrame) sink.offer(liveFrame);
+    res.once('close', () => {sink.close();viewers.delete(res);});
   });
   const unsubscribe = bus.subscribe('*', (e) => {
     const h = e.payload;
@@ -263,8 +271,9 @@ export async function registerStage(
     placement?.finish();
     if (r.chapters) {
       liveFrame=null;
-      for (const [stream,scope] of viewers) if (!scope || scope.id===r.id) {
-        stream.end();
+      playout.reset();
+      for (const [stream,viewer] of viewers) if (!viewer.scope || viewer.scope.id===r.id) {
+        viewer.sink.close();stream.end();
         viewers.delete(stream);
       }
     }
@@ -372,7 +381,6 @@ export async function registerStage(
               }
               if (m.frame) {
                 ticket.firstFrame=true;
-                liveFrame = Buffer.from(m.frame, 'base64');
                 if (r.phase === 'preparing' || r.phase==='handoff') {
                   const first=!r.startedAt;
                   r.phase = 'playing';
@@ -393,10 +401,9 @@ export async function registerStage(
                     publishStart(r,r.startedAt,duration);
                   }
                 }
-                for (const [stream,scope] of viewers) {
-                  if (scope && (scope.id!==r.id || scope.chapter!==(r.chapter || 1))) {stream.end();viewers.delete(stream);}
-                  else sendFrame(stream,liveFrame);
-                }
+                nextVideoChapter(r);
+                videoSequence=m.frameNumber || videoSequence+1;
+                playout.push(jpegPart(Buffer.from(m.frame,'base64'),videoSequence),videoSequence);
               }
               if (m.expiresAt && !r.chapters) {
                 r.providerDeadline = m.expiresAt;
@@ -592,7 +599,8 @@ export async function registerStage(
     clearInterval(timer);
     unsubscribe();
     live?.stop();
-    for (const stream of viewers.keys()) stream.end();
+    playout.reset();
+    for (const [stream,viewer] of viewers) {viewer.sink.close();stream.end();}
   });
   function lobbyState() {
     const plate = plateStatus();
@@ -674,6 +682,7 @@ export async function registerStage(
       seed = candidate;
     }
     number++;
+    playout.reset();
     liveFrame = null;
     pendingWinner = null;
     continuation=null;

@@ -1,3 +1,4 @@
+import { frameSink } from '../rehearsal/video-stream.mjs';
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { checkpointEligible } from '../rehearsal/chapters.mjs';
 import { chapterSeed } from './chapter-seed.mjs';
@@ -108,6 +109,10 @@ async function capture() {
   let ending = false;
   const abort = new AbortController();
   const stop = () => abort.abort(new Error('Capture stopped.'));
+  const previewFrames=frameSink((message,done)=>{
+    if (!process.connected) {done(new Error('World host disconnected'));return;}
+    process.send(message,error=>{done(error);if(error) stop();});
+  },6);
   const stopDuringSetup=command=>{if (command==='end') stop();};
   if (values.round) process.on('message',stopDuringSetup);
   process.once('SIGTERM', stop);
@@ -358,8 +363,8 @@ async function capture() {
             finish(chapterNumber ? undefined : 'audience').catch(error => abort.abort(error));
           }, durationMs);
         }
-        if ((values.drive || values.round) && process.connected && (log.frames - 1) % (stagePilot ? 2 : 4) === 0) {
-          process.send({ frame: delta.data }, error => { if (error) stop(); });
+        if ((values.drive || values.round) && process.connected && (stagePilot || (log.frames - 1) % 4 === 0)) {
+          previewFrames.offer({frame:delta.data,frameNumber:log.frames});
         }
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
         if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
@@ -427,6 +432,7 @@ async function capture() {
   } finally {
     ending = true;
     abort.abort();
+    previewFrames.close();
     clearTimeout(gameClock);
     clearTimeout(releaseKey);
     clearTimeout(lookRelease);

@@ -41,8 +41,8 @@ export function createHallwayLighting(ctx, width, height) {
   corners.addColorStop(1, 'rgba(8,15,30,0.36)');
   let strength = 0.22, lastMetered = -Infinity, previousTime = 0;
 
-  function measure() {
-    meter.drawImage(ctx.canvas, 0, 0, sample.width, sample.height);
+  function measure(source) {
+    meter.drawImage(source, 0, 0, sample.width, sample.height);
     const pixels = meter.getImageData(0, 0, sample.width, sample.height).data;
     const levels = [];
     for (let i=0; i<pixels.length; i+=4) {
@@ -52,10 +52,10 @@ export function createHallwayLighting(ctx, width, height) {
     return dimmingFor(levels[Math.floor(levels.length*.60)]);
   }
   let target = strength;
-  return function grade(amount, now, reset = false) {
+  return function grade(amount, now, reset = false, source = ctx.canvas) {
     if (amount <= 0) return;
     if (reset || now < lastMetered || now-lastMetered > 650) {
-      target = measure();
+      target = measure(source);
       if (reset || !Number.isFinite(lastMetered)) strength = target;
       lastMetered = now;
     }

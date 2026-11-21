@@ -27,7 +27,7 @@ let state,
 let nextHeadcountAt = 0;
 let lastQueue = '',
   previousCaption = '';
-let refreshTimer, syncing, refreshing = false, running = true, paintId = 0, paintedStill = '';
+let refreshTimer, hudTimer, syncing, refreshing = false, running = true, paintId = 0, paintedStill = '';
 let testId, receipt, revisionOf, testError = '', submitting = false, nextReceiptAt = 0;
 if (host) {
   try { testId = sessionStorage.getItem('pg_world_test_idea'); } catch {}
@@ -231,6 +231,7 @@ async function updateState() {
   canvas.classList.toggle('native-frame', !!r?.live);
   const stream = r?.live && r.phase === 'playing' ? streamKey(r) : '';
   if (stream !== liveId) {
+    scene.freezeLive(liveImage,Date.now()+off);
     liveImage.removeAttribute('src');
     liveId = '';
     if (stream && running && !document.hidden) {
@@ -271,6 +272,7 @@ async function refresh() {
 }
 function streamKey(round) { return round.id + '/' + (round.chapter || 1); }
 function schedulePaint() {
+  clearTimeout(hudTimer);
   if (!paintId && running && !document.hidden) paintId = requestAnimationFrame(paint);
 }
 function paint() {
@@ -391,7 +393,10 @@ function paint() {
       set('fear', fear + ' / 3');
     }
   }
-  if (r && r.phase !== 'ended') schedulePaint();
+  if (r && r.phase !== 'ended') {
+    if (canvas.classList.contains('stream-mask')) hudTimer=setTimeout(schedulePaint,100);
+    else schedulePaint();
+  }
 }
 async function run(fn) {
   if (loading) return;
@@ -491,9 +496,10 @@ el('shutter').onclick = () =>
   });
 function suspend() {
   clearTimeout(refreshTimer);
+  clearTimeout(hudTimer);
   cancelAnimationFrame(paintId);
   paintId = 0;
-  if (liveId) { liveImage.removeAttribute('src'); liveId = ''; }
+  if (liveId) { scene.freezeLive(liveImage,Date.now()+off);liveImage.removeAttribute('src'); liveId = ''; }
   if (dialog.open) dialog.close();
   release();
 }
