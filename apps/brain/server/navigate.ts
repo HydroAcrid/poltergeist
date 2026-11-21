@@ -40,6 +40,7 @@ export interface Block {
  */
 export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block | undefined {
   const n = policy.navigation;
+  const pathHalfWidth = n.rig === "shoulder" ? n.shoulder.pathHalfWidth : n.pathHalfWidth;
   const [fy, fx] = feetMidpoint(scene);
   const span = fy - to[0];
   if (span <= 0) return undefined;
@@ -51,7 +52,7 @@ export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block
   for (const { o, floor } of ahead) {
     const f = (fy - floor[0]) / span; // 0 at the feet, 1 at `to`
     const pathX = fx + f * (to[1] - fx);
-    const halfPath = n.pathHalfWidth * (1 - f * (1 - n.farWidthRatio));
+    const halfPath = pathHalfWidth * (1 - f * (1 - n.farWidthRatio));
     const halfWidth = o.box ? (o.box[3] - o.box[1]) / 2 : n.defaultObstacleHalfWidth;
     const offset = floor[1] - pathX;
     if (Math.abs(offset) < halfPath + halfWidth) return { point: o.point, offset, halfWidth, along: f };
@@ -136,19 +137,22 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
     return out(NOOP, "search", "exit threshold not in view");
   }
 
-  // Arrival: the feet themselves reach the threshold (seeing the sign is not enough).
+  // Arrival: the feet themselves reach the threshold (seeing the sign is not
+  // enough). With the shoulder rig the boots are hidden, so the threshold must
+  // reach the foreground under the robot instead; World confirms the crossing.
   const mid = feetMidpoint(scene);
   const gap = Math.round(Math.hypot(mid[0] - goal[0], mid[1] - goal[1]));
-  if (gap <= n.arriveRadius) {
+  const atThreshold = n.rig === "shoulder" ? goal[0] >= n.shoulder.arriveRow : gap <= n.arriveRadius;
+  if (atThreshold) {
     s.successTicks += 1;
-    if (s.successTicks >= policy.controller.successTicks) {
-      return out(NOOP, "success", `feet at exit threshold (gap ${gap})`, true);
-    }
-    return out(NOOP, "success", `feet at threshold (gap ${gap}), confirming`);
+    const where = n.rig === "shoulder" ? "exit threshold underfoot" : `feet at exit threshold (gap ${gap})`;
+    if (s.successTicks >= policy.controller.successTicks) return out(NOOP, "success", where, true);
+    return out(NOOP, "success", `${where}, confirming`);
   }
   s.successTicks = 0;
 
-  const facing = facingPoint(mid, n.useForwardPoint ? scene.forward : undefined, goal, n.headingX);
+  const headingX = n.rig === "shoulder" ? n.shoulder.headingX : n.headingX;
+  const facing = facingPoint(mid, n.useForwardPoint ? scene.forward : undefined, goal, headingX);
   const e = bearing(mid, facing, goal);
   const forward = blockingObstacle(scene, facing, policy);
   const toGoal = blockingObstacle(scene, goal, policy);
