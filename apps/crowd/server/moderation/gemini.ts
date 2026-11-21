@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HauntTag } from "@poltergeist/contracts/common.js";
 import type { Moderated } from "@poltergeist/contracts/haunt.js";
-import { alternativeFor, blockedReason, RulesOnlyModeration } from "./rules.js";
+import { alternativeFor, blockedReason, normalizeInput, RulesOnlyModeration } from "./rules.js";
 import type { ModerationAdapter } from "./types.js";
 
 const reasons = {
@@ -42,7 +42,7 @@ export class GeminiModeration implements ModerationAdapter {
   nickname(value: string) { return this.rules.nickname(value); }
 
   async moderate(input: string): Promise<Moderated> {
-    const idea = input.normalize("NFKC").replace(/\s+/g, " ").trim();
+    const idea = normalizeInput(input);
     const reject = (reason: string, suggestion = alternativeFor(idea)): Moderated =>
       ({ safe: false, text: "", tags: [], reason, suggestion, model: this.name });
     const blocked = blockedReason(idea);
