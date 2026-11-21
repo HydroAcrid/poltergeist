@@ -15,15 +15,19 @@ const scene = {
   rightFloorVisible:true,ahead:[718,553],pose:'upright',threat:'ordinary',obstacles:[],
 };
 
-async function stage(t,timing={matchMs:8000,cutMs:3000,limitMs:6000},chapters=true) {
+async function stage(t,timing={matchMs:8000,cutMs:3000,limitMs:6000},chapters=true,options={}) {
   t.mock.timers.enable({apis:['Date','setInterval'],now:1000000});
   const {registerStage}=await import('../apps/world/rehearsal/server.mjs');
   const routes=new Map(),events=[],providers=[];
-  let dispatch, pilots=0;
+  let dispatch, pilots=0, reviews=0;
   const app={get:(p,h)=>routes.set(p,h),post:(p,h)=>routes.set(p,h),addContentTypeParser(){},
     addHook:(name,fn)=>{if(name==='onClose') t.after(fn);}};
   const current=await registerStage(app,{root:resolve(__dirname,'../apps/world/rehearsal'),captureDir:__dirname,
-    chapterTiming:timing,reviewSeed:async()=>({passes:true}),newId:()=>'one-match',
+    chapterTiming:timing,reviewSeed:async()=>{
+      reviews++;
+      if (options.reviewMs) t.mock.timers.tick(options.reviewMs);
+      return {passes:true};
+    },newId:()=>'one-match',
     makePilot:()=>{pilots++;return ()=>({action:{key:'W',holdMs:100},rationale:'Advancing'});},
     bus:{publish(type,lane,data){events.push({type,lane,...data});},subscribe(_,cb){dispatch=cb;return()=>{};}},
     launchLive(args) {
@@ -39,9 +43,13 @@ async function stage(t,timing={matchMs:8000,cutMs:3000,limitMs:6000},chapters=tr
     return {status,data};
   }
   await call('reset-photo');
-  const started=await call('start',{mode:'genie',chapters,seed:image(0).toString('base64')});
-  assert.equal(started.status,200);
-  t.mock.timers.tick(150);
+  if (options.lobbyMs) t.mock.timers.tick(options.lobbyMs);
+  const clickedAt=Date.now();
+  if (options.autoStart!==false) {
+    const started=await call('start',{mode:'genie',chapters,seed:image(0).toString('base64'),showMinutes:options.showMinutes});
+    assert.equal(started.status,200);
+    t.mock.timers.tick(150);
+  }
   const frame=(provider,mark)=>provider.onMessage({frame:image(mark).toString('base64')});
   const read=(provider,n,mark=1,patch={})=>provider.onMessage({
     scene:{...scene,...patch},observed:n,observedAt:Date.now(),trackingPlacementReady:true,
@@ -56,7 +64,7 @@ async function stage(t,timing={matchMs:8000,cutMs:3000,limitMs:6000},chapters=tr
     await routes.get('/rehearsal/video')({query},reply);
     return {status,stream};
   }
-  return {current,providers,events,call,feed,frame,read,pilots:()=>pilots,
+  return {current,providers,events,call,feed,frame,read,clickedAt,reviews:()=>reviews,pilots:()=>pilots,
     submit(id){dispatch({type:'haunt.dispatch',payload:{episodeId:current().id,hauntId:id,text:'A small rolling ball'}});},
     tick:ms=>t.mock.timers.tick(ms)};
 }
@@ -223,4 +231,126 @@ test('ten active minutes span several independently closed worlds with exactly o
   assert.equal(ends.length,1);
   assert.equal(ends[0].durationMs,600000);
   provider.close('completed');
+});
+
+
+test('five-minute show starts at the host request, counting seed review and generation but excluding lobby time',async t=>{
+  const h=await stage(t,undefined,true,{showMinutes:5,lobbyMs:30000,reviewMs:2000});
+  const r=h.current(), cutoff=h.clickedAt+300000;
+  assert.equal(r.showStartedAt,h.clickedAt);
+  assert.equal(r.showDeadline,cutoff);
+  assert.equal(r.durationMs,300000);
+  assert.equal(r.clockMode,'wall');
+  assert.equal(r.showMinutes,5);
+  assert.equal(r.deadline,cutoff);
+  assert.equal(r.phase,'preparing');
+  assert.equal(h.events.length,0);
+  h.tick(2400);
+  const p=h.providers[0];
+  h.frame(p,1);
+  assert.equal(r.remainingMs,cutoff-Date.now());
+  assert.equal(r.startedAt,Date.now());
+  assert.equal(h.events[0].startedAt+h.events[0].maxDurationMs,cutoff);
+  assert.equal(r.deadline,cutoff);
+  h.tick(cutoff-Date.now()+30);
+  assert.equal(r.finishedAt,cutoff);
+  assert.equal(r.remainingMs,0);
+  assert.equal(r.reason,'time');
+  assert.equal(r.winner,'audience');
+  p.close('completed');
+  h.frame(p,8);
+  assert.deepEqual(h.events.filter(e=>e.type==='episode.ended').map(e=>e.durationMs),[cutoff-r.startedAt]);
+});
+
+for (const at of ['draining','opening next','playing next']) {
+  test('five-minute wall deadline wins once while '+at+' with no stale chapter restart',async t=>{
+    const h=await stage(t,{matchMs:600000,cutMs:290000,limitMs:295000},true,{showMinutes:5});
+    const r=h.current(),a=h.providers[0],cutoff=r.showDeadline;
+    h.frame(a,1);
+    h.tick(290000);
+    h.read(a,71);
+    h.tick(150);
+    assert.equal(r.phase,'handoff');
+    assert.equal(r.deadline,cutoff,'the five-minute blackout clock keeps counting');
+    const before=r.remainingMs;
+    h.tick(1200);
+    assert.equal(r.remainingMs,before-1200);
+    if (at!=='draining') {
+      a.close('completed');
+      h.tick(150);
+      assert.equal(h.providers.length,2);
+      if (at==='playing next') {
+        h.frame(h.providers[1],2);
+        assert.equal(r.deadline,cutoff);
+      }
+    }
+    h.tick(cutoff-Date.now());
+    assert.equal(r.phase,'ended');
+    assert.equal(r.finishedAt,cutoff);
+    assert.equal(r.remainingMs,0);
+    assert.equal(r.winner,'audience');
+    const count=at==='draining'?1:2;
+    for(const p of h.providers) {
+      p.close('completed');
+      p.onMessage({winner:'robot',frame:image(1).toString('base64')});
+    }
+    h.tick(3000);
+    assert.equal(h.providers.length,count);
+    assert.equal(h.events.filter(e=>e.type==='episode.started').length,1);
+    assert.equal(h.events.filter(e=>e.type==='episode.ended').length,1);
+  });
+}
+
+test('no native play before the wall deadline cannot create a win or publish a scored episode',async t=>{
+  const h=await stage(t,undefined,true,{showMinutes:5});
+  const p=h.providers[0],r=h.current();
+  h.tick(r.showDeadline-Date.now());
+  assert.equal(r.phase,'ended');
+  assert.equal(r.reason,'interrupted');
+  assert.equal(r.winner,null);
+  assert.equal(r.remainingMs,0);
+  assert.equal(r.finishedAt,r.showDeadline);
+  assert.equal(p.stops,1);
+  h.frame(p,1);
+  p.close('completed');
+  assert.equal(h.events.length,0);
+});
+
+test('invalid show length or incompatible mode never requests seed review, provider use or a round id',async t=>{
+  const h=await stage(t,undefined,true,{autoStart:false});
+  const body={mode:'genie',chapters:true,seed:image(0).toString('base64')};
+  for (const bad of [0,4,6,15,'5',null,{},false])
+    assert.equal((await h.call('start',{...body,showMinutes:bad})).status,400);
+  for (const change of [{mode:'offline'},{chapters:false}])
+    assert.equal((await h.call('start',{...body,...change,showMinutes:5})).status,400);
+  assert.equal(h.reviews(),0);
+  assert.equal(h.current(),null);
+  assert.equal(h.providers.length,0);
+  assert.equal((await h.call('start',{...body,showMinutes:10})).status,200);
+  assert.equal(h.current().showMinutes,10);
+  assert.equal(h.current().clockMode,'active');
+});
+
+test('seed review that uses the entire show window never opens a provider afterwards',async t=>{
+  const h=await stage(t,undefined,true,{autoStart:false,reviewMs:300000});
+  const result=await h.call('start',{mode:'genie',chapters:true,seed:image(0).toString('base64'),showMinutes:5});
+  assert.equal(result.status,408);
+  assert.equal(h.current(),null);
+  h.tick(150);
+  assert.equal(h.providers.length,0);
+  assert.equal(h.events.length,0);
+});
+
+test('a provider close arriving after the wall deadline cannot schedule another chapter before the next server tick',async t=>{
+  const h=await stage(t,{matchMs:600000,cutMs:290000,limitMs:295000},true,{showMinutes:5});
+  const a=h.providers[0],r=h.current();
+  h.frame(a,1);h.tick(290000);h.read(a,71);h.tick(150);
+  assert.equal(r.phase,'handoff');
+  t.mock.timers.setTime(r.showDeadline+10);
+  a.close('completed');
+  assert.equal(r.reason,'time');
+  assert.equal(r.finishedAt,r.showDeadline);
+  h.tick(150);
+  assert.equal(h.providers.length,1);
+  assert.equal(h.events.filter(e=>e.type==='episode.ended').length,1);
 });

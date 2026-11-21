@@ -1,6 +1,7 @@
 import { audienceCanSeeApproach } from './seed-review.mjs';
 
 export const matchDurationMs = 600_000;
+export const fiveMinuteShowMs = 300_000;
 // Cut on the next verified quiet view, with space to finish a current encounter.
 export const chapterCutMs = 55_000;
 export const chapterLimitMs = 90_000;

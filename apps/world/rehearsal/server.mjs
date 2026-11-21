@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
 import { reviewPlayerSeed } from './seed-review.mjs';
 import { canCrossThreshold, observedCrossing } from './crossing.mjs';
-import { checkpointEligible,validCheckpoint,matchDurationMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
+import { checkpointEligible,validCheckpoint,matchDurationMs,fiveMinuteShowMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
 import { createPlacementController } from './placement.mjs';
@@ -239,7 +239,7 @@ export async function registerStage(
             hauntId: p.id, at: p.reactedAt, kind: p.observedReaction,
           })),
         },
-        durationMs: r.chapters ? r.durationMs-r.remainingMs : r.finishedAt-r.startedAt,
+        durationMs: r.chapters && r.clockMode!=='wall' ? r.durationMs-r.remainingMs : r.finishedAt-r.startedAt,
         reason:
           { time: 'timeout', exit: 'success_claim', fear: 'operator_stop' }[
             r.reason
@@ -255,8 +255,9 @@ export async function registerStage(
     const reason = winner === 'robot' ? 'exit'
       : winner === 'audience' ? (r.fear >= 3 ? 'fear' : 'time') : 'interrupted';
     const now = Date.now();
-    const endedAt = reason === 'time' ? Math.max(r.startedAt, Math.min(r.deadline, now)) : now;
-    if (r.chapters && r.phase==='playing') r.remainingMs=reason==='time' ? 0 : Math.max(0,r.deadline-now);
+    const endedAt = r.clockMode==='wall' ? Math.min(r.showDeadline,now)
+      : reason==='time' ? Math.max(r.startedAt,Math.min(r.deadline,now)) : now;
+    if (r.chapters && (r.phase==='playing' || r.clockMode==='wall')) r.remainingMs=reason==='time' ? 0 : Math.max(0,r.deadline-now);
     if (r.phase==='handoff') Object.assign(r,{phase:'ended',winner,reason,finishedAt:endedAt,action:'stopped'});
     else finish(r, winner, reason, endedAt);
     placement?.finish();
@@ -280,6 +281,24 @@ export async function registerStage(
     else Object.assign(r,{phase:'ended',reason:'interrupted',finishedAt:Date.now(),action:'stopped'});
     live?.stop();
   }
+  function showExpired(r,now) {
+    if (r.clockMode!=='wall' || r.phase==='ended') return false;
+    r.remainingMs=Math.max(0,r.showDeadline-now);
+    if (r.remainingMs>0) return false;
+    nextChapterReady=false;
+    continuation=null;
+    if (!r.startedAt) {
+      interrupt(r,'The show ended before the hallway opened.');
+      r.finishedAt=r.showDeadline;
+    } else {
+      const winner=pendingWinner || 'audience';
+      const playing=r.phase==='playing';
+      endLiveGame(r,winner);
+      if (playing) live?.send({winner});
+      else if (activeTicket && !activeTicket.rotating) live?.stop();
+    }
+    return true;
+  }
   function checkChapter(r,now,atLimit=false) {
     r.remainingMs=Math.max(0,r.deadline-now);
     if (!r.remainingMs) {
@@ -302,7 +321,7 @@ export async function registerStage(
       activeTicket.rotating=true;
       activeTicket.closeBy=now+35000;
       r.phase='handoff';
-      r.deadline=null;
+      r.deadline=r.clockMode==='wall' ? r.showDeadline : null;
       r.action='Waiting for the next hallway';
       r.intent=null;
       live.stop();
@@ -319,6 +338,7 @@ export async function registerStage(
       now = Date.now();
     if (!r || r.phase === 'ended') return;
     if (r.live) {
+      if (showExpired(r,now)) return;
       if (r.chapters && ((activeTicket?.rotating && now>=activeTicket.closeBy) ||
           (activeTicket && !activeTicket.firstFrame && now>=activeTicket.openBy))) {
         interrupt(r,'The hallway connection did not complete in time.');
@@ -327,7 +347,7 @@ export async function registerStage(
       if (r.chapters && r.phase==='playing' && checkChapter(r,now)) return;
       if (r.phase === 'playing') placement?.tick(now);
       const resuming=r.chapters && r.phase==='handoff' && nextChapterReady && !activeTicket;
-      if (resuming || (r.phase === 'opening' && now >= r.deadline)) {
+      if (resuming || (r.phase === 'opening' && now >= (r.openingEndsAt ?? r.deadline))) {
         nextChapterReady=false;
         if (!resuming) r.phase = 'preparing';
         const ticket={chapter:resuming ? r.chapter+1 : 1,rotating:false,openBy:now+35000,firstFrame:false};
@@ -339,7 +359,8 @@ export async function registerStage(
             seed:resuming ? continuation.bytes : seed,
             ...(r.chapters ? {chapter:ticket.chapter,chapterMs:chapterTiming.limitMs} : {}),
             onMessage: (m) => {
-              if (closing || ticket!==activeTicket || ticket.rotating || r.phase === 'ended' || r !== round) return;
+              if (closing || ticket!==activeTicket || r.phase==='ended' || r!==round) return;
+              if (showExpired(r,Date.now()) || ticket.rotating) return;
               if (m.chapterExpired && r.chapters && r.phase==='playing') {
                 checkChapter(r,Date.now(),true);
                 return;
@@ -359,7 +380,7 @@ export async function registerStage(
                   if (first) r.startedAt=frameAt;
                   if (r.chapters) {
                     r.chapter=ticket.chapter;
-                    r.deadline=frameAt+r.remainingMs;
+                    r.deadline=r.clockMode==='wall' ? r.showDeadline : frameAt+r.remainingMs;
                     chapterStartedAt=frameAt;
                     continuation=null;
                     crossing={};
@@ -367,7 +388,10 @@ export async function registerStage(
                       trackedDoorwayProgress:null,trackedObstacles:[],intent:null,brainDecision:null,action:'Exploring the hallway'});
                     if (!first) placement.resumeChapter();
                   } else r.deadline=r.providerDeadline || r.startedAt+liveMs;
-                  if (first) publishStart(r,r.startedAt,r.chapters ? r.durationMs : liveMs);
+                  if (first) {
+                    const duration=r.clockMode==='wall' ? r.remainingMs : r.chapters ? r.durationMs : liveMs;
+                    publishStart(r,r.startedAt,duration);
+                  }
                 }
                 for (const [stream,scope] of viewers) {
                   if (scope && (scope.id!==r.id || scope.chapter!==(r.chapter || 1))) {stream.end();viewers.delete(stream);}
@@ -450,6 +474,7 @@ export async function registerStage(
               if (ticket!==activeTicket) return;
               activeTicket=null;
               live = null;
+              if (!closing && r===round) showExpired(r,Date.now());
               if (!closing && r===round && r.phase==='handoff' && ticket.rotating && terminal==='completed') {
                 r.providerClosedAt=Date.now();
                 nextChapterReady=true;
@@ -602,6 +627,10 @@ export async function registerStage(
   }));
   app.post('/rehearsal/start', async (req, reply) => {
     if (req.headers['x-show-control'] !== '1') return reply.code(403).send();
+    const requestedAt=Date.now();
+    const showMinutes=req.body?.showMinutes;
+    if (showMinutes!==undefined && (![5,10].includes(showMinutes) || req.body?.mode!=='genie' || req.body?.chapters!==true))
+      return reply.code(400).send({error:'Choose a 5 or 10 minute chaptered Genie show.'});
     if (checkingPlayer) return reply.code(409).send({ error: 'The opening shot is being checked.' });
     if (round && round.phase !== 'ended')
       return reply.code(409).send({ error: 'A round is already open.' });
@@ -640,6 +669,8 @@ export async function registerStage(
           checkingPlayer = false;
         }
       }
+      if (showMinutes===5 && Date.now()>=requestedAt+fiveMinuteShowMs)
+        return reply.code(408).send({error:'The five-minute show window ended before the opening was ready.'});
       seed = candidate;
     }
     number++;
@@ -656,7 +687,19 @@ export async function registerStage(
       round.deadline = Date.now();
     }
     round.live = paid;
-    if (paid && req.body?.chapters===true) Object.assign(round,{chapters:true,chapter:1,durationMs:chapterTiming.matchMs,remainingMs:chapterTiming.matchMs});
+    if (paid && req.body?.chapters===true) {
+      const wall=showMinutes===5;
+      const duration=wall ? fiveMinuteShowMs : chapterTiming.matchMs;
+      Object.assign(round,{chapters:true,chapter:1,showMinutes:wall ? 5 : 10,clockMode:wall ? 'wall' : 'active',
+        durationMs:duration,remainingMs:duration});
+      if (wall) {
+        round.openingEndsAt=round.deadline;
+        round.showStartedAt=requestedAt;
+        round.showDeadline=requestedAt+duration;
+        round.deadline=round.showDeadline;
+        round.remainingMs=Math.max(0,round.showDeadline-Date.now());
+      }
+    }
     pilot = paid ? makePilot() : null;
     if (paid) {
       const r=round;
