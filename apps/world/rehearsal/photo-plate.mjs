@@ -51,7 +51,7 @@ export function venueVisionModels(captureDir) {
     parseEnv(readFileSync(process.env.PG_WORLD_ENV_FILE || resolve(captureDir, '../../../.env'), 'utf8'))
       .GEMINI_API_KEY;
   if (!key) throw Error('The room generator is unavailable.');
-  return new sdk.GoogleGenAI({ apiKey: key }).models;
+  return new sdk.GoogleGenAI({ apiKey: key, apiVersion: 'v1beta' }).models;
 }
 
 export async function generatePhotoPlate({photo, captureDir}) {
