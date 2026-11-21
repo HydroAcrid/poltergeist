@@ -2,10 +2,10 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { resolve } = require('node:path');
 
-async function liveStage(t) {
+async function liveStage(t, choice = { action: { key: 'NOOP' } }) {
   t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 1_000_000 });
   const { registerStage } = await import('../apps/world/rehearsal/server.mjs');
-  const routes = new Map(), events = [], launches = [];
+  const routes = new Map(), events = [], launches = [], commands = [];
   const app = {
     get(path, handler) { routes.set(path, handler); },
     post(path, handler) { routes.set(path, handler); },
@@ -19,14 +19,14 @@ async function liveStage(t) {
     root, captureDir: root,
     reviewSeed: async () => ({passes: true}),
     newId: () => 'ep_' + launches.length,
-    makePilot: () => () => ({ action: { key: 'NOOP' } }),
+    makePilot: () => () => choice,
     bus: {
       publish(type, _lane, payload) { events.push({ type, ...payload }); },
       subscribe() { return () => {}; },
     },
     launchLive(callbacks) {
       launches.push(callbacks);
-      return { send() {}, stop() {} };
+      return { send(command) { commands.push(command); }, stop() {} };
     },
   });
   async function call(path, body) {
@@ -41,7 +41,7 @@ async function liveStage(t) {
   t.mock.timers.tick(150);
   assert.equal(launches.length, 1);
   return {
-    events, live: launches[0], start, call,
+    events, commands, live: launches[0], start, call,
     state: async () => (await call('state')).data,
     ended: () => events.filter(e => e.type === 'episode.ended'),
   };
@@ -125,4 +125,17 @@ test('a confirmed escape is scored once even if capture cleanup later fails', as
   assert.equal(result.round.providerClosedAt, Date.now());
   assert.equal(room.ended().length, 1);
   assert.equal(room.ended()[0].reason, 'success_claim');
+});
+
+test('the host keeps a verified wide-shot pose while camera recovery holds the player', async t => {
+  const room = await liveStage(t, {action:{key:'W',holdMs:600},rationale:'Walking down the aisle'});
+  room.live.onMessage({frame: Buffer.from('frame').toString('base64')});
+  const scene = {visible:true,playerCount:1,pose:'upright',feetVisible:true,feet:{left:[957,285],right:[957,330]},
+    bodyBox:[359,251,957,481],goal:[520,510],ahead:[715,510],obstacles:[]};
+  room.live.onMessage({scene,observed:245,observedAt:Date.now(),trackingNavigationHeld:true,trackingPlacementReady:true});
+  const {round} = await room.state();
+  assert.deepEqual(round.trackedBody,scene.bodyBox);
+  assert.equal(round.trackedPose,'upright');
+  assert.equal(round.action,'Camera catching up to the robot');
+  assert.equal(room.commands.some(command=>command.key),false);
 });
