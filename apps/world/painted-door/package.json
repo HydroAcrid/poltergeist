@@ -2,6 +2,9 @@
   "name": "@poltergeist/painted-door",
   "private": true,
   "type": "module",
-  "scripts": { "capture": "node --env-file=../../../.env capture.mjs" },
+  "scripts": {
+    "capture": "node --env-file=../../../.env capture.mjs",
+    "operator": "node --env-file=../../../.env operator.mjs"
+  },
   "dependencies": { "@google/genai": "3.6.1" }
 }

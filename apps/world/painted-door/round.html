@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poltergeist · The hallway</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101513;color:#f6f2dc;font:16px/1.45 'DM Sans',system-ui,sans-serif}main{max-width:1240px;margin:auto;padding:clamp(14px,4vw,48px)}header,.controls,.strip{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{margin:0;font:normal clamp(34px,7vw,74px)/1.08 Georgia,serif;letter-spacing:-.05em}header{margin-bottom:17px}strong{color:#f8dc98}#clock{font:500 22px ui-monospace,monospace;font-variant-numeric:tabular-nums}.room{margin:0;background:#161e19;border:1px solid #465244}img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}.strip{padding:12px 18px;color:#e7e5da}.controls{justify-content:flex-start;margin-top:16px}button{padding:11px 16px;border-radius:6px;border:1px solid #6b766a;background:#27362c;color:inherit;font:inherit;min-height:44px;cursor:pointer}button:first-child{background:#efcf8b;color:#25291d}button:disabled{opacity:.45;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid #f3cb71;outline-offset:3px}[hidden]{display:none!important}p{margin:0}
+</style>
+<main><header><h1>Poltergeist</h1><span id="clock">Ready</span></header>
+<figure class="room"><img id="scene" src="/round-preview" alt="A small robot shines its flashlight down the haunted hallway toward an exit"><figcaption class="strip"><strong>Reach the exit</strong><p id="activity">Hallway clear</p><p id="action" role="status">Robot waiting</p></figcaption></figure>
+<div class="controls" id="controls" hidden><button data-cmd="start-round">Start round</button><button data-cmd="chair" disabled>Place chair</button><button data-cmd="peel" disabled>Drop peel</button><button data-cmd="end" disabled>End early</button></div>
+<p id="message" role="status"></p></main>
+<script>
+const el=id=>document.getElementById(id), controls=el('controls');
+controls.hidden=location.pathname!='/round';
+const buttons=[...controls.querySelectorAll('button')];
+let version=-1, sending=false, busy=false, live=false, manual=false;
+function updateControls(){for(const b of buttons)b.disabled=sending||manual||(b.dataset.cmd==='start-round'?busy:b.dataset.cmd==='end'?!busy:!live)}
+controls.onclick=async e=>{const cmd=e.target.dataset.cmd;if(!cmd||sending)return;sending=true;updateControls();try{const r=await fetch('/'+cmd,{method:'POST',headers:{'X-Operator':'1'}});if(!r.ok)throw Error((await r.json()).error);el('message').textContent=''}catch(e){el('message').textContent=e.message}finally{sending=false;updateControls()}};
+async function refresh(){try{const r=await fetch('/status');if(!r.ok)throw Error();const s=await r.json();
+busy=['starting','live','ending'].includes(s.phase);manual=busy&&s.mode!=='round';live=s.phase==='live'&&!manual;
+const inRound=s.mode==='round';
+const remaining=Math.max(0,Math.ceil((s.expiresAt-Date.now())/1000));
+el('clock').textContent=!inRound?'Ready':s.winner==='robot'?'Robot wins':s.winner==='audience'?'Audience wins':live&&s.expiresAt?remaining+'s':s.phase==='starting'?'Opening hallway…':s.phase==='closed'?'Round interrupted':'Ready';
+el('activity').textContent=inRound&&s.activity||'Hallway clear';
+el('action').textContent=!inRound||!s.lastMove?'Robot waiting':s.lastMove==='wait'?'Robot holds still':'Robot steps '+s.lastMove;
+if(inRound&&s.version!==version){version=s.version;el('scene').src='/frame?v='+version}
+if(manual)el('message').textContent='The operator is using the camera.';
+updateControls();
+}catch{busy=false;live=false;manual=true;updateControls();el('clock').textContent='Reconnecting…'}finally{setTimeout(refresh,live?180:550)}}refresh();
+</script></html>
