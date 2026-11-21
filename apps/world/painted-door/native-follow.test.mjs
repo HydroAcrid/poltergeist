@@ -6,6 +6,8 @@ import {
   cameraStep,
   characterInstruction,
   createNativeFollow,
+  createMoveWindow,
+  shoulderStride,
   holdIfUntracked,
   reactionInstruction,
 } from "./native-follow.mjs";
@@ -102,6 +104,9 @@ test("unseen startup and lost observations stay still; stale observations cannot
   assert.equal(tracker.correction(2000), null);
   tracker.push(image, 11);
   tracker.observe(sighting([435, 205, 820, 325]), 11);
+  assert.equal(tracker.permits("W"), false, "one sighting cannot reacquire identity");
+  tracker.push(image, 16);
+  tracker.observe(sighting([435, 205, 820, 325]), 16);
   assert.equal(tracker.permits("W"), true);
 });
 
@@ -112,7 +117,7 @@ test("low-confidence pixels release a held camera key and stop active robot trav
   tracker.push(uniform(255), 6);
   const lock = tracker.status();
   assert.equal(lock.known, false);
-  assert.equal(lock.lost, false);
+  assert.equal(lock.lost, true);
   let heldKey = "key_d",
     walking = true;
   const actions = [];
@@ -199,4 +204,27 @@ test('upper body remains a valid camera anchor when both boots fall below the fr
   tracker.push(image,11);
   tracker.observe({visible:true,feetVisible:false},11);
   assert.equal(tracker.permits('W'),false);
+});
+
+test('penguin encounter frame cadence cannot queue contradictory or repeated movement', () => {
+  const window = createMoveWindow(24);
+  window.start(0);
+  const accept = (key, observed, received, at) => window.accept({key, observed}, {...still, observed}, received, at);
+  assert.equal(accept('D', 123, 149, 8250), true);
+  // At 8.25 seconds the generated stream may already include frame 199.
+  for (const [key, source, delivered, at] of [
+    ['A',151,153,11000], ['ArrowLeft',154,156,14000], ['A',158,161,18000],
+    ['A',180,208,26000], ['A',213,227,29000],
+  ]) assert.equal(accept(key,source,delivered,at),false);
+  assert.equal(accept('A',230,234,32000),false, 'late delivery cannot move from stale pixels');
+  assert.equal(accept('A',236,239,35000),false);
+  assert.equal(accept('W',779,784,32500),true, 'a fresh frame resumes movement');
+  assert.equal(window.accept({key:'W',observed:242}, {...still,observed:256}, 900,36000),false);
+});
+test('committed forward walk can pace a centered shoulder before depth drift', () => {
+  const subject = {...still,clearLane:true};
+  assert.equal(shoulderStride(subject).key, 'key_w');
+  for (const override of [{clearLane:false},{scale:1.25},{x:.65},{lost:true},{known:false}]) {
+    assert.equal(shoulderStride({...subject,...override}),null);
+  }
 });

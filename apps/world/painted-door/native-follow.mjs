@@ -176,6 +176,42 @@ export function receding(subject) {
     subject.localRatio < 0.965
   );
 }
+// Use the 24 fps media clock as a conservative watermark. During the penguin
+// rehearsal Genie delivered many pre-command frames while closing the stream.
+export function createMoveWindow(fps) {
+  let firstFrameAt, earliestObservation = 0;
+  const mediaFrameAt = (at) => 1 + Math.floor(Math.max(0, at - firstFrameAt) * fps / 1000);
+  function settle(frame, at, seconds) {
+    if (firstFrameAt === undefined) return;
+    earliestObservation = Math.max(earliestObservation,
+      Math.max(frame, mediaFrameAt(at)) + Math.ceil(seconds * fps));
+  }
+  return {
+    start(at) { firstFrameAt ??= at; },
+    settle,
+    accept(command, subject, frame, at) {
+      if (firstFrameAt === undefined || mustStopTravel(subject) ||
+          !Number.isInteger(command.observed) || command.observed !== subject.observed ||
+          command.observed < earliestObservation || command.observed > frame) return false;
+      // Beyond the framing report's four-second gap, a fresh visual decision
+      // is unverified even if its vision request just returned.
+      if (Math.max(frame, mediaFrameAt(at)) - command.observed > 4 * fps) return false;
+      // A turn needs half a second of subsequent motion; a full stride needs a second.
+      settle(frame, at, command.key.startsWith('Arrow') ? .5 : 1);
+      return true;
+    },
+  };
+}
+
+// A short native camera stride starts with the committed walking instruction.
+// Motion-based corrections can still catch up later when framing actually drifts.
+export function shoulderStride(subject) {
+  if (mustStopTravel(subject) || !subject.clearLane || subject.scale > 1.14 ||
+      subject.scale < .65 || subject.vh > .10 || subject.top < .07 ||
+      Math.abs(subject.x - shoulderFrame.x) > .12) return null;
+  return { key: 'key_w', ms: 160, reason: 'match forward stride' };
+}
+
 export function cameraStep(subject) {
   if (!subject.known || subject.lost || !subject.grounded) return null;
   const { x, scale, vx, vh, top } = subject;
@@ -248,9 +284,11 @@ export function createNativeFollow() {
     lost = true,
     rangeTrend = false,
     localRatio = null,
-    clearLane = false;
+    clearLane = false,
+    reacquiring = false;
   function advance(previous, current) {
     anchor = locate(previous, current, anchor);
+    if (!anchor.known) { reacquiring = true; lost = true; lastBox = null; }
     current.track = { ...anchor };
     const base = history.findLast(
       (frame) =>
@@ -264,7 +302,9 @@ export function createNativeFollow() {
     const frame = sampleFrame(bytes, number),
       prev = history.at(-1);
     if (prev && number <= prev.number) return;
-    if (number - lastGrounding > 24 * 16) anchor.known = false;
+    if (lastGrounding >= 0 && number - lastGrounding > 24 * 16) {
+      anchor.known = false; lost = true; reacquiring = true; lastBox = null;
+    }
     if (prev && anchor.known) advance(prev, frame);
     history.push(frame);
     // Keep more than ER2's request timeout to align each delayed measurement
@@ -285,6 +325,7 @@ export function createNativeFollow() {
     lastGrounding = number;
     if (!scene.visible) {
       lost = true;
+      reacquiring = true;
       anchor.known = false;
       anchor.vx = 0;
       lastBox = null;
@@ -297,7 +338,7 @@ export function createNativeFollow() {
     const upper=validBodyBox(scene.upperBodyBox);
     const b=upper ? scene.upperBodyBox : scene.bodyBox;
     if(!validBodyBox(b)){
-      lost=true;anchor.known=false;lastBox=null;rangeTrend=false;localRatio=null;
+      lost=true;reacquiring=true;anchor.known=false;lastBox=null;rangeTrend=false;localRatio=null;
       return;
     }
     const h=(b[2]-b[0])/1000;
@@ -313,8 +354,10 @@ export function createNativeFollow() {
       scene.pose!=='stumbling' && scene.pose!=='startled' &&
       !scene.obstacles?.some(o=>o.relation==='crossing');
     localRatio=null;
+    if (reacquiring && prior && Math.abs(prior.x - x) < .12 &&
+        Math.abs(prior.scale - scale) < .25) reacquiring = false;
+    lost = reacquiring;
     lastBox={upper,number,scale,x};
-    lost=false;
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     history[index].track = { ...anchor };
     for (let i = index + 1; i < history.length && anchor.known; i++)
@@ -328,6 +371,7 @@ export function createNativeFollow() {
       localRatio,
       clearLane,
       grounded: lastGrounding >= 0,
+      observed: lastGrounding,
     };
   }
   function correction(now, allowCamera = true) {

@@ -1,4 +1,4 @@
-import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding } from './native-follow.mjs';
+import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, shoulderStride } from './native-follow.mjs';
 import { assessFraming } from './framing-report.mjs';
 import { hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
@@ -108,6 +108,7 @@ async function capture() {
   if (values.drive || values.round) process.once('disconnect', stop);
   let gameClock, looking=false, nextLook=0;
   const follow = stagePilot ? createNativeFollow() : null;
+  const moveWindow = createMoveWindow(log.fps);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0;
   async function releaseCamera() {
     const press=cameraPress;
@@ -125,13 +126,17 @@ async function capture() {
   }
   async function aim(step,frame) {
     if(ending || cameraPress || Date.now()<steadyUntil) return;
-    const press={keys:[step.key,step.lateralKey].filter(Boolean)};
+    const press={keys:[step.key,step.lateralKey].filter(Boolean), stride:step.reason==='match forward stride'};
     cameraPress=press;
     press.down=(async()=>{for(const key of press.keys) await session.send({event_type:'user_action',action:'key_down',input:key});})();
     await press.down;
     publish({cameraMoved:true});
     record('Camera reframed the robot',{...step,frame});
     if(!press.release && !ending) lookRelease=setTimeout(()=>releaseCamera().catch(error=>abort.abort(error)),step.ms);
+  }
+  function unsafeForwardPress(subject) {
+    if (!cameraPress?.keys.includes('key_w')) return false;
+    return cameraPress.stride ? !shoulderStride(subject) : !receding(subject);
   }
   async function stopActor(force=false) {
     if(!actorMoving && !force) return;
@@ -173,6 +178,7 @@ async function capture() {
             /chair/i.test(haunt.text) ? "One bright yellow tipped-over chair spans that path." : "",
             "Keep the effect, its contact with the floor, and the approaching robot in view."].filter(Boolean).join(" ");
           try {
+            moveWindow.settle(log.frames, Date.now(), .5);
             await session.send(instruction);
             publish({injected:haunt.id, attempt:haunt.attempt, injectedAt:Date.now(), injectedFrame:log.frames});
             record('Audience intervention sent',{id:haunt.id,attempt:haunt.attempt,text:haunt.text,target:haunt.target});
@@ -184,12 +190,14 @@ async function capture() {
           const now=Date.now();
           const force=command.settleCamera && now>=placedHoldUntil;
           steadyUntil=now+2700;
+          moveWindow.settle(log.frames, now, .5);
           if(command.settleCamera) placedHoldUntil=steadyUntil;
           await Promise.all([releaseCamera(),stopActor(force)]);
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
           const instruction=reactionInstruction(command);
-          if(!instruction) return;
+          if(!instruction || !follow.permits('W')) return;
+          moveWindow.settle(log.frames, Date.now(), 1);
           await releaseCamera();
           await stopActor();
           await session.send(instruction);
@@ -198,10 +206,21 @@ async function capture() {
           if(Date.now()<steadyUntil || !follow.permits(command.key)) return;
           const instruction=characterInstruction(command);
           if(!instruction) return;
+          const subject = follow.status();
+          if (!moveWindow.accept(command, subject, log.frames, Date.now())) {
+            record('Waiting for post-action footage', {key:command.key, observed:command.observed});
+            return;
+          }
+          const stride = command.key === 'W' ? shoulderStride(subject) : null;
+          if (cameraPress && (stride || cameraPress.keys.includes('key_w'))) {
+            await releaseCamera();
+            if (ending || Date.now() < steadyUntil || !follow.permits(command.key) ||
+                follow.status().observed !== command.observed) return;
+          }
           actorMoving=['W','A','S','D'].includes(command.key);
-          await session.send(instruction);
+          await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]);
           publish({navigationMoved:true,key:command.key});
-          record('Player applied '+command.key,{holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
+          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {
@@ -253,6 +272,7 @@ async function capture() {
         if (!log.frames) console.log('Video payload:', delta.mime_type, bytes.subarray(0, 12).toString('hex'));
         log.frames++;
         if (values.round && log.frames === 1) {
+          moveWindow.start(Date.now());
           const durationMs = stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) : 30000;
           publish({expiresAt: Date.now() + durationMs});
           gameClock = setTimeout(() => { finish('audience').catch(error => abort.abort(error)); }, durationMs);
@@ -264,7 +284,7 @@ async function capture() {
         if (stagePilot && !ending && (log.frames - 1) % 5 === 0) {
           follow.push(bytes, log.frames);
           const lock = follow.status();
-          if(cameraPress?.keys.includes('key_w') && !receding(lock)) await releaseCamera();
+          if(unsafeForwardPress(lock)) await releaseCamera();
           if(!await holdIfUntracked(lock,releaseCamera,stopActor) && !cameraPress && Date.now()>=steadyUntil){
             const step=follow.correction(Date.now());
             if(step) await aim(step,log.frames);
@@ -277,9 +297,10 @@ async function capture() {
             if(!ending){
               follow.observe(scene,observed);
               const lock=follow.status();
-              if(cameraPress?.keys.includes('key_w') && !receding(lock)) await releaseCamera();
-              await holdIfUntracked(lock,releaseCamera,stopActor);
-              publish({scene,observed,observedAt});
+              if(unsafeForwardPress(lock)) await releaseCamera();
+              const held = await holdIfUntracked(lock,releaseCamera,stopActor);
+              const currentScene = !held && lock.observed === observed ? scene : { visible:false, obstacles:[] };
+              publish({scene:currentScene,observed,observedAt});
               record('Gemini observed live frame',{observed,observedAt,scene});
             }
           }).catch(error=>{
