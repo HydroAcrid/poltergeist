@@ -103,9 +103,30 @@ describe("Er2Perception", () => {
     expect((await new Er2Perception(twice.client).perceive(input, opts)).error).toBe("parse");
   });
 
-  it("maps API failures to api and timeouts to timeout", async () => {
+  it("never sends a server deadline (Gemini rejects any under 10 s); enforces the budget with an abort signal", async () => {
+    const { client, calls } = fake(reply(chairAhead));
+    await new Er2Perception(client).perceive(input, opts);
+    expect(calls[0]!.config.httpOptions).toBeUndefined();
+    expect(calls[0]!.config.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("maps API errors to api, even when the message mentions a deadline", async () => {
+    const deadline = new Error('{"error":{"code":400,"message":"Manually set deadline 3s is too short. Minimum allowed deadline is 10s."}}');
+    const a = new Er2Perception(fake(deadline).client);
+    expect((await a.perceive(input, opts)).error).toBe("api");
+    expect(a.lastError).toContain("deadline");
     expect((await new Er2Perception(fake(new Error("500 internal")).client).perceive(input, opts)).error).toBe("api");
-    expect((await new Er2Perception(fake(new Error("Request timeout after 2500ms")).client).perceive(input, opts)).error).toBe("timeout");
+  });
+
+  it("reports timeout when the budget runs out before ER 2 answers", async () => {
+    const slow: GenAiLike = {
+      models: {
+        generateContent: (r) =>
+          new Promise((_, reject) => r.config.abortSignal.addEventListener("abort", () => reject(new Error("This operation was aborted")))),
+      },
+    };
+    const res = await new Er2Perception(slow).perceive(input, { ...opts, timeoutMs: 50 });
+    expect(res.error).toBe("timeout");
   });
 
   it("through the tick handler: ER 2's chair-ahead scene turns toward the exit, and a failure falls back", async () => {
