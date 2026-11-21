@@ -1,7 +1,7 @@
 import { Sandbox } from '@vercel/sandbox';
 import { prepareColdHostLease } from '../world-lease.mjs';
 
-const views = new Set(['haunt', 'stage', 'team', 'debug']);
+const views = new Set(['haunt', 'stage', 'team', 'debug', 'rehearsal/lobby', 'api/crowd/state']);
 const pause = ms => new Promise(done => setTimeout(done, ms));
 
 async function serving(origin) {
