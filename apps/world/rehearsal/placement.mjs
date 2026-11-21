@@ -199,6 +199,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     send({ pause: true });
   }
   function trySend(job, time) {
+    if (latest?.placementReady === false) return false;
     if (job.deferredFrame != null && latest?.frame <= job.deferredFrame) return false;
     if (time < Math.max(job.prop.cueAt + cueLeadMs, job.retryAfter || 0) || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
@@ -323,9 +324,9 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       job.prop.placement = job.prop.acked ? 'unverified' : 'failed';
       if (!job.prop.acked) report(job.prop, false);
     },
-    observe(scene, frame, at, time = now()) {
+    observe(scene, frame, at, time = now(), placementReady = true) {
       if (!Number.isFinite(at) || (latest && frame <= latest.frame)) return;
-      latest = { scene, frame, at, received: time };
+      latest = { scene, frame, at, received: time, placementReady };
       const job = [...jobs.values()].find((j) => !j.closed);
       if (
         job &&
@@ -358,7 +359,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               result.soleThreat &&
               scene.threat === 'startling' &&
               scene.pose === 'upright' &&
-              !p.reactionRequestedAt &&
+              !p.reactionRequestedAt && latest.placementReady &&
               freshObservation(latest, time, lastMove)
             ) {
               // An animation request is an intention. Only a subsequent, independent
@@ -394,7 +395,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
           } else if (at - job.ackTime >= 1000) {
             const nearby = result.visible && scene.obstacles.find((o) =>
               o.relation === 'noticeable' && job.effect.matches(o.label) && box(o.box));
-            if (nearby && !p.noticeRequestedAt && scene.pose === 'upright') {
+            if (latest.placementReady && nearby && !p.noticeRequestedAt && scene.pose === 'upright') {
               const feetX = (scene.feet.left[1] + scene.feet.right[1]) / 2;
               const toward = (nearby.box[1] + nearby.box[3]) / 2 < feetX ? 'left' : 'right';
               p.noticeRequestedAt = time;

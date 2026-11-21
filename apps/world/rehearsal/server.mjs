@@ -311,11 +311,15 @@ export async function registerStage(
                 r.action = decision.rationale;
                 r.brainDecision = decision.decision ?? null;
                 r.observed = m.observed;
-                placement?.observe(m.scene, m.observed, m.observedAt);
-                const crossed = observedCrossing(crossing, m.scene, m.observedAt);
+                const now = Date.now();
+                placement?.observe(m.scene, m.observed, m.observedAt, now, m.trackingPlacementReady !== false);
+                const crossed = !m.trackingNavigationHeld && observedCrossing(crossing, m.scene, m.observedAt);
                 if (crossed || r.fear >= 3) {
                   pendingWinner = crossed ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
+                } else if (m.trackingNavigationHeld) {
+                  r.action = m.scene.visible ? 'Camera catching up to the robot' : 'Looking for the robot';
+                  r.intent = null;
                 } else if (placement?.navigationPaused()) {
                   r.action = 'Assessing the path';
                   const prop = r.props.find(p => p.acked && p.sentAt <= m.observedAt && !p.reactedAt &&

@@ -383,3 +383,22 @@ test('a changed actor lock defers the same haunting until a fresh footfall can a
   controller.deferred('penguin',1,1);
   assert.equal(round.props[0].placement,'sent');
 });
+
+test('a single visible player in a wide shot can receive a haunting when the same camera settles', async () => {
+  const {createPlacementController} = await moduleUnderTest;
+  const round = {props:[],fear:0,deadline:30_000};
+  const sends = [];
+  const controller = createPlacementController(round, value => { if (value.haunt) sends.push(value.haunt); }, () => {});
+  const wide = scene([], {bodyBox:[359,251,957,481],playerCount:1,playerMatch:true,shoulderView:'rear-right'});
+  controller.add('ghost','A wind-up penguin','Rusty Goblin',10_000);
+  controller.observe(wide,170,11_000,12_000,false);
+  assert.equal(sends.length,0);
+  controller.moved(12_300);
+  controller.observe(wide,191,12_200,12_800,true);
+  assert.equal(sends.length,0);
+  controller.observe(wide,245,13_000,14_000,true);
+  assert.equal(sends.length,1);
+  assert.equal(sends[0].observed,245);
+  assert.equal(round.props[0].seen,false);
+  assert.equal(round.fear,0);
+});
