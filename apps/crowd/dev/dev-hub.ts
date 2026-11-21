@@ -5,7 +5,7 @@
 //   pnpm dev            (PORT defaults to 8788)
 import Fastify from "fastify";
 import { existsSync, readFileSync } from "node:fs";
-import { networkInterfaces } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, extname, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FakeWorld } from "./fake-world.js";
@@ -21,7 +21,12 @@ const crowd = createCrowdModule();
 await crowd.register(app, {
   bus,
   dataDir: process.env.PG_DATA_DIR ?? "./data-haunt",
-  env: { ...process.env, PG_OPERATOR_TOKEN: process.env.PG_OPERATOR_TOKEN || "dev-operator" },
+  // Crowd's Gemini keys come from a private file outside the repo (see docs/gemini-keys.md).
+  env: {
+    ...process.env,
+    PG_CROWD_ENV_FILE: process.env.PG_CROWD_ENV_FILE || resolve(homedir(), ".config/poltergeist/crowd.env"),
+    PG_OPERATOR_TOKEN: process.env.PG_OPERATOR_TOKEN || "dev-operator",
+  },
   instance: "local",
   log: (lane, msg, extra) => console.log(`[${lane}] ${msg}`, extra ?? ""),
 });

@@ -11,7 +11,7 @@ pnpm check                       # typecheck + 135 tests
 PORT=8788 pnpm dev               # stand-in hub: /haunt, /overlay?bg=1, /dev (start/end round)
 ```
 
-`pnpm dev` runs Crowd's stand-in hub (`dev/dev-hub.ts`): an in-memory bus, a stand-in World that acks each dispatch after 0.8 s, and a **dev-only** `/rehearsal/state` that walks each haunting through acked → seen (+1.5 s) → in path (+3 s) → reacted (+5 s) while the robot drifts left to right. With `GEMINI_API_KEY` set it uses your Gemini moderation; otherwise it's rules-only.
+`pnpm dev` runs Crowd's stand-in hub (`dev/dev-hub.ts`): an in-memory bus, a stand-in World that acks each dispatch after 0.8 s, and a **dev-only** `/rehearsal/state` that walks each haunting through acked → seen (+1.5 s) → in path (+3 s) → reacted (+5 s) while the robot drifts left to right. With Crowd's two keys in `~/.config/poltergeist/crowd.env` (see [docs/gemini-keys.md](docs/gemini-keys.md)) it uses Gemini moderation with failover; otherwise it's rules-only.
 
 ## What's done
 

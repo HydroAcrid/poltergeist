@@ -5,6 +5,19 @@ import { alternativeFor, blockedReason, normalizeInput, RulesOnlyModeration } fr
 import { EFFECT_FAMILIES } from "../conductor.js";
 import type { CheckedIdea, ModerationAdapter } from "./types.js";
 
+import { redact } from "./keys.js";
+
+export interface GeminiOptions {
+  concurrency?: number;
+  now?: () => number;
+  /** Model calls allowed per rolling minute across all keys (protects the bill). */
+  maxPerMinute?: number;
+  /** How long a rate-limited or failing key rests before it's tried again. */
+  restMs?: number;
+}
+/** Statuses where the other key may succeed: bad/limited key, or a server-side fault. */
+const FAILOVER = new Set([401, 403, 429, 500, 502, 503, 504]);
+
 const reasons = {
   scale: "That would change the whole room. Try one effect in the aisle.",
   target: "Aim the effect at the hallway instead of a person.",
@@ -69,12 +82,41 @@ export class GeminiModeration implements ModerationAdapter {
   private readonly waiters: Array<() => void> = [];
   private available: number;
   private retryAt = 0;
-
-  constructor(private readonly key: string, model = "gemini-4-hydrogen", private readonly request: typeof fetch = fetch, private readonly report?: (fault: string) => void, concurrency = 4) {
-    if (!Number.isSafeInteger(concurrency) || concurrency < 1)
-      throw Error("PG_MODERATION_CONCURRENCY must be a positive integer.");
+  // Private fields: invisible to JSON.stringify and util.inspect, so a key can't leak by printing the adapter.
+  readonly #keys: string[];
+  readonly #restUntil: number[];
+  readonly #calls: number[] = [];
+  readonly #now: () => number;
+  readonly #maxPerMinute: number;
+  readonly #restMs: number;
+  constructor(keys: string | string[], model = "gemini-4-hydrogen", private readonly request: typeof fetch = fetch, private readonly report?: (fault: string) => void, settings: GeminiOptions | number = {}) {
+    const opts = typeof settings === "number" ? {concurrency:settings} : settings;
+    const concurrency = opts.concurrency ?? 4;
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw Error("PG_MODERATION_CONCURRENCY must be a positive integer.");
     this.available = concurrency;
     this.name = model;
+    this.#keys = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+    this.#restUntil = this.#keys.map(() => 0);
+    this.#now = opts.now ?? Date.now;
+    this.#maxPerMinute = opts.maxPerMinute ?? Infinity;
+    this.#restMs = opts.restMs ?? 60_000;
+  }
+  get keyCount() { return this.#keys.length; }
+  private fault(msg: string) { this.report?.(redact(msg, this.#keys)); }
+  /** Rolling one-minute budget across all keys. */
+  private takeBudget(): boolean {
+    if (this.#maxPerMinute === Infinity) return true;
+    const t = this.#now();
+    while (this.#calls.length && this.#calls[0]! <= t - 60_000) this.#calls.shift();
+    if (this.#calls.length >= this.#maxPerMinute) return false;
+    this.#calls.push(t);
+    return true;
+  }
+  /** Keys not resting come first, in their order; resting ones only as a last resort. */
+  private keyOrder(): number[] {
+    const t = this.#now();
+    const idx = this.#keys.map((_, i) => i);
+    return [...idx.filter((i) => this.#restUntil[i]! <= t), ...idx.filter((i) => this.#restUntil[i]! > t)];
   }
   nickname(value: string) { return this.rules.nickname(value); }
 
@@ -85,20 +127,28 @@ export class GeminiModeration implements ModerationAdapter {
 
   // A provider cooldown applies across the room, including jobs already holding a slot.
   private async send(url: string, body: string) {
-    for (let attempt = 0; ; attempt++) {
-      while (this.retryAt > Date.now())
+    const single = this.#keys.length === 1;
+    const order = single ? [0, 0] : this.keyOrder();
+    for (const [attempt, i] of order.entries()) {
+      while (single && this.retryAt > Date.now())
         await new Promise(resolve => setTimeout(resolve, Math.min(this.retryAt - Date.now(), 2_147_483_647)));
+      if (!this.takeBudget()) {
+        this.fault("Gemini moderation over its per-minute cap");
+        return undefined;
+      }
       const response = await this.request(url, {
-        method: "POST", signal: AbortSignal.timeout(12000),
-        headers: { "content-type": "application/json", "x-goog-api-key": this.key }, body,
+        method:"POST", signal:AbortSignal.timeout(12000),
+        headers:{ "content-type":"application/json", "x-goog-api-key":this.#keys[i]! }, body,
       });
-      if (response.status !== 429) return response;
-      this.report?.("Gemini moderation HTTP 429");
-      const delayMs = await retryDelay(response);
-      this.retryAt = Math.max(this.retryAt, Date.now() + delayMs);
+      if (response.ok || !FAILOVER.has(response.status)) return response;
+      this.fault("Gemini moderation HTTP " + response.status);
+      if (response.status === 429 && single) {
+        this.retryAt = Math.max(this.retryAt, Date.now()+await retryDelay(response));
+      } else this.#restUntil[i] = this.#now()+this.#restMs;
       if (!response.bodyUsed) await response.body?.cancel();
-      if (attempt === 1) return response;
+      if (single && response.status !== 429 || attempt + 1 === order.length) return undefined;
     }
+    return undefined;
   }
 
   async moderate(input: string): Promise<CheckedIdea> {
@@ -107,7 +157,7 @@ export class GeminiModeration implements ModerationAdapter {
       ({ safe: false, text: "", tags: [], reason, suggestion, model: this.name });
     const blocked = blockedReason(idea);
     if (blocked) return reject(blocked);
-    if (!this.key) return reject("The idea check is unavailable. Try again or choose a preset.");
+    if (!this.#keys.length) return reject("The idea check is unavailable. Try again or choose a preset.");
     await this.takeSlot();
     try {
       const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(this.name) + ":generateContent";
@@ -116,9 +166,11 @@ export class GeminiModeration implements ModerationAdapter {
           contents: [{ role: "user", parts: [{ text: JSON.stringify({ idea }) }] }],
           generationConfig: { temperature: 0, maxOutputTokens: 512, ...(this.name === "gemini-4-hydrogen" ? { thinkingConfig: { thinkingLevel: "LOW" } } : {}), responseMimeType: "application/json", responseJsonSchema: outputSchema },
       }));
-      if (!response.ok) {
-        if (response.status !== 429) this.report?.("Gemini moderation HTTP " + response.status);
-        if (!response.bodyUsed) await response.body?.cancel();
+      if (!response?.ok) {
+        if (response) {
+          this.fault("Gemini moderation HTTP " + response.status);
+          if (!response.bodyUsed) await response.body?.cancel();
+        }
         return reject("The idea check is unavailable. Try again or choose a preset.");
       }
       const data = await response.json();
@@ -132,7 +184,7 @@ export class GeminiModeration implements ModerationAdapter {
       if (blockedReason(result.text)) return reject(reasons.content);
       return { safe: true, text: result.text, tags: [...new Set(result.tags)], model: this.name, ...(result.staging ? { staging: result.staging } : {}) };
     } catch (error) {
-      this.report?.("Gemini moderation failed (" + (error instanceof Error ? error.name : "unknown") + ")");
+      this.fault("Gemini moderation failed (" + (error instanceof Error ? error.name : "unknown") + ")");
       return reject("The idea check is unavailable. Try again or choose a preset.");
     } finally {
       const next = this.waiters.shift();
