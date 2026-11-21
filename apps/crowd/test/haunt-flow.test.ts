@@ -409,6 +409,9 @@ describe("operator and page", () => {
     expect(page.statusCode).toBe(200);
     expect(page.headers["content-type"]).toMatch(/text\/html/);
     expect(page.body.length).toBeLessThan(30_000);
+    // The served page is compacted; the compaction must stay safe for this source.
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../web/haunt.html"), "utf8");
+    expect(src).not.toMatch(/`|<pre/);
     expect(page.body).not.toMatch(/<script[^>]+src=|<link[^>]+stylesheet/);
     expect(page.body).toContain("Approved hauntings may appear on the big screen with your ghost name.");
     expect(page.body).not.toMatch(/id="nick"|payload\.displayName/); // names are assigned, never typed or sent

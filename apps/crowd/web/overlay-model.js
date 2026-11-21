@@ -58,6 +58,10 @@ export function normalizeRehearsal(json) {
   const terminal = pick("terminal");
   return {
     phase: typeof r.phase === "string" ? r.phase : undefined,
+    // World's waiting room (#2): before-photo | lobby | starting | playing | ended
+    lobbyPhase: typeof json.lobby?.phase === "string" ? json.lobby.phase : typeof json.phase === "string" && !json.round ? json.phase : undefined,
+    lobbyReady: json.lobby?.ready === true,
+    lobbyPreparing: json.lobby?.preparing === true,
     finished: Boolean(winner || finishedAt || terminal),
     winner: typeof winner === "string" ? winner : undefined,
     reason: typeof pick("reason") === "string" ? pick("reason") : undefined,
@@ -154,7 +158,9 @@ export function pickCard(crowd, world) {
 
 /** "opening" | "live" | "result" | "idle", from World's phase when present, else Crowd's state. */
 export function phaseOf(crowd, world) {
-  if (world?.finished) return "result";
+  const lp = world?.lobbyPhase;
+  if (lp === "before-photo" || lp === "lobby" || lp === "starting") return "lobby";
+  if (world?.finished || lp === "ended") return "result";
   const p = world?.phase?.toLowerCase();
   if (p) {
     if (/open|join|lobby|ready/.test(p)) return "opening";
@@ -177,7 +183,15 @@ export function clock(s) {
 
 /** The big join QR is for the opening and the result only; during play it's a small Join pill. */
 export function bigJoin(phase) {
-  return phase === "opening" || phase === "result" || phase === "idle";
+  return phase === "opening" || phase === "result" || phase === "idle" || phase === "lobby";
+}
+
+/** Waiting-room headline for the projector. */
+export function lobbyText(world) {
+  const lp = world?.lobbyPhase;
+  if (lp === "before-photo") return "Setting up the hallway…";
+  if (lp === "starting") return "Starting…";
+  return "The waiting room is open";
 }
 
 /** Result banner headline from World's winner/reason/fear. */

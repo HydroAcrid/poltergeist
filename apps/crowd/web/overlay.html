@@ -49,6 +49,15 @@ body.bg{background:#000 url(/world/robot-v1/hallway.webp) center/cover no-repeat
 .result .k{font:700 .85vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
 .result .h{font:normal 2.4vw/1.1 Georgia,serif;margin-top:.3vw}
 
+.lobbyview{position:fixed;left:50%;top:1.4vw;transform:translateX(-50%);z-index:4;text-align:center;background:var(--glass);border:1px solid var(--line);border-radius:1vw;padding:1.1vw 2.2vw;min-width:30vw}
+.lobbyview .k{font:700 .9vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--sage)}
+.lobbyview .h{font:normal 2.4vw/1.1 Georgia,serif;margin-top:.3vw}
+.lobbyview .n{font-size:1.4vw;color:var(--muted);margin-top:.4vw}
+.lobbyview .n b{font:700 1.8vw ui-monospace,monospace;color:var(--amber)}
+.host{display:flex;flex-direction:column;gap:.5vw;margin-bottom:1.2vw}
+.host button{font:inherit;font-size:1vw;font-weight:700;padding:.6vw 1vw;border-radius:2vw;border:0;background:var(--paper);color:#201a18;cursor:pointer}
+.host button:disabled{opacity:.45;cursor:default}
+.host .note{font-size:.8vw;color:var(--muted)}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:26vw;z-index:5;background:rgba(18,16,14,.93);border-left:1px solid var(--line);padding:1.6vw 1.4vw;overflow:auto}
 .drawer h2{font:700 .8vw ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:1.2vw 0 .5vw}
 .drawer h2:first-child{margin-top:0}
@@ -64,7 +73,11 @@ body.drawer-open .join{display:none}
 <div class="status" id="status" role="status" hidden></div>
 <div class="card" id="card" role="status" aria-live="polite" hidden></div>
 <div class="join" id="join"><img id="qr" src="/api/crowd/join.svg" alt="QR code to join"><div><b>Haunt the robot</b><span>scan to join</span></div></div>
-<aside class="drawer" id="drawer" aria-label="Queue (operator)" hidden></aside>
+<div class="lobbyview" id="lobbyview" role="status" aria-live="polite" hidden><div class="k">Poltergeist</div><div class="h" id="lobby-h"></div><div class="n" id="lobby-n"></div></div>
+<aside class="drawer" id="drawer" aria-label="Queue (operator)" hidden>
+  <div class="host"><button type="button" id="start">Start round</button><div class="note" id="start-note">Uses World's host control. Starting from the waiting room skips the 30 s countdown.</div></div>
+  <div id="drawer-list"></div>
+</aside>
 
 <script type="module">
 import * as M from "/overlay-model.js";
@@ -82,11 +95,15 @@ let world = null;
 let skew = 0; // World server time minus ours
 let shownKey = "";
 let shownAt = 0;
+let heads = { here: 0, total: 0 };
 
 async function getJson(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(String(res.status));
   return res.json();
+}
+async function pollHeads() {
+  try { heads = await getJson("/api/crowd/lobby"); } catch { /* keep last */ }
 }
 async function pollCrowd() {
   try { crowd = await getJson("/api/crowd/state"); } catch { /* keep last */ }
@@ -114,6 +131,18 @@ function render() {
   }
   if (world?.fear !== undefined) { const p = el("span", "pill"); p.append("👻 Scares ", el("b", "", String(world.fear)), "/3"); pills.append(p); }
 
+  // Waiting room: headline and live guest count, with the big join QR; no card or status line
+  const lv = $("lobbyview");
+  lv.hidden = phase !== "lobby";
+  if (phase === "lobby") {
+    $("lobby-h").textContent = M.lobbyText(world);
+    const n = $("lobby-n");
+    n.textContent = "";
+    n.append(el("b", "", String(heads.here)), heads.here === 1 ? " ghost here · scan to join" : " ghosts here · scan to join");
+  }
+  const startBtn = $("start");
+  startBtn.disabled = phase === "live" || world?.lobbyPhase === "starting" || world?.lobbyPhase === "playing";
+
   // Result banner
   document.querySelector(".result")?.remove();
   if (phase === "result") {
@@ -132,7 +161,10 @@ function render() {
   const fresh = card && now - shownAt < M.CARD_MS;
   const c = $("card");
   const s = $("status");
-  if (card && fresh && side && phase !== "result") {
+  if (phase === "lobby") {
+    $("card").hidden = true;
+    $("status").hidden = true;
+  } else if (card && fresh && side && phase !== "result") {
     c.className = "card " + side + " " + card.stage;
     c.textContent = "";
     const body = el("div");
@@ -154,7 +186,7 @@ function render() {
 
   // Operator drawer
   if (!$("drawer").hidden) {
-    const d = $("drawer");
+    const d = $("drawer-list");
     d.textContent = "";
     const section = (title, list, note) => {
       d.append(el("h2", "", title));
@@ -168,10 +200,19 @@ function render() {
   }
 }
 
-await Promise.all([pollCrowd(), pollWorld()]);
+document.getElementById("start").onclick = async () => {
+  const note = document.getElementById("start-note");
+  try {
+    const res = await fetch(worldBase + "/rehearsal/start", { method: "POST", headers: { "content-type": "application/json", "x-show-control": "1" }, body: JSON.stringify({ mode: "offline" }) });
+    const body = await res.json().catch(() => ({}));
+    note.textContent = res.ok ? "Round starting." : body.error || "World couldn't start the round (" + res.status + ").";
+  } catch { note.textContent = "Couldn't reach World's host."; }
+};
+await Promise.all([pollCrowd(), pollWorld(), pollHeads()]);
 render();
 setInterval(pollCrowd, 2000);
 setInterval(pollWorld, 1000);
+setInterval(pollHeads, 2000);
 setInterval(render, 250);
 </script>
 </body>

@@ -44,9 +44,15 @@ export interface RouteOptions {
 
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
-  // Phones are on venue Wi-Fi: serve the page without each line's leading indentation and blank
-  // lines (the source stays readable). The page has no <pre> or multi-line strings, so this is safe.
-  const compact = (html: string) => html.replace(/^[ \t]+/gm, "").replace(/\n{2,}/g, "\n");
+  // Phones are on venue Wi-Fi: serve the page without indentation, blank lines, whole-line //
+  // comments and /* */ comments (the source stays readable). Safe because the page has no <pre>,
+  // no template literals and no "//" at the start of any non-comment line (checked in tests).
+  const compact = (html: string) =>
+    html
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]+/gm, "")
+      .replace(/^\/\/.*$/gm, "")
+      .replace(/\n{2,}/g, "\n");
   const loadPage = () => (page ??= compact(readFileSync(opts.hauntPagePath, "utf8")));
 
   app.post("/api/crowd/haunt", { bodyLimit: 2048 }, async (req, reply) => {
@@ -61,9 +67,17 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
   app.get("/api/crowd/presets", async () => crowd.presets);
 
   app.get("/api/crowd/state", async (req, reply) => {
-    const state = crowd.state(deviceOf(req, reply));
+    const deviceId = deviceOf(req, reply);
+    if (req.headers["x-pg-client"] === "phone") crowd.noteGuest(deviceId); // the projector doesn't send this
+    const state = crowd.state(deviceId);
     reply.header("cache-control", "no-store");
     return opts.validateResponses ? CrowdState.parse(state) : state;
+  });
+
+  // Waiting-room headcount for the projector and phones (no cookie, no device ids).
+  app.get("/api/crowd/lobby", async (_req, reply) => {
+    reply.header("cache-control", "no-store");
+    return crowd.joined();
   });
 
   app.get("/api/crowd/scoreboard", async (_req, reply) => {

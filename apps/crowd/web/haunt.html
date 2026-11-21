@@ -78,6 +78,7 @@ textarea::placeholder{color:#8f857c}
 .spot .text{font:normal 1.35rem/1.25 Georgia,serif;margin:6px 0 4px}
 .empty{color:var(--muted);font-size:15px;padding:6px 0}
 .why{font-size:13px;color:var(--muted);margin-top:3px}
+.lobby{margin:0 0 14px;border-color:var(--sage)}.lobby strong{color:var(--sage)}
 .switch{display:flex;gap:6px;margin:0 0 10px}
 .switch button{min-height:40px;padding:0 16px;border-radius:30px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
 .switch [aria-pressed=true]{background:var(--paper);color:#201a18;border-color:var(--paper)}
@@ -134,6 +135,10 @@ ol,ul{list-style:none;margin:0;padding:0}
   <section class="screen" id="screen-haunt" aria-labelledby="h-haunt">
     <h1 id="h-haunt" tabindex="-1">Haunt the hallway</h1>
     <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
+    <div class="card lobby" id="lobby" hidden>
+      <strong>👻 You're in the waiting room</strong>
+      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span> Send an idea now so it's ready.</div>
+    </div>
     <form class="card" id="form" autocomplete="off">
       <label for="text" class="by" id="composer-label">What happens in the hallway?</label>
       <div class="field">
@@ -292,11 +297,17 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   let inflight = false;
+  let lobby = null;
   async function refresh() {
     if (inflight) return;
     inflight = true;
     try {
-      const { ok, body } = await api("/api/crowd/state");
+      const { ok, body } = await api("/api/crowd/state", { headers: { "x-pg-client": "phone" } });
+      // World's waiting-room phase (before-photo, lobby, starting, playing, ended), when World serves it.
+      try {
+        const lr = await fetch("/rehearsal/lobby", { cache: "no-store" });
+        lobby = lr.ok ? await lr.json() : null;
+      } catch { lobby = null; }
       if (ok) {
         $("offline").hidden = true;
         if (JSON.stringify(body) !== JSON.stringify(state)) { state = body; markSeen(); render(); }
@@ -433,11 +444,26 @@ ol,ul{list-style:none;margin:0;padding:0}
   function renderPhase() {
     const ph = $("phase");
     ph.textContent = "";
-    if (state.episodeActive) {
+    // Follow World's phase; never invent a countdown while World waits for the host.
+    const lp = lobby?.phase;
+    const ghosts = state.joined > 1 ? " · " + state.joined + " ghosts here" : "";
+    if (state.episodeActive || lp === "playing") {
       ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
-    } else if (state.nextRoundAt) {
-      ph.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
+    } else if (lp === "before-photo") {
+      ph.append("Setting up the hallway…");
+    } else if (lp === "starting") {
+      ph.append(el("span", "live", "● Starting…"));
+    } else if (lp === "ended") {
+      ph.append("Round over" + ghosts);
+    } else {
+      ph.append(el("span", "live", "● Waiting room open"), ghosts);
+    }
+    const card = $("lobby");
+    card.hidden = state.episodeActive || lp === "playing";
+    if (!card.hidden) {
+      $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the first ghost here.";
+      $("lobby-next").textContent = lp === "before-photo" ? "The host is setting up the hallway." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "The host starts the round soon.";
     }
   }
 

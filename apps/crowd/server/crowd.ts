@@ -105,6 +105,8 @@ export class CrowdService {
   private waitingReasons = new Map<Id, string>();
   private skips = new Map<Id, number>();
   private sentAt = new Map<Id, number>();
+  // Waiting room: guest phones by device, last poll time. Projector and other polls never land here.
+  private guests = new Map<string, number>();
   private board: Scoreboard | null = null;
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, { time: number; hauntId: Id; revised: boolean }[]>();
@@ -241,6 +243,19 @@ export class CrowdService {
     if (!this.finalsApprovalMode) this.setStatus(current, "queued");
   }
 
+  /** A guest phone polled (the phone page marks its polls). */
+  noteGuest(deviceId: string): void {
+    this.guests.set(deviceId, this.now());
+  }
+
+  /** Guest phones seen in the last 30 s (`here`) and every guest phone that ever joined (`total`). */
+  joined(): { here: number; total: number } {
+    const since = this.now() - 30_000;
+    let here = 0;
+    for (const t of this.guests.values()) if (t >= since) here++;
+    return { here, total: this.guests.size };
+  }
+
   /** The device's assigned ghost name (stable, unique in the room). */
   ghostName(deviceId: string): string {
     return this.names.nameFor(deviceId);
@@ -267,6 +282,7 @@ export class CrowdService {
       mine,
       queue: this.orderedQueue().map((h) => toPublic(h)),
       slotsPerRound: this.config.maxPerEpisode,
+      joined: this.joined().here,
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
       ...(this.waitingReasons.size ? { waiting: [...this.waitingReasons].map(([hauntId, reason]) => ({ hauntId, reason })) } : {}),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
