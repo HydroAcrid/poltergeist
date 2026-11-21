@@ -5,10 +5,12 @@ import { gzipSync } from "node:zlib";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import QRCode from "qrcode";
 import { CrowdState, HauntSubmitRequest, type ErrorCode } from "@poltergeist/contracts/haunt.js";
+import { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import type { CrowdService } from "./crowd.js";
 import { DEVICE_ID_RE, newDeviceId } from "./ids.js";
 
 const COOKIE = "pg_device";
+const CROWD_COMMANDS: ReadonlySet<OperatorCommand["cmd"]> = new Set(["haunt.approve", "haunt.reject", "haunt.releaseSeeded", "finals.approvalMode"]);
 const YEAR_S = 365 * 24 * 3600;
 
 function readCookie(req: FastifyRequest, name: string): string | undefined {
@@ -97,10 +99,22 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     return crowd.scoreboard();
   });
 
+  const isOperator = (req: FastifyRequest) => !!opts.operatorToken && req.headers["x-pg-token"] === opts.operatorToken;
+
   app.get("/api/crowd/queue", async (req, reply) => {
-    const token = req.headers["x-pg-token"];
-    if (!opts.operatorToken || token !== opts.operatorToken) return fail(reply, 401, "UNAUTHORIZED", "Operator token required.");
+    if (!isOperator(req)) return fail(reply, 401, "UNAUTHORIZED", "Operator token required.");
     return crowd.allHaunts();
+  });
+
+  // Operator commands Crowd owns (C14). World/Brain commands (round, replay, mode, dares, policy,
+  // coach) are refused here; only Crowd-scoped ones are published as `operator.command`.
+  app.post("/api/crowd/operator", { bodyLimit: 2048 }, async (req, reply) => {
+    if (!isOperator(req)) return fail(reply, 401, "UNAUTHORIZED", "Operator token required.");
+    const parsed = OperatorCommand.safeParse(req.body);
+    if (!parsed.success) return fail(reply, 400, "INVALID", "Not a valid operator command.");
+    if (!CROWD_COMMANDS.has(parsed.data.cmd)) return fail(reply, 400, "INVALID", "Crowd only handles haunt.approve, haunt.reject, haunt.releaseSeeded and finals.approvalMode.");
+    crowd.publishOperatorCommand(parsed.data);
+    return { ok: true, command: parsed.data };
   });
 
   // Projector overlay (transparent; World layers it over /stage) and its pure logic module.

@@ -552,6 +552,11 @@ export class CrowdService {
     }
   }
 
+  /** Publish an operator command from `POST /api/crowd/operator`; Crowd applies it via its own bus subscription. */
+  publishOperatorCommand(cmd: OperatorCommand): void {
+    this.deps.bus.publish("operator.command", "operator", cmd);
+  }
+
   private onOperator(cmd: OperatorCommand): void {
     switch (cmd.cmd) {
       case "finals.approvalMode":
