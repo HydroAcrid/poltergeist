@@ -2,7 +2,7 @@ import { frameSink } from '../rehearsal/video-stream.mjs';
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { checkpointEligible } from '../rehearsal/chapters.mjs';
 import { proposedKey } from '../rehearsal/move-trace.mjs';
-import { isEncounterStep, reviewableFrame, responseWatchdogMs } from './response-window.mjs';
+import { isEncounterStep, reviewableFrame, responseWatchdogMs, remainingReactionTail, sameReviewSubject } from './response-window.mjs';
 import { createEncounterControls } from './encounter-controls.mjs';
 import { chapterSeed } from './chapter-seed.mjs';
 import { assessFraming } from './framing-report.mjs';
@@ -51,6 +51,7 @@ async function capture() {
   const stagePilot = values['stage-pilot'];
   const chapterNumber = Number(process.env.PG_WORLD_CHAPTER) || 0;
   const stageDurationMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
+  const reactionTailMs = process.env.PG_WORLD_PLAY_MODE === 'buffered-show' ? Number(process.env.PG_WORLD_REACTION_TAIL_MS || 0) : 0;
   const playerReference = stagePilot ? readFileSync(new URL('../rehearsal/explorer.webp', import.meta.url)).toString('base64') : null;
   if (stagePilot && (!values.round || !process.send)) throw Error('Start the spectator round from the World broker.');
   if (values.round) {
@@ -129,6 +130,7 @@ async function capture() {
   const placementView = createPlacementView();
   const encounter = createEncounterControls();
   let commands = Promise.resolve(), actorStepTimer;
+  let closingOnResponse = false;
   let reviewing = null, lastSight = null, lastStepFeedback = null;
   function finishReview(step, observed, reason) {
     if (!step || reviewing !== step) return false;
@@ -208,11 +210,8 @@ async function capture() {
     if (unsafeForwardPress(lock) || lock.distanceHeld && cameraPress && !cameraPress.recovery)
       await releaseCamera();
     if (encounter.held) {
-      // A semantic read can age out while the new one is in flight. A newly
-      // observed identity loss aborts immediately; the watchdog bounds silence.
-      if (reviewing && (!lock.known || lock.lost) && lock.observed > reviewing.appliedFrame &&
-          finishReview(reviewing, null, 'tracking lost'))
-        await stopActor();
+      // A stationary camera stays held through the independent comparison.
+      // Losing a moving texture between two semantic reads cannot identify a different actor.
       if (cameraPress) await releaseCamera();
       return !follow.permits('W');
     }
@@ -239,7 +238,7 @@ async function capture() {
     }
     return held;
   }
-  if (autonomous) watchdog = setTimeout(stop, stagePilot ? stageDurationMs + 35000 : values.round ? 60000 : 45000);
+  if (autonomous) watchdog = setTimeout(stop, stagePilot ? stageDurationMs + reactionTailMs + 35000 : values.round ? 60000 : 45000);
   try {
     interaction = await ai.interactions.create({ model: 'genie-4', api_version: 'v1beta' }, request);
     abort.signal.throwIfAborted();
@@ -277,6 +276,7 @@ async function capture() {
           lastStepFeedback.outcome=feedback.outcome;
           record('Observed encounter response',{key:lastStepFeedback.key,appliedFrame:feedback.appliedFrame,
             observed:feedback.observed,outcome:feedback.outcome});
+          if (closingOnResponse) finish().catch(error=>abort.abort(error));
         }
         return;
       }
@@ -287,6 +287,7 @@ async function capture() {
         encounter.release(command.releaseEncounter, motionBoundary() - 1);
         return;
       }
+      if (closingOnResponse && command !== 'end') return;
       if (stagePilot && command?.pause && command.encounter) {
         if (!encounter.hold(command.encounter)) return;
         lastStepFeedback=null;
@@ -383,7 +384,8 @@ async function capture() {
             reason = reasonHeld();
             if (reason) return heldMove(command, reason);
           }
-          const basisImage = lastSight?.observed===command.observed ? lastSight.image : null;
+          const basis = lastSight?.observed===command.observed ? lastSight : null;
+          const basisImage = basis?.image;
           if (isEncounterStep(command) && !basisImage) return heldMove(command,'Missing the before-step reference image');
           clearTimeout(actorStepTimer);
           encounter.acted();
@@ -394,7 +396,7 @@ async function capture() {
           finally { noteMotion(); actionPending=false; }
           const appliedFrame=motionBoundary()-1;
           lastStepFeedback=basisImage ? {encounter:command.encounter,key:command.key,basis:command.observed,
-            appliedFrame,basisImage,at:Date.now(),outcome:'awaiting-pixels'} : null;
+            appliedFrame,basisImage,basisScene:basis.scene,at:Date.now(),outcome:'awaiting-pixels'} : null;
           if (isEncounterStep(command) && encounter.held && lastStepFeedback) {
             const step=lastStepFeedback;
             reviewing=step;
@@ -406,7 +408,7 @@ async function capture() {
           }
           publish({navigationMoved:true,key:command.key,observed:command.observed,appliedFrame,
             ...(command.encounter ? {encounter:command.encounter} : {})});
-          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
+          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,...(command.landing && {landing:command.landing}),transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {
@@ -462,9 +464,17 @@ async function capture() {
           moveWindow.start(Date.now());
           const durationMs = stagePilot ? stageDurationMs : 30000;
           publish({expiresAt: Date.now() + durationMs});
-          gameClock = setTimeout(() => {
+          const endChapter = () => {
             if (chapterNumber) publish({chapterExpired:true});
             finish(chapterNumber ? undefined : 'audience').catch(error => abort.abort(error));
+          };
+          gameClock = setTimeout(() => {
+            const tail = remainingReactionTail(lastStepFeedback, Date.now(), reactionTailMs);
+            if (!tail) return endChapter();
+            closingOnResponse = true;
+            publish({reactionTailStarted:true});
+            record('Waiting for the encounter response before the cut', {appliedFrame:lastStepFeedback.appliedFrame, maximumMs:tail});
+            gameClock = setTimeout(endChapter, tail);
           }, durationMs);
         }
         if ((values.drive || values.round) && process.connected && (stagePilot || (log.frames - 1) % 4 === 0)) {
@@ -493,8 +503,10 @@ async function capture() {
               const held = await updateShot(log.frames);
               const lock=follow.status();
               const current = lock.observed === observed;
-              const verifiedScene = follow.verified(observed) ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
-              lastSight=verifiedScene.visible ? {observed,image:delta.data} : null;
+              const tracked = follow.verified(observed);
+              const reviewSubject = stepForRead && reviewing === stepForRead && sameReviewSubject(stepForRead.basisScene, scene);
+              const verifiedScene = tracked || reviewSubject ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
+              lastSight=tracked ? {observed,image:delta.data,scene} : null;
               const reviewed=finishReview(stepForRead,observed,verifiedScene.visible ? 'post-step pixels' : 'tracking lost');
               if (reviewed) await stopActor();
               const settled = placementView.ready(observed,follow.permitsPlacement(observed),moving());
@@ -503,6 +515,13 @@ async function capture() {
               const measurement=encounter.measure(verifiedScene, observed, reviewed ? verifiedScene.visible : settled);
               const trackingPlacementReady=!reviewed && measurement.stable;
               const drift=!reviewed && measurement.drift;
+              if (!reviewed && !reviewing && !closingOnResponse && encounter.restoreFeet(verifiedScene)) {
+                await releaseCamera();
+                await session.send("Keep the existing explorer and obstacle standing on their current floorboards. Move only the observer back until both boots, the entire obstacle and the landing floor are visible together. Maintain the over-right-shoulder angle and fixed focal length, then lock the observation point.");
+                noteMotion();
+                publish({cameraMoved:true});
+                record('Reframed to see both boots at the encounter', {observed});
+              }
               if (drift) {
                 // The provider can animate uncommanded travel. Do not inject or
                 // verify from that moving view. Plant the feet and measure again.
@@ -519,9 +538,9 @@ async function capture() {
                 await session.send(instruction);
                 record('Requested single-subject recovery',{observed,holdReason:lock.holdReason});
               }
-              const checkpoint = chapterNumber && checkpointEligible(verifiedScene,held || !current)
+              const checkpoint = chapterNumber && !reviewed && checkpointEligible(verifiedScene,held || !current)
                 ? chapterSeed(delta.data) : null;
-              publish({scene:verifiedScene,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady,
+              publish({scene:verifiedScene,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:reviewed || held || !current,trackingPlacementReady,
                 ...(checkpoint ? {checkpoint} : {})});
               record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }

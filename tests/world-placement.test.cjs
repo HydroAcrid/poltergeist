@@ -567,3 +567,49 @@ test('only the independent image for the step actually sent can credit a sideste
     assert.equal(sent.some(c=>c.releaseEncounter==='wood'),moved);
   }
 });
+
+test('the recorded rightward decision names its actual landing patch and rejects a cropped or occupied destination', async () => {
+  const {encounterLanding, compareEncounterStep} = await moduleUnderTest;
+  const {characterInstruction} = await import('../apps/world/painted-door/native-follow.mjs');
+  const {createEncounterControls} = await import('../apps/world/painted-door/encounter-controls.mjs');
+  const {sameReviewSubject} = await import('../apps/world/painted-door/response-window.mjs');
+  // Rounded ER2 coordinates from chapter 1, observation 435 in photo-round-10tpBU.
+  const obstruction={label:'rolling cart',box:[575,409,814,523],solid:true};
+  const before=scene([obstruction],{playerCount:1, playerMatch:true, feetVisible:true,
+    feet:{left:[770,252],right:[790,303]},ahead:[648,552],move:{target:[700,600]}});
+  Object.assign(before,{bodyBox:[267,160,843,401],shoulderView:'rear-right'});
+  assert.equal(sameReviewSubject(before,{...before,bodyBox:[267,460,843,701]}),true);
+  assert.equal(sameReviewSubject(before,{...before,playerCount:2}),false);
+  assert.equal(sameReviewSubject(before,{...before,shoulderView:'other'}),false);
+  assert.equal(sameReviewSubject(before,{...before,bodyBox:[10,0,1000,900]}),false);
+  const match=o=>o==='rolling cart';
+  const landing=encounterLanding(before,match,'D');
+  assert.deepEqual(landing,{target:[700,600],obstacle:[575,409,814,523]});
+  assert.match(characterInstruction({key:'D',reaction:'avoid',landing}),/60% from the left and 70% from the top/);
+  assert.equal(encounterLanding({...before,feetVisible:false},match,'D'),null);
+  assert.equal(encounterLanding({...before,move:{target:[820,500]}},match,'D'),null);
+  assert.equal(encounterLanding({...before,obstacles:[obstruction,{solid:true,label:'chair',box:[400,570,700,625]}]},match,'D'),null);
+  assert.equal(compareEncounterStep(before,before,{visible:true,inPath:true},match,'D'),'still-blocked');
+  const controls=createEncounterControls();
+  controls.hold('one');
+  const cropped={...before,feetVisible:false,bodyBox:[241,0,1000,351]};
+  assert.equal(controls.restoreFeet(cropped),true);
+  assert.equal(controls.restoreFeet(cropped),false);
+  assert.equal(controls.measure(cropped,511,true).stable,false);
+  assert.equal(compareEncounterStep(before,cropped,{visible:true,inPath:false},match,'D'),'unconfirmed');
+});
+
+test('a buffered take may hold its cut only for an applied step still awaiting independent pixels, within its allocated runway', async () => {
+  const {remainingReactionTail,reviewableFrame} = await import('../apps/world/painted-door/response-window.mjs');
+  // Chapter 1 closed around 24 s after applying D at frame 500 (20.79 s).
+  const step={encounter:'guest',key:'D',at:20790,outcome:'awaiting-pixels'};
+  assert.equal(remainingReactionTail(step,24000,8000),4790);
+  assert.equal(remainingReactionTail(step,24000,2000),2000);
+  assert.equal(remainingReactionTail(step,24000,0),0);
+  assert.equal(remainingReactionTail({...step,outcome:'still-blocked'},24000,8000),0);
+  assert.equal(remainingReactionTail({...step,key:'W'},24000,8000),0);
+  assert.equal(remainingReactionTail({...step,encounter:null},24000,8000),0);
+  assert.equal(remainingReactionTail(step,30000,8000),0);
+  assert.equal(reviewableFrame(500,535,24),false);
+  assert.equal(reviewableFrame(500,536,24),true);
+});

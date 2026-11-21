@@ -133,7 +133,7 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   const submit=await post('/api/crowd/haunt',{text:'A small cart rolls across the aisle.'},cookie);
   assert.ok(submit.ok,await submit.text());
   let round;
-  const sidestep=/one visible sidestep to its left/i;
+  const sidestep=/clear patch on its left/i;
   try {
     await eventually(async()=>{
       round=(await state()).round;
@@ -150,6 +150,7 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   const placement=wire.findIndex(({event})=>event.content?.[0]?.text.includes('planned next footfall'));
   const reaction=wire.findIndex(({event})=>sidestep.test(event.content?.[0]?.text||''));
   assert.ok(pause>=0 && placement>pause && reaction>placement);
+  assert.match(wire[reaction].event.content[0].text,/18% from the left and 65% from the top/);
   assert.equal(wire.slice(pause,reaction).some(({event})=>event.action==='key_down'),false);
   assert.ok(visionReads.some((read,i)=>i>0 && read.at-visionReads[i-1].at>=3100));
   assert.ok(visionReads.some(read=>read.placement && read.frames>wire[placement].frame));
@@ -168,6 +169,10 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   const reviewed=await eventually(async()=>{
     const current=(await state()).round;
     return current.props[0].response?.outcome==='still-blocked' && current;
+  }).catch(async error => {
+    const run=(await readdir(join(dir,'runs'))).find(entry=>entry.startsWith('photo-round-'));
+    const trace=JSON.parse(await readFile(join(dir,'runs',run,'session.json'),'utf8'));
+    throw Error(JSON.stringify({error:error.message,review:trace.events.map(e=>[e.frame,e.action,e.observed,e.reason]),reads:visionReads,props:(await state()).round.props}));
   });
   const result=reviewed.props[0].response;
   assert.equal(reviewed.props[0].observedReaction,undefined);
@@ -177,7 +182,7 @@ test('the normal Crowd, Brain and World send one stationary encounter response t
   await eventually(()=>visionReads.some(read=>read.knowsOutcome));
   const stop=wire.slice(reaction+1).find(({event})=>event.content?.[0]?.text.startsWith('Stop the existing explorer'));
   assert.ok(stop && stop.frame>result.checkedFrame && stop.frame-wire[reaction].frame>25);
-  assert.ok(result.checkedFrame>=result.appliedFrame+18);
+  assert.ok(result.checkedFrame>=result.appliedFrame+36);
   t.diagnostic('The next picture at '+result.checkedFrame+' still showed the obstruction. The stop reached the wire at '+stop.frame+'.');
   await post('/rehearsal/stop');
   await eventually(async()=>!(await state()).providerClosing);

@@ -501,10 +501,25 @@ export function characterInstruction(command) {
   ];
   if (command.key === "W")
     return "One continuous trailing shot: the existing foreground robot takes two small walking strides along the visible floor toward the exit. The observer travels in parallel above and behind its right shoulder at fixed distance and focal length. Keep its back and right flank in the lower left and the floor and obstacle ahead toward the upper right; retain the wider view as the room passes. Robot and viewpoint pause together.";
+  if (command.key === "S" && command.encounter && command.landing) {
+    const [y,x] = command.landing.target.map(n => Math.round(n/10));
+    return `The existing explorer keeps its flashlight trained on the obstruction and takes one deliberate step backward. Both boots land on the open patch at ${x}% from the left and ${y}% from the top, increasing the visible gap to the obstacle. Hold the camera at its current position and focal length with both boots and the obstacle in frame.`;
+  }
   if (command.key === "S" && command.encounter)
     return "The existing explorer takes exactly one full step backward away from the visible obstruction and plants both boots on the floor. Its flashlight stays trained on the obstruction. Hold the observer still so its change of position is clear.";
   if (command.key === "S")
     return "The existing foreground robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
+  if (dir && command.reaction === "avoid" && command.landing) {
+    const percent = n => Math.round(n / 10) + "%";
+    const [y,x] = command.landing.target;
+    const [,left,bottom,right] = command.landing.obstacle;
+    return [
+      `The explorer sees the obstruction at ${percent(left)}–${percent(right)} across the frame, touching the floor at ${percent(bottom)} from the top.`,
+      `It bends its knees, swings its flashlight toward the clear patch on its ${dir} and steps around the near edge.`,
+      `Both boots cross that edge and plant on the clear patch at ${percent(x)} from the left and ${percent(y)} from the top.`,
+      "Keep the observer still at the same focal length, showing both boots, the object and landing floor together. The explorer stops there.",
+    ].join(" ");
+  }
   if (command.key === "A" || command.key === "D")
     return command.reaction === "avoid"
       ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, moving its whole body across the floor into the clear strip on that side. Its trailing boot joins the leading boot. Both boots plant and remain there. The observer holds its position and the obstacle stays in view.`

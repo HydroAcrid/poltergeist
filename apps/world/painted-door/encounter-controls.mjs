@@ -5,6 +5,15 @@ export function createEncounterControls() {
   return {
     get assessing() { return current?.acknowledged != null; },
     get held() { return current !== null; },
+    restoreFeet(scene) {
+      if (!current || !scene.visible || scene.playerCount !== 1 || !scene.playerMatch) return false;
+      if (scene.feetVisible) current.reframing = false;
+      if (scene.feetVisible !== false || current.reframing) return false;
+      current.reframing = true;
+      current.anchor = null;
+      current.stableFrame = null;
+      return true;
+    },
     hold(id) {
       if (!id || current?.id === id) return false;
       current = { id, sent: 0, acknowledged: null };
@@ -19,7 +28,7 @@ export function createEncounterControls() {
     measure(scene, observed, settled) {
       if (!current) return { stable: settled, drift: false };
       current.stableFrame = null;
-      if (!settled || !scene.visible || !Array.isArray(scene.bodyBox)) {
+      if (!settled || !scene.visible || scene.feetVisible === false || !Array.isArray(scene.bodyBox)) {
         current.anchor = null;
         return { stable: false, drift: false };
       }

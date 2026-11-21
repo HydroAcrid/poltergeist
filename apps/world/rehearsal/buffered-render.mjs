@@ -75,9 +75,10 @@ async function takeArchive(captureDir, previous, episodeId, chapter) {
   throw Error('The native recording for this segment was not found.');
 }
 
-function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId, chapter, pilot, initialFear, signal, onStart}) {
+function performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, pilot, initialFear, signal, onStart}) {
   return new Promise((resolve, reject) => {
     let live, started = false, selected = false, lastObserved = 0, lastObservedAt = 0, closed = false, failure, closeTimer;
+    let reactionTail = false;
     const round = {props:[], fear:initialFear, deadline:0, lastReaction:null};
     const evidence = {picks:picks.map(newReceipt), observations:[], moves:[], winner:null, winnerFrame:null, finalFear:initialFear};
     const byId = new Map(evidence.picks.map(row => [row.id,row]));
@@ -92,7 +93,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
       try { live?.stop(); } catch { finish(null); }
     };
     const abort = () => stop(signal.reason ?? new Error('Rendering canceled.'));
-    const watchdog = setTimeout(() => stop(Error('The Genie segment exceeded its capture window.')), durationMs+providerWaitMs);
+    const watchdog = setTimeout(() => stop(Error('The Genie segment exceeded its capture window.')), durationMs+reactionTailMs+providerWaitMs);
     signal?.addEventListener('abort', abort, {once:true});
     const finish = terminal => {
       if (closed) return;
@@ -103,7 +104,14 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
       placement.finish();
       evidence.finalFear = round.fear;
       for (const row of evidence.picks) row.placement = 'not-placed';
-      for (const prop of round.props) byId.get(prop.id).placement = prop.placement;
+      for (const prop of round.props) {
+        const row = byId.get(prop.id);
+        row.placement = prop.placement;
+        if (prop.response) {
+          row.response = {...prop.response};
+          if (row.response.outcome === 'awaiting-pixels') row.response.outcome = 'unconfirmed';
+        }
+      }
       if (failure) reject(failure);
       else if (!started || terminal !== 'completed') reject(Error('Genie closed without a complete native segment.'));
       else resolve(evidence);
@@ -111,6 +119,11 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
     function handle(message) {
       if (failure || closed) return;
       const now = Date.now();
+      if (message.reactionTailStarted && started && !reactionTail && reactionTailMs > 0) {
+        reactionTail = true;
+        round.deadline += reactionTailMs;
+        placement.holdForHandoff();
+      }
       if (message.frame) {
         if (!started) {
           started = true;
@@ -159,6 +172,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
           row.scare = prop.observedReaction === 'scare';
         }
       }
+      if (reactionTail) return; // The final picture can verify the previous response, but cannot initiate new travel.
       const held = placement.navigationPaused(now);
       if ((!held && !message.trackingNavigationHeld && observedCrossing(crossing, scene, observedAt)) || round.fear >= 3) {
         evidence.winner = round.fear >= 3 ? 'audience' : 'robot';
@@ -175,7 +189,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
     try {
       signal?.throwIfAborted();
       live = launchLive({dir:captureDir, seed, episodeId, playMode:'buffered-show', plannedDurationMs:durationMs,
-        chapter, chapterMs:durationMs,
+        chapter, chapterMs:durationMs, reactionTailMs,
         onMessage(message) {try { handle(message); } catch(error) { stop(error); }},
         onClose:finish,
       });
@@ -189,17 +203,19 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, episodeId
 
 export async function renderSegment({
   seed, picks = [], durationMs, episodeId, chapter = 1, makePilot, captureDir,
-  outputDir = tmpdir(), initialFear = 0, signal, onStart, launchLive = openLive, ffmpegPath,
+  outputDir = tmpdir(), initialFear = 0, reactionTailMs = 0, signal, onStart, launchLive = openLive, ffmpegPath,
 }) {
   signal?.throwIfAborted();
   if (!isJPEG(seed) || !Number.isSafeInteger(durationMs) || durationMs <= 0 || !episodeId ||
       !Number.isSafeInteger(chapter) || chapter < 1 || !Number.isSafeInteger(initialFear) || initialFear < 0 || !captureDir || typeof makePilot !== 'function')
     throw Error('A JPEG seed, segment duration, episode and World pilot are required.');
+  if (!Number.isSafeInteger(reactionTailMs) || reactionTailMs < 0 || reactionTailMs > 8000 ||
+      durationMs + reactionTailMs > 90000) throw Error('The response reserve must fit inside the native capture window.');
   if (!Array.isArray(picks) || !picks.every(p => p && typeof p.id === 'string' && p.id && typeof p.text === 'string' && p.text.trim()) ||
       new Set(picks.map(p => p.id)).size !== picks.length) throw Error('Each selected haunting needs its own ID and approved text.');
   const encoder = encoderPath(ffmpegPath);
   if (!encoder) throw Error('An H.264 encoder is unavailable on the World host.');
-  const warning = worldLeaseWarning({mode:'camera-test', durationMs, requestedAt:Date.now()});
+  const warning = worldLeaseWarning({mode:'camera-test', durationMs:durationMs+reactionTailMs, requestedAt:Date.now()});
   if (warning) throw Error(warning.error);
   await mkdir(outputDir, {recursive:true});
   const work = await mkdtemp(join(outputDir, 'poltergeist-segment-'));
@@ -208,7 +224,7 @@ export async function renderSegment({
     const pilot = makePilot();
     if (typeof pilot !== 'function') throw Error('The World pilot is unavailable.');
     const previous = new Set(await captureRuns(captureDir));
-    const evidence = await performTake({launchLive, captureDir, seed, picks, durationMs, episodeId, chapter, pilot, initialFear, signal, onStart});
+    const evidence = await performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, pilot, initialFear, signal, onStart});
     signal?.throwIfAborted();
     const {path, session} = await takeArchive(captureDir, previous, episodeId, chapter);
     const {frames:frameCount, fps} = session;

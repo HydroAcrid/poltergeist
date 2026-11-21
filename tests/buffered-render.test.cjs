@@ -38,12 +38,14 @@ test('one closed take encodes the complete native archive and timestamps only co
   const {renderSegment,bufferedEncoderReady} = await implementation;
   if (!bufferedEncoderReady()) return t.skip('FFmpeg with libx264 required for the movie check');
   const opts = await fixture(t);
+  opts.durationMs=150;
   const pictures=Array.from({length:12},(_,i)=>picture(i+1));
   const commands=[], calls=[], starts=[];
-  const shot = (obstacles=[]) => ({visible:true, playerMatch:true, playerCount:1, pose:'upright', threat:'ordinary',
+  const shot = (obstacles=[]) => ({visible:true, feetVisible:true, playerMatch:true, playerCount:1, pose:'upright', threat:'ordinary',
     feet:{left:[800,440],right:[800,460]}, ahead:[580,450], obstacles});
   const launchLive = native => {
     assert.equal(native.chapterMs,opts.durationMs);
+    assert.equal(native.reactionTailMs,800);
     assert.deepEqual(native.seed,opts.seed);
     setImmediate(async () => {
       try {
@@ -61,7 +63,12 @@ test('one closed take encodes the complete native archive and timestamps only co
         publish({injected:'idea-1',attempt:1,injectedFrame:3,injectedAt:Date.now()});
         await sleep(4);
         observed(4,shot([{label:'toppled chair',box:[490,425,620,475],solid:true}]));
-        publish({navigationMoved:true,observed:4,key:'A'});
+        publish({navigationMoved:true,observed:4,key:'A',encounter:'idea-1',appliedFrame:5});
+        await sleep(opts.durationMs+20);
+        publish({reactionTailStarted:true});
+        publish({stepReview:{encounter:'idea-1',key:'A',basis:4,appliedFrame:5,observed:9,reason:'post-step pixels'}});
+        observed(9,shot([{label:'toppled chair',box:[490,425,620,475],solid:true}]));
+        assert.ok(commands.some(command=>command.stepFeedback?.outcome==='still-blocked'));
         // Last two preview frames never arrive over IPC. Both must still be in the movie and checkpoint.
         publish({frame:pictures[9].toString('base64'),frameNumber:10});
         const run=join(opts.captureDir,'runs','photo-round-fixture');
@@ -74,7 +81,7 @@ test('one closed take encodes the complete native archive and timestamps only co
     });
     return {send:c=>commands.push(c),stop:()=>native.onClose('canceled')};
   };
-  const result=await renderSegment({...opts, launchLive, initialFear:1, picks:[{id:'idea-1',text:'A chair tips over',by:'Amber Wisp'}],
+  const result=await renderSegment({...opts, launchLive, reactionTailMs:800, initialFear:1, picks:[{id:'idea-1',text:'A chair tips over',by:'Amber Wisp'}],
     onStart:start=>starts.push(start), makePilot:()=>scene=>{calls.push(scene);return pilot()(scene);}});
   assert.equal(starts.length,1);
   assert.ok(calls.some(scene=>scene.visible), 'the actual pilot callback receives observed pixels interpreted by the tracker');
@@ -91,6 +98,7 @@ test('one closed take encodes the complete native archive and timestamps only co
   assert.equal(p.inPathOffsetMs,125);
   assert.equal(p.visible,true);
   assert.equal(p.reacted,false);
+  assert.deepEqual(p.response,{key:'A',basis:4,appliedFrame:5,checkedFrame:9,outcome:'still-blocked'});
   assert.equal(p.reactedOffsetMs,null);
   assert.equal((await stat(result.filePath)).mode & 0o222,0);
   const sourceGray = jpeg.decode(pictures[11]).data[0];

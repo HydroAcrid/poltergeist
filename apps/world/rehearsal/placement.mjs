@@ -194,6 +194,29 @@ export function inspectPlacement(
 
 // A sidestep opens a route only when the same obstacle is still visible and
 // both boots have moved to clear floor on the instructed side of it.
+// The Brain chooses an observed open patch. Use the camera coordinates from
+// that same image and reject a patch inside a solid obstacle's footprint.
+export function encounterLanding(scene, matches, key) {
+  const target = scene?.move?.target;
+  if (!point(target) || scene.feetVisible === false) return null;
+  const corridor = floorCorridor(scene);
+  const targets = scene.obstacles.filter(o => matches(o.label) && box(o.box));
+  if (!corridor || targets.length !== 1) return null;
+  const obstacle = targets[0].box;
+  const margin = corridor.radius / aspect;
+  if (key === 'S') {
+    const dy = target[0] - corridor.feet[0];
+    const dx = target[1] - corridor.feet[1];
+    if (dy*corridor.dy + dx*corridor.dx*aspect*aspect >= 0) return null;
+  }
+  if (key === 'A' && target[1] >= obstacle[1] - margin ||
+      key === 'D' && target[1] <= obstacle[3] + margin) return null;
+  if (scene.obstacles.some(o => o.solid !== false && box(o.box) &&
+      target[0] >= o.box[2] - corridor.radius && target[0] <= o.box[2] + corridor.radius &&
+      target[1] >= o.box[1] - margin && target[1] <= o.box[3] + margin)) return null;
+  return {target: target.map(Math.round), obstacle: obstacle.map(Math.round)};
+}
+
 export function compareEncounterStep(before, after, result, matches, key) {
   const a = floorCorridor(before), b = floorCorridor(after);
   if (!a || !b || !before.feetVisible || !after.feetVisible || after.pose !== 'upright' ||
@@ -564,13 +587,21 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
           intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'));
         if (blocked || (!scene.move?.avoiding && decision.reaction !== 'avoid')) return null;
       }
+      let landing;
+      if (['A','D','S'].includes(key)) {
+        if (scene.feetVisible === false) return null;
+        if (scene.move?.target) {
+          landing = encounterLanding(scene, job.effect.matches, key);
+          if (!landing) return null;
+        }
+      }
       job.lastCommandFrame = latest.frame;
       if (['A','D','S'].includes(key)) job.proposedStep={key,basis:latest.frame,scene};
       if (['A','D'].includes(key)) {
         prop.avoidRequestedAt ??= at;
-        return { ...command, encounter: prop.id, reaction: 'avoid', toward: key === 'A' ? 'left' : 'right' };
+        return { ...command, encounter: prop.id, reaction: 'avoid', toward: key === 'A' ? 'left' : 'right', ...(landing && {landing}) };
       }
-      return { ...command, encounter: prop.id };
+      return { ...command, encounter: prop.id, ...(landing && {landing}) };
     },
     finish() {
       for (const job of jobs.values()) {
