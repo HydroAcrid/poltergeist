@@ -1,4 +1,4 @@
-import { hauntCue } from './haunt-cue.mjs';
+import { createProjectorCue } from './haunt-cue.mjs';
 import { createScene } from './scene.js';
 import { readPhoto, toJpeg } from './photo.js';
 const el = (id) => document.getElementById(id);
@@ -8,6 +8,7 @@ document.body.classList.toggle('host-view', host);
 const diagnostics = host ? await import('./host-debug.mjs') : null;
 const canvas = el('scene');
 let liveImage = el('live');
+const projectorCue = createProjectorCue();
 const hud = document.querySelector('.hud');
 function positionCue() {
   document.documentElement.style.setProperty('--cue-top', Math.ceil(hud.getBoundingClientRect().bottom + 12) + 'px');
@@ -348,7 +349,7 @@ function paint() {
       cue = '',
       caption = '',
       by = '',
-      card = null;
+      card = projectorCue(connected ? r : null, now);
     if (r) {
       const sec = Math.max(0, Math.ceil((r.deadline - now) / 1000)),
         elapsed = (now - r.openedAt) / 1000;
@@ -373,11 +374,10 @@ function paint() {
         phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
         clock = time(sec);
         label = 'Time left';
-        card = hauntCue(r, now);
         if (card) {
-          cue = card.label;
-          caption = card.text;
-          by = [card.by, card.intent].filter(Boolean).join(' · ');
+          cue = card.intent ? 'Robot’s plan' : card.label;
+          caption = card.intent || card.text;
+          by = (card.intent ? [card.text, card.by] : [card.by]).filter(Boolean).join(' · ');
         } else if (r.live && !worldVisible && (r.chapter || 1)===1 && now-r.startedAt > 4500) {
           caption = 'Opening the hallway…';
         }
