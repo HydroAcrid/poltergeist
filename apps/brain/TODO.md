@@ -1,8 +1,8 @@
 # BRAIN TODO (work top-down; tick items as you finish)
 
 ## Setup: by H+0:30 (write locally right away; push once world's scaffold is on `main`)
-- [ ] `tick-response.ts`, `tick-log.ts`, `policy.ts`, `replay.ts` + valid/invalid fixtures (CONTRACTS §8)
-- [ ] `fixtures/media/fixture-zero/`: your human hands you ~20 hallway photos; resize to 640×360; hand-label `labels.json` `{file, visible, point}`
+- [x] `tick-response.ts`, `tick-log.ts`, `policy.ts`, `replay.ts` + valid/invalid fixtures (CONTRACTS §8)
+- [ ] `fixtures/media/fixture-zero/`: your human hands you ~20 hallway photos; resize to 640×360; hand-label `labels.json` `{file, visible, point}` (painted-door head-on + sideways frames are in; hallway photos still to come)
 - [ ] Rebase on scaffold → `pnpm test:contracts` green → push → NOTICE all
 
 ## Fakes and scenarios: by H+0:45

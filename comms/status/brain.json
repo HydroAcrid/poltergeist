@@ -1,2 +1,7 @@
-{ "lane": "brain", "updatedAt": null, "tier": null, "demoPathOk": null,
-  "working": [], "next": [], "blocked": [], "implements": {}, "measured": {}, "notes": "" }
+{ "lane": "brain", "updatedAt": "2026-11-21T12:15", "tier": 0, "demoPathOk": null,
+  "working": ["brain contracts + fixtures (local, branch brain/contracts)"],
+  "next": ["fake brain (server/fake.ts)", "six scenario bundles", "fixture-zero hallway photos"],
+  "blocked": ["World scaffold not on main: no root workspace, common.ts or tick-request.ts yet; brain tests run against local shims"],
+  "implements": { "TickResponse": "1.0.0", "TickLog": "1.0.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
+  "measured": {},
+  "notes": "Painted-door first move verified with the fixture adapter: head-on → D 1000 ms (verify), sideways → ArrowRight toward the recessed door. Worktrees: ../pg-brain-replay (brain/replay), ../pg-brain-coach (brain/coach)." }

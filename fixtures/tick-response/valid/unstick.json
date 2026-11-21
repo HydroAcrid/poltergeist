@@ -1,0 +1,31 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 18,
+  "t": 9000,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "brainLatencyMs": 690,
+  "perception": {
+    "visible": true,
+    "point": [
+      430,
+      505
+    ],
+    "box": [
+      280,
+      450,
+      600,
+      560
+    ],
+    "conf": 0.86,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "S",
+    "holdMs": 400
+  },
+  "mode": "unstick",
+  "rationale": "stuck, backing up"
+}

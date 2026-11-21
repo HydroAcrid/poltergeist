@@ -1,0 +1,18 @@
+[
+  {
+    "file": "painted-door-head-on.jpg",
+    "hypothesis": "Head-on, both outlines read as doors and neither shows usable depth.",
+    "candidates": [
+      { "point": [339, 276], "box": [114, 213, 564, 339], "conf": 0.55, "depth": "unclear" },
+      { "point": [345, 789], "box": [86, 707, 604, 871], "conf": 0.6, "depth": "unclear" }
+    ]
+  },
+  {
+    "file": "painted-door-sideways.jpg",
+    "hypothesis": "After the sidestep, one door shows a recessed jamb and the other stays flat on the plaster.",
+    "candidates": [
+      { "point": [311, 112], "box": [61, 34, 561, 191], "conf": 0.5, "depth": "flat" },
+      { "point": [337, 644], "box": [92, 574, 583, 715], "conf": 0.82, "depth": "recessed" }
+    ]
+  }
+]

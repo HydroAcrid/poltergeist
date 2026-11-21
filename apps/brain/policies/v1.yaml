@@ -1,0 +1,26 @@
+version: v1
+parent: null
+createdBy: human
+rationale: baseline
+perception: { adapter: er2, thinking: low, timeoutMs: 2500, promptAddenda: [] }
+controller:
+  emaAlpha: 0.5
+  maxPointJump: 300
+  yawDeadband: 0.15
+  kYaw: 600            # ms of turn per unit |e|   (calibrate: degrees per 100 ms ArrowRight)
+  kFwd: 1200           # ms forward per unit (1 - boxH)
+  defaultFwdMs: 600
+  lostTicksBeforeSearch: 2
+  searchStepMs: 450    # ≈ 45° (calibrate live)
+  searchMaxSteps: 8
+  exploreFwdMs: 800
+  stuckDiffThreshold: 0.02
+  stuckTicks: 2
+  successBoxHeight: 0.45
+  successCenter: 0.2
+  successTicks: 2
+  # Two or more door candidates with no depth cue to tell them apart:
+  # change the viewing angle before committing (the recorded sidestep was D for 1 s).
+  verifyKey: D
+  verifyHoldMs: 1000
+  verifyMaxSteps: 2
