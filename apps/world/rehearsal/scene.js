@@ -43,6 +43,7 @@ export async function createScene(canvas) {
     if (first || now-maskUpdated>=700) {
       // The browser paints arriving MJPEG frames directly. This white multiply
       // layer carries the hallway lighting without redrawing the JPEG every RAF.
+      outgoing.getContext('2d').drawImage(img,0,0,W,H);
       screen.fillStyle='#fff';screen.fillRect(0,0,W,H);
       grade(1,now,first,img);maskUpdated=now;
     }
@@ -52,7 +53,7 @@ export async function createScene(canvas) {
     if (!canvas.classList.contains('stream-mask')) return;
     canvas.classList.remove('stream-mask');
     if (img?.naturalWidth) followLive(img,null,now);
-    else { screen.fillStyle='#020405';screen.fillRect(0,0,W,H); }
+    else { screen.drawImage(outgoing,0,0);grade(1,now); }
   }
   let source = await image('/rehearsal/source'),
     reduced = matchMedia('(prefers-reduced-motion: reduce)');

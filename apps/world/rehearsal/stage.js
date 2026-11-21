@@ -240,7 +240,11 @@ async function updateState() {
       liveImage.replaceWith(fresh);
       liveImage = fresh;
       liveId = stream;
-      fresh.onerror = () => { if (fresh === liveImage) liveId=''; };
+      fresh.onerror = () => {
+        if (fresh!==liveImage) return;
+        scene.freezeLive(fresh,Date.now()+off);
+        liveId='';
+      };
       fresh.src = '/rehearsal/video?round=' + encodeURIComponent(r.id) +
         (r.chapters ? '&chapter=' + encodeURIComponent(r.chapter) : '');
     }
