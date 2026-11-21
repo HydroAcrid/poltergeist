@@ -906,6 +906,17 @@ export async function registerStage(
           r.props.push({id:guest.id, name:guest.clip.title, by:guest.by, recorded:true, shownAt:now});
           bus.publish('haunt.injected','world',{hauntId:guest.id,episodeId:r.id,t:now-r.startedAt,
             ok:true,simulated:true,sceneEvidence:"in-recording"},r.id);
+        }, 30000, (guest,now) => {
+          const reaction = guest.clip.reactionEvidence;
+          const flinch = reaction.action === 'recoil' && guest.clip.verifiedScare === true;
+          r.lastReaction = {at:now,presentedAt:now,name:guest.clip.title,flinch};
+          if (flinch) {
+            r.fear++;
+            if (r.fear >= 3) {
+              finish(r,'audience','fear',now);
+              notifyEnd(r);
+            }
+          }
         });
         r.prepared = prepared.state;
       }

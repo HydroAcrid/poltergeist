@@ -1,5 +1,6 @@
 import {createReadStream, readFileSync, statSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {createHash} from 'node:crypto';
 
 const catalogFile = new URL('./prepared-media/catalog.json', import.meta.url);
 const presetsFile = new URL('../../../fixtures/haunt/presets.json', import.meta.url);
@@ -10,13 +11,17 @@ const byRole = role => clips.find(clip => clip.role === role);
 // prop or a movement instruction alone cannot qualify an audience choice.
 export function hasFilmedResponse(clip) {
   const e = clip.reactionEvidence;
-  if (clip.role !== 'effect' || !e || e.clipSha256 !== clip.sha256 ||
+  if (clip.role !== 'effect' || !e || !Number.isSafeInteger(clip.fps) || clip.fps <= 0 || e.clipSha256 !== clip.sha256 ||
       !/^[0-9a-f]{64}$/.test(clip.sha256 ?? '') || !clip.source?.episodeId || e.episodeId !== clip.source.episodeId) return false;
   const inClip = n => Number.isSafeInteger(n) && n >= 1 && n <= clip.frames;
   return e.verifiedInPixels === true && ['duck','shield','recoil','retreat','sidestep','stop'].includes(e.action) &&
     inClip(e.obstacleFrame) && inClip(e.responseFrame) && e.obstacleFrame < e.responseFrame;
 }
-const effectOptions = clips.filter(hasFilmedResponse).map(clip => {
+const effectOptions = clips.filter(clip => {
+  if (!hasFilmedResponse(clip)) return false;
+  const bytes = readFileSync(new URL('./prepared-media/'+clip.file, import.meta.url));
+  return createHash('sha256').update(bytes).digest('hex') === clip.sha256;
+}).map(clip => {
   const preset = presets.find(item => item.id === clip.presetId);
   return {id:preset.id, text:preset.text, title:clip.title, label:clip.buttonLabel, tags:preset.tags};
 });
@@ -47,12 +52,13 @@ export function registerPreparedMedia(app, root) {
   }
 }
 
-export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000) {
+export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000, onReaction = () => {}) {
   const walk = byRole('walk');
   const idle = byRole('idle');
   const selected = new Set();
   let fallback = walk, queued = null;
   let nextChange = start + collectMs;
+  let pendingDisplay, pendingReaction;
   const state = {phase:'collecting', collectUntil:nextChange, upNext:brief(walk)};
   function gate(now) {
     return {options:effectOptions, canDispatch:!queued && state.phase !== 'handoff' &&
@@ -67,7 +73,18 @@ export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000
     return true;
   }
   function advance(now) {
-    if (now < nextChange || now >= deadline) return;
+    if (now >= deadline) return;
+    if (pendingDisplay && now >= pendingDisplay.at) {
+      const {guest,at}=pendingDisplay;
+      pendingDisplay=null;
+      onDisplay(guest,at);
+    }
+    if (pendingReaction && now >= pendingReaction.at) {
+      const {guest,at}=pendingReaction;
+      pendingReaction=null;
+      onReaction(guest,at);
+    }
+    if (now < nextChange) return;
     if (state.phase !== 'handoff') {
       state.phase = 'handoff';
       nextChange = now + blackoutMs;
@@ -81,7 +98,11 @@ export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000
       clipDurationMs:clip.durationMs, sourceTitle:clip.title, upNext:brief(fallback),
       cue:guest ? {label:'Audience pick',text:clip.title,by:guest.by} : null});
     nextChange = now + clip.durationMs;
-    if (guest) onDisplay(guest,now);
+    if (guest) {
+      const frameAt = n => now + Math.round((n-1)*1000/clip.fps);
+      pendingDisplay = {guest,at:frameAt(clip.reactionEvidence.obstacleFrame)};
+      pendingReaction = {guest,at:frameAt(clip.reactionEvidence.responseFrame)};
+    }
   }
   return {state, gate, choose, advance};
 }
