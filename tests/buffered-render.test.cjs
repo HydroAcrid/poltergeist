@@ -90,7 +90,7 @@ test('one closed take encodes the complete native archive and timestamps only co
   assert.deepEqual(result.finalFrame,pictures[11]);
   assert.equal(result.evidence.winner,null);
   assert.deepEqual(result.evidence.observations.at(-1),{frame:9,playerCount:1,visible:true,ready:true,
-    subjectTracked:true,feetVisible:true,shoulderView:'rear-right'});
+    subjectTracked:true,subjectCompared:true,feetVisible:true,shoulderView:'rear-right',doorwayProgress:'unclear'});
   assert.equal(result.evidence.finalFear,1);
   assert.deepEqual(result.evidence.moves,[{observed:4,key:'A'}]);
   const p=result.evidence.picks[0];

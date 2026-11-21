@@ -1,5 +1,7 @@
 // Generate sequentially from the preceding segment's native JPEG. Playback may
 // run concurrently with generation, but two generators can never fork the hallway.
+import {reviewSegment} from './segment-review.mjs';
+
 const flickerMs = 1250;
 const collectMs = 30000;
 const maxPicks = 2;
@@ -12,9 +14,10 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
   const picks = [], ready = [], assets = new Map(), seen = new Set();
   const controller = new AbortController();
   let tail = seed, sequence = 0, worker = null, terminalQueued = false, stopped = false;
+  let retry = null, inFlight = null;
   let active = null, handoffAt = null, firstPickAt = null, hasPlayed = false;
   let error = null, renderMs = 0, tailFear = 0, gapStartedAt = null;
-  const metrics = {generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
+  const metrics = {attempts:0, rejected:0, generated:0, played:0, renderMs:0, footageMs:0, openingWaitMs:null,
     playbackGaps:0, playbackGapMs:0};
   const url = n => '/rehearsal/segments/'+encodeURIComponent(id)+'/'+n+'.mp4';
   const brief = segment => ({clipUrl:url(segment.n),title:segment.title});
@@ -43,12 +46,14 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
       }
       if (entry.done || elapsed < entry.at) continue;
       entry.done = true;
-      if (entry.ok) state.cue = {label:'In the hallway',text:entry.pick.text,by:entry.pick.by};
-      onReceipt(entry.pick,entry.ok,entry.ok ? undefined : 'The camera did not confirm this idea in the walking path.');
+      state.cue = {label:'In the hallway',text:entry.pick.text,by:entry.pick.by};
+      onReceipt(entry.pick,true);
     }
   }
   function releasePending(reason) {
-    for (const pick of picks.splice(0)) onReceipt(pick,false,reason);
+    const pending = [...picks.splice(0), ...(retry ?? []), ...(inFlight ?? [])];
+    retry = inFlight = null;
+    for (const pick of pending) onReceipt(pick,false,reason);
     for (const segment of [...ready,...(active ? [active] : [])])
       for (const entry of segment.receipts) if (!entry.done) {
         entry.done = true;
@@ -70,70 +75,95 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
     // Allow two Crowd ticks to combine picks. If the lobby is quiet the first
     // walking take can open while guests are still entering their ideas.
     if (!sequence && !picks.length && now-start < 8000) return;
-    if (picks.length === 1 && now-firstPickAt < 2000) return;
-    const batch = picks.splice(0), n = ++sequence;
-    firstPickAt = null;
+    if (!retry && picks.length === 1 && now-firstPickAt < 2000) return;
+    const repeated = retry !== null;
+    const batch = retry ?? picks.splice(0);
+    const attempt = ++sequence;
+    metrics.attempts++;
+    if (!repeated) firstPickAt = null;
+    retry = null;
+    inFlight = batch;
     const durationMs = Math.min(durationFor(batch.length), deadline-now-flickerMs);
     // A late confirmed obstacle may need one more independent camera reading.
     // The driver uses this headroom only while a real response is in flight.
     const reactionTailMs = Math.max(0,Math.min(8000,deadline-now-flickerMs-durationMs));
     const began = now;
     worker = Promise.resolve().then(() => render({seed:tail,picks:batch,durationMs,episodeId:id,
-      chapter:n,initialFear:tailFear,reactionTailMs,signal:controller.signal})).then(clip => {
+      chapter:attempt,continuation:metrics.generated > 0,initialFear:tailFear,reactionTailMs,signal:controller.signal})).then(async clip => {
       if (stopped || controller.signal.aborted) {
-        clip.dispose?.();
-        for (const pick of batch) onReceipt(pick,false,'The round ended before this idea appeared.');
+        await clip.dispose?.();
         return;
       }
       if (!Buffer.isBuffer(clip.finalFrame) || !clip.finalFrame.length || !clip.filePath ||
           !Number.isFinite(clip.durationMs) || clip.durationMs <= 0) {
-        clip.dispose?.();
+        await clip.dispose?.();
         throw Error('The render did not produce a playable continuation.');
       }
+      const review = reviewSegment(clip,batch,tailFear,metrics.generated > 0);
+      if (!review.ok) {
+        await clip.dispose?.();
+        const failure = Error(review.reason);
+        failure.code = 'VISUAL_REJECTION';
+        throw failure;
+      }
       tail = clip.finalFrame;
-      tailFear = clip.evidence?.finalFear ?? tailFear;
+      tailFear = review.finalFear;
       renderMs = Math.max(0,clock()-began);
-      metrics.generated++;
       metrics.renderMs += renderMs;
       metrics.footageMs += clip.durationMs;
-      const receipts = batch.map(pick => {
-        const observation = clip.evidence?.picks?.find(e => e.id === pick.id);
-        const at = observation?.inPathOffsetMs;
-        const ok = observation?.inPath === true && Number.isFinite(at) && at >= 0 && at <= clip.durationMs;
-        return {pick,ok,at:ok ? at : clip.durationMs,done:false,
-          scareAt:ok && observation?.scare === true ? observation.reactedOffsetMs : null,
-          reaction:observation?.reaction};
-      });
-      const segment = {n,clip,receipts,title:batch[0]?.text || 'Follow the flashlight'};
+      const n = ++metrics.generated;
+      const segment = {n,clip,receipts:review.receipts,winner:review.winner,winnerAt:review.winnerAt,
+        title:review.receipts[0]?.pick.text || 'Follow the flashlight'};
       assets.set(n,clip);
       ready.push(segment);
-      if (clip.evidence?.winner) terminalQueued = true;
+      inFlight = null;
+      for (const missing of review.missing) onReceipt(missing,false,review.unplaced);
+      if (segment.winner) terminalQueued = true;
       state.upNext = brief(ready[0]);
       state.preload = ready.slice(0,targetSegments).map(brief);
     }).catch(cause => {
-      for (const pick of batch) onReceipt(pick,false,'The next scene could not be generated.');
-      if (!stopped) error = cause?.code === 'HALLWAY_MISMATCH' ? 'The next scene opened in a different view of the hallway.' : 'The next hallway scene could not be generated.';
+      if (stopped) return;
+      inFlight = null;
+      renderMs = Math.max(0,clock()-began);
+      const visual = cause?.code === 'HALLWAY_MISMATCH' || cause?.code === 'VISUAL_REJECTION';
+      if (visual) {
+        metrics.rejected++;
+        if (!repeated && stillFits(clock())) {
+          retry = batch;
+          return;
+        }
+      }
+      error = visual ? cause.message : 'The next hallway scene could not be generated.';
+      for (const pick of batch) onReceipt(pick,false,error);
     }).finally(() => { worker = null; });
   }
   function advance(now) {
     if (stopped) return;
-    if (active) announce(active,Math.min(active.clip.durationMs,Math.max(0,Math.min(now,deadline)-active.start)));
+    if (active) {
+      const playedMs = Math.min(active.clip.durationMs,Math.max(0,Math.min(now,deadline)-active.start));
+      announce(active,playedMs);
+      if (active.winner && playedMs >= active.winnerAt) {
+        end(active.winner === 'robot' ? 'exit' : 'fear',active.winner);
+        return;
+      }
+    }
     if (now >= deadline) {
       end(hasPlayed ? 'time' : 'interrupted',hasPlayed ? 'audience' : null);
       return;
     }
     if (active && now >= active.start+active.clip.durationMs) {
-      if (active.clip.evidence?.winner) {
-        const winner = active.clip.evidence.winner;
-        end(winner === 'robot' ? 'exit' : 'fear',winner);
-        return;
-      }
       active = null;
       handoffAt = now + flickerMs;
       state.phase = 'handoff';
       state.cue = null;
     }
-    const openingReady = ready.length >= targetSegments || (terminalQueued && ready.length > 0);
+    if (retry && !worker && !stillFits(now)) {
+      error = 'There was no time to film a verified retry.';
+      for (const pick of retry) onReceipt(pick,false,error);
+      retry = null;
+    }
+    const openingReady = ready.length >= targetSegments ||
+      (ready.length > 0 && (terminalQueued || error || (!worker && !stillFits(now))));
     if (!active && error && (!ready.length || !hasPlayed && !openingReady)) {
       end('interrupted',null);
       return;

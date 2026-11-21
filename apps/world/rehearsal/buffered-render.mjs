@@ -78,7 +78,7 @@ async function takeArchive(captureDir, previous, episodeId, chapter) {
 function performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, pilot, initialFear, signal, onStart}) {
   return new Promise((resolve, reject) => {
     let live, started = false, selected = false, lastObserved = 0, lastObservedAt = 0, closed = false, failure, closeTimer;
-    let reactionTail = false;
+    let reactionTail = false, comparisonFrame = null;
     const round = {props:[], fear:initialFear, deadline:0, lastReaction:null};
     const evidence = {picks:picks.map(newReceipt), observations:[], moves:[], winner:null, winnerFrame:null, finalFear:initialFear};
     const byId = new Map(evidence.picks.map(row => [row.id,row]));
@@ -133,7 +133,10 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
         if (selected) placement.tick(now);
       }
       if (message.navigationMoved && message.encounter) placement.applied(message);
-      if (message.stepReview) placement.reviewed(message.stepReview);
+      if (message.stepReview) {
+        placement.reviewed(message.stepReview);
+        comparisonFrame = message.stepReview.reason === 'post-step pixels' ? message.stepReview.observed : null;
+      }
       if (message.cameraMoved || message.navigationMoved) placement.moved(now);
       if (message.navigationMoved) {
         if (message.key === 'W') crossing.forwardAt = now;
@@ -158,8 +161,9 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
       evidence.observations.push({
         frame:observed, playerCount:scene.playerCount, visible:scene.visible, ready,
         subjectTracked:message.trackingSubjectVerified === true,
+        subjectCompared:comparisonFrame === observed && scene.visible === true && scene.playerMatch === true,
         feetVisible:scene.feetVisible === true,
-        shoulderView:scene.shoulderView ?? 'unclear',
+        shoulderView:scene.shoulderView ?? 'unclear', doorwayProgress:scene.doorwayProgress ?? 'unclear',
       });
       if (!selected && scene.visible && scene.playerMatch && scene.playerCount === 1) {
         selected = true;
@@ -177,14 +181,14 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
           row.scare = prop.observedReaction === 'scare';
         }
       }
-      if (reactionTail) return; // The final picture can verify the previous response, but cannot initiate new travel.
       const held = placement.navigationPaused(now);
-      if ((!held && !message.trackingNavigationHeld && observedCrossing(crossing, scene, observedAt)) || round.fear >= 3) {
+      if (round.fear >= 3 || (!reactionTail && !held && !message.trackingNavigationHeld && observedCrossing(crossing, scene, observedAt))) {
         evidence.winner = round.fear >= 3 ? 'audience' : 'robot';
         evidence.winnerFrame = observed;
         live?.send({winner:evidence.winner});
         return;
       }
+      if (reactionTail) return; // The last picture can confirm a third scare but cannot initiate new travel.
       if (!scene.visible || !scene.playerMatch || scene.playerCount !== 1 || held || (message.trackingNavigationHeld && !placement.canRespond(observed))) return;
       let decision = pilot(scene);
       if (canCrossThreshold(crossing, scene, decision)) decision = {...decision, action:{key:'W',holdMs:260}};
@@ -207,7 +211,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
 }
 
 export async function renderSegment({
-  seed, picks = [], durationMs, episodeId, chapter = 1, makePilot, captureDir,
+  seed, picks = [], durationMs, episodeId, chapter = 1, continuation = chapter > 1, makePilot, captureDir,
   outputDir = tmpdir(), initialFear = 0, reactionTailMs = 0, signal, onStart, launchLive = openLive, ffmpegPath,
 }) {
   signal?.throwIfAborted();
@@ -233,7 +237,7 @@ export async function renderSegment({
     signal?.throwIfAborted();
     const {path, session} = await takeArchive(captureDir, previous, episodeId, chapter);
     const {frames:frameCount, fps} = session;
-    if (chapter > 1) {
+    if (continuation) {
       const {compareOpening} = await import('../painted-door/scene-continuity.mjs');
       const sampleNumbers = [...new Set([1, Math.min(12,frameCount), Math.min(24,frameCount)])];
       const samples = await Promise.all(sampleNumbers.map(async frame => ({
@@ -249,7 +253,7 @@ export async function renderSegment({
     const finalFrame = await readFile(join(path, String(frameCount).padStart(5,'0') + '.frame'));
     if (!isJPEG(finalFrame)) throw Error('The final native frame was not a complete JPEG.');
     const partial = join(work,'encoding.mp4'), filePath = join(work,'segment.mp4');
-    const openingHold = chapter > 1 ? Math.round(fps*2/3) : 0;
+    const openingHold = continuation ? Math.round(fps*2/3) : 0;
     const outputFrames = frameCount + openingHold;
     const inputs = ['-f','image2','-framerate',String(fps),'-start_number','1','-i',join(path,'%05d.frame')];
     const selection = [];
