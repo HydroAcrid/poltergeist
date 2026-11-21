@@ -2,7 +2,9 @@ import { hauntCue } from './haunt-cue.mjs';
 import { createScene } from './scene.js';
 import { readPhoto, toJpeg } from './photo.js';
 const el = (id) => document.getElementById(id);
-const host = location.pathname === '/team';
+const debugPage = location.pathname === '/debug';
+const host = debugPage || location.pathname === '/team';
+const diagnostics = host ? await import('./host-debug.mjs') : null;
 const canvas = el('scene'),
   liveImage = el('live');
 const hud = document.querySelector('.hud');
@@ -24,6 +26,12 @@ let state,
   lastBusy;
 let lastQueue = '',
   previousCaption = '';
+let refreshTimer, syncing, refreshing = false, running = true, paintId = 0, paintedStill = '';
+let testId, receipt, revisionOf, testError = '', submitting = false, nextReceiptAt = 0;
+if (host) {
+  try { testId = sessionStorage.getItem('pg_world_test_idea'); } catch {}
+  el('obstacle-test').open = debugPage;
+}
 const set = (id, text) => {
   if (el(id).textContent !== text) el(id).textContent = text;
 };
@@ -37,7 +45,10 @@ async function request(url, body, photo = false) {
     },
     body: photo ? body : JSON.stringify(body || {}),
   });
-  if (!res.ok) throw Error((await res.json()).error || 'The request failed.');
+  if (!res.ok) {
+    const {error} = await res.json().catch(() => ({}));
+    throw Error(error?.message || (typeof error === 'string' && error) || 'The request failed.');
+  }
   return res.json();
 }
 function queue(s) {
@@ -91,12 +102,77 @@ function controls() {
     !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
   set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start Genie round');
   el('default').hidden = !custom;
+  if (host) {
+    set('host-readiness', diagnostics.readiness(state));
+    el('test-send').disabled = submitting || !connected;
+    el('test-observations').hidden = !state?.round;
+    if (state?.round) {
+      const view = diagnostics.observations(state.round, testId, state.now);
+      for (const [key, value] of Object.entries(view)) set('test-' + key, value);
+    }
+  }
   if (host && lastBusy !== busy) {
-    el('host').open = !busy;
+    if (!debugPage || lastBusy === undefined) el('host').open = debugPage || !busy;
     lastBusy = busy;
   }
 }
-async function sync() {
+function renderReceipt() {
+  set('test-status', testError || (testId ? diagnostics.privateReceipt(receipt) : ''));
+  el('test-revise').hidden = receipt?.status !== 'rejected' || !receipt.moderated?.suggestion || !!revisionOf;
+}
+async function refreshReceipt() {
+  if (!host || !testId || submitting || !el('obstacle-test').open || !el('host').open ||
+      Date.now() < nextReceiptAt) return;
+  nextReceiptAt = Date.now() + 1500;
+  const id = testId;
+  try {
+    const res = await fetch('/api/crowd/state?waitingPage=0', {cache: 'no-store'});
+    if (!res.ok) return;
+    const data = await res.json();
+    if (id !== testId || !running) return;
+    const mine = data.mine.find(item => item.hauntId === id);
+    if (mine) { receipt = mine; renderReceipt(); }
+    else if (!receipt) set('test-status', 'No receipt for this idea on this host.');
+  } catch {} // Retain the last known receipt on a temporary disconnection.
+}
+if (host) {
+  el('test-form').onsubmit = async event => {
+    event.preventDefault();
+    const input = el('test-idea');
+    const text = input.value.trim();
+    if (!text || submitting) return;
+    submitting = true;
+    testError = '';
+    controls();
+    try {
+      const result = await request('/api/crowd/haunt', {text, ...(revisionOf ? {revisionOf} : {})});
+      testId = result.hauntId;
+      try { sessionStorage.setItem('pg_world_test_idea', testId); } catch {}
+      receipt = {status: result.status};
+      revisionOf = undefined;
+      nextReceiptAt = 0;
+      input.value = '';
+    } catch (error) {
+      testError = error.message;
+    } finally {
+      submitting = false;
+      controls();
+      renderReceipt();
+    }
+  };
+  el('test-revise').onclick = () => {
+    if (!receipt?.moderated?.suggestion) return;
+    revisionOf = testId;
+    el('test-idea').value = receipt.moderated.suggestion;
+    el('test-idea').focus();
+    renderReceipt();
+  };
+}
+function sync() {
+  if (!syncing) syncing = updateState().finally(() => { syncing = undefined; });
+  return syncing;
+}
+async function updateState() {
   const res = await fetch('/rehearsal/state', { cache: 'no-store' });
   if (!res.ok) throw Error();
   const s = await res.json();
@@ -115,36 +191,63 @@ async function sync() {
 
   const r = s.round;
   canvas.classList.toggle('native-frame', !!r?.live);
-  if (r?.live && r.phase === 'playing' && liveId !== r.id) {
+  if (r?.live && r.phase === 'playing' && liveId !== r.id && running && !document.hidden) {
     liveId = r.id;
     liveImage.src = '/rehearsal/video?round=' + encodeURIComponent(r.id);
-  } else if (liveId && r?.id !== liveId) {
+  } else if (liveId && (r?.id !== liveId || r.phase === 'ended')) {
     liveImage.removeAttribute('src');
     liveId = '';
   }
-  if (s.plateError) set('message', s.plateError);
+  if (s.plateError || s.publicStatus) set('message', s.plateError || s.publicStatus);
   el('host').hidden = !host;
   controls();
+  schedulePaint();
+  await refreshReceipt();
 }
 async function refresh() {
+  if (refreshing || !running || document.hidden) return;
+  refreshing = true;
   try {
     await sync();
   } catch {
     connected = false;
     set('phase', 'Reconnecting');
     controls();
+    schedulePaint();
   } finally {
-    setTimeout(refresh, 350);
+    refreshing = false;
+    if (running && !document.hidden) {
+      const busy = state?.round && state.round.phase !== 'ended';
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refresh, busy ? 350 : 1500);
+    }
   }
 }
+function schedulePaint() {
+  if (!paintId && running && !document.hidden) paintId = requestAnimationFrame(paint);
+}
 function paint() {
+  paintId = 0;
   const now = Date.now() + off,
     r = state?.round;
   if (state) {
-    const worldVisible=r?.live
-      ? scene.presentLive(liveId===r.id ? liveImage : null,r,now)
-      : false;
-    if(!r?.live)scene.paint(state,now);
+    const active = r && r.phase !== 'ended';
+    let worldVisible = false;
+    if (active) {
+      paintedStill = '';
+      if (r.live) worldVisible = scene.presentLive(liveId === r.id ? liveImage : null, r, now);
+      else scene.paint(state, now);
+    } else {
+      const still = [state.revision, r?.id || 'lobby'].join('/');
+      if (paintedStill !== still) {
+        // Keep the last native image visible through the result.
+        if (!r?.live) scene.paint(state, now);
+        else if (!r.startedAt || !canvas.dataset.played || canvas.dataset.played !== r.id)
+          scene.paint({...state, round: null}, now);
+        paintedStill = still;
+      }
+    }
+    if (worldVisible && canvas.dataset.played !== r.id) canvas.dataset.played = r.id;
     let phase = 'Before the round',
       label = 'Starts in',
       clock = '0:30',
@@ -235,7 +338,7 @@ function paint() {
       set('fear', fear + ' / 3');
     }
   }
-  requestAnimationFrame(paint);
+  if (r && r.phase !== 'ended') schedulePaint();
 }
 async function run(fn) {
   if (loading) return;
@@ -244,6 +347,7 @@ async function run(fn) {
   set('message', '');
   try {
     await fn();
+    if (syncing) await syncing.catch(() => {});
     await sync();
   } catch (e) {
     set('message', e.message || 'Could not continue.');
@@ -326,6 +430,20 @@ el('shutter').onclick = () =>
     dialog.close();
     await upload(blob);
   });
-window.addEventListener('pagehide', release);
+function suspend() {
+  clearTimeout(refreshTimer);
+  cancelAnimationFrame(paintId);
+  paintId = 0;
+  if (liveId) { liveImage.removeAttribute('src'); liveId = ''; }
+  if (dialog.open) dialog.close();
+  release();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) suspend();
+  else if (running) refresh();
+});
+window.addEventListener('pagehide', () => { running = false; suspend(); });
+window.addEventListener('pageshow', event => {
+  if (event.persisted) { running = true; refresh(); }
+});
 refresh();
-requestAnimationFrame(paint);

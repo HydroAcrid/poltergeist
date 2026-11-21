@@ -69,6 +69,7 @@
               <h2>Set the stage</h2>
               <a href="/stage" target="_blank" rel="noopener">Projector ↗</a>
             </header>
+            <p id="host-readiness" class="host-readiness" role="status">Connecting to the host…</p>
             <div class="photo-actions">
               <button id="capture">Take photo</button
               ><button id="upload">Choose photo</button>
@@ -79,6 +80,23 @@
             ><button id="start" disabled>Rehearse offline</button>
             <button id="default" class="quiet" hidden>Use venue hallway</button>
             <p id="message" role="status"></p>
+            <details id="obstacle-test" class="obstacle-test">
+              <summary>Test an obstacle</summary>
+              <form id="test-form">
+                <label for="test-idea">What happens in the hallway?</label>
+                <textarea id="test-idea" maxlength="80" rows="2" required
+                  placeholder="A wind-up penguin crosses the robot’s path."></textarea>
+                <button id="test-send" type="submit">Submit idea</button>
+              </form>
+              <p id="test-status" role="status"></p>
+              <button id="test-revise" type="button" hidden>Edit suggested idea</button>
+              <dl id="test-observations" hidden>
+                <dt>Last pose</dt><dd id="test-pose"></dd>
+                <dt>Navigation</dt><dd id="test-instruction"></dd>
+                <dt>Obstacle</dt><dd id="test-placement"></dd>
+                <dt>Response</dt><dd id="test-response"></dd>
+              </dl>
+            </details>
           </section>
         </details>
       </nav>

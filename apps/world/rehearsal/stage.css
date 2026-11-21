@@ -495,3 +495,43 @@ body:not(.projector) main {
 @media (max-height: 480px) and (min-aspect-ratio: 1/1) {
   .story.haunt-card { padding: 7px 10px; }
 }
+
+.host-readiness, #test-status {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.obstacle-test {
+  margin-top: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.obstacle-test > summary,
+.popover[open] .obstacle-test > summary {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+}
+.obstacle-test > summary::after { content: '+'; margin-left: auto; }
+.obstacle-test[open] > summary::after { content: '−'; }
+#test-form { display: grid; gap: 6px; }
+#test-form label, #test-observations { font-size: 14px; }
+#test-idea {
+  width: 100%;
+  resize: vertical;
+  min-height: 52px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+#test-status:not(:empty) { margin: 8px 0 0; }
+#test-revise { margin-top: 6px; }
+#test-observations { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin-bottom: 0; }
+#test-observations dt { color: var(--muted); }
+#test-observations dd { margin: 0; overflow-wrap: anywhere; }
