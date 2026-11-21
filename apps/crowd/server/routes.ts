@@ -63,6 +63,11 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     return opts.validateResponses ? CrowdState.parse(state) : state;
   });
 
+  app.get("/api/crowd/scoreboard", async (_req, reply) => {
+    reply.header("cache-control", "no-store");
+    return crowd.scoreboard();
+  });
+
   app.get("/api/crowd/queue", async (req, reply) => {
     const token = req.headers["x-pg-token"];
     if (!opts.operatorToken || token !== opts.operatorToken) return fail(reply, 401, "UNAUTHORIZED", "Operator token required.");

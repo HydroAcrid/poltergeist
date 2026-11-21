@@ -1,0 +1,19 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000005",
+  "sessionId": null,
+  "mode": "replay",
+  "driver": "brain",
+  "replayOf": "ep_01JDPG00000000000000000099",
+  "seed": {
+    "kind": "image",
+    "prompt": "The venue hallway after closing, from behind the flashlight robot's right shoulder.",
+    "imagePath": "apps/world/robot-v1/hallway-seed.jpg"
+  },
+  "task": {
+    "targetLabel": "exit",
+    "instruction": "Walk to the exit at the far end of the hallway."
+  },
+  "policyVersion": "v1",
+  "startedAt": 1795371000000,
+  "maxDurationMs": 20000
+}
