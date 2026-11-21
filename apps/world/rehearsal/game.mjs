@@ -47,7 +47,8 @@ export function beginPlay(round, now) {
 }
 
 export function finish(round, winner, reason, now) {
-  if (round.phase !== 'playing') return;
+  const closedLobby = round.playMode === 'buffered-live' && round.phase === 'preparing' && reason === 'interrupted';
+  if (round.phase !== 'playing' && !closedLobby) return;
   Object.assign(round, {
     phase: 'ended',
     winner,

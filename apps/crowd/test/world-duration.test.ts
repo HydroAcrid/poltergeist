@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import fastify from "fastify";
 import { resolve, sep } from "node:path";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -28,7 +28,7 @@ async function world(badId = false, library?: unknown, renderBuffered?: (input: 
   const {registerStage} = await import(path);
   const root = resolve(__dirname,"../../world/rehearsal");
   const round = await registerStage(app,{
-    bus,root,library,captureDir:root,...(renderBuffered && {renderBuffered,canEncode:()=>true}),chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
+    bus,root,library,captureDir:root,...(renderBuffered && {renderBuffered,canEncode:()=>true,generatePlate:async ({photo}:{photo:Buffer})=>({bytes:photo,mime:"image/jpeg"})}),chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
     newId:()=>badId ? "invalid-episode" : newId("ep"),
     launchLive:(provider:Provider)=>{providers.push(provider);return {stop,send:vi.fn()};},
   });
@@ -246,5 +246,36 @@ it("keeps two guests submitting during live filming and starts five minutes only
   expect((await open()).statusCode).toBe(200);
   expect(h.round().id).not.toBe(id);
   expect(h.round().prepared.preload).toEqual([]);
-  await h.end();
+  expect((await h.end()).json().phase).toBe("ended");
+  expect((await h.phone()).episodeActive).toBe(false);
+  expect(h.bus.history({types:["episode.ended"]}).at(-1)!.payload).toMatchObject({durationMs:0});
+});
+
+it("begins a custom-photo lobby on the uploaded room seed and leaves phones open when the provider needs a retry",async()=>{
+  const seen:BufferedInput[]=[];
+  const h=await world(false,undefined,async input=>{seen.push(input);throw Error("offline");});
+  const photo=readFileSync(resolve(__dirname,"../../world/painted-door/haunting/fixtures/clear-aisle.jpg"));
+  const upload=await h.app.inject({method:"POST",url:"/rehearsal/photo",headers:{"x-show-control":"1","content-type":"image/jpeg"},payload:photo});
+  expect(upload.statusCode).toBe(200);
+  await h.tick(150);
+  const state=await h.state();
+  expect(state).toMatchObject({plateReady:true,custom:true,approvedVenueOpening:false});
+  expect((await h.post("/rehearsal/start",{mode:"buffered",useVenueOpening:true,plateKey:state.plateKey})).statusCode).toBe(409);
+  expect((await h.post("/rehearsal/start",{mode:"buffered",seed:photo.toString("base64"),plateKey:state.plateKey})).statusCode).toBe(200);
+  async function sendGuest(preset:string) {
+    const cookie=String((await h.app.inject("/api/crowd/state")).headers["set-cookie"]).split(";")[0]!;
+    return (await h.app.inject({method:"POST",url:"/api/crowd/haunt",headers:{cookie},payload:{preset}})).json();
+  }
+  await sendGuest("mop-bucket");await h.tick(5000);
+  expect(seen[0]!.seed.equals(photo)).toBe(true);
+  expect(h.round().prepared).toMatchObject({renderPaused:true,canStart:false,preload:[]});
+  await h.tick(305000);
+  expect((await sendGuest("lights-flicker")).hauntId).toBeTruthy();
+  expect((await h.phone()).lobbyPhase).toBe("lobby");
+  expect(seen).toHaveLength(1);
+  expect((await h.post("/rehearsal/retry-render",{round:"stale"})).statusCode).toBe(409);
+  expect((await h.post("/rehearsal/retry-render",{round:h.round().id})).statusCode).toBe(200);
+  await h.tick(1000);expect(seen).toHaveLength(2);
+  expect(seen[1]!.picks[0]!.id).toBe(seen[0]!.picks[0]!.id);
+  expect((await h.end()).json().phase).toBe("ended");
 });
