@@ -37,10 +37,10 @@ const BLOCK: Rule[] = [
   { re: /https?:|www\.|@\w|\b(guy|girl|man|woman|men|women|person|people|someone|somebody|everyone|everybody|audience|judges?|attendees?|crowd|kids?|boy|lady|dude|he|she|him|her|his|you|your|me|my|i)\b/i, reason: REASONS.people },
 ];
 
-/** NFKC, drop control and invisible format characters (zero-width, soft hyphen, bidi), collapse whitespace. */
 /** Content rules (not people/words), also checked against disguised spellings. */
 const CONTENT = BLOCK.filter((r) => r.reason !== REASONS.people && r.reason !== REASONS.words);
 
+/** NFKC, drop control and invisible format characters (zero-width, soft hyphen, bidi), collapse whitespace. */
 export function normalizeInput(input: string): string {
   return input
     .normalize("NFKC")
