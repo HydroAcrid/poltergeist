@@ -1,15 +1,35 @@
-# Hallway stage
+# Hallway rehearsal
 
-The projector opens at `/stage`, host controls at `/team`, and private audience submissions at `/phone`. The host can use the venue photo, select another image, or capture one with the local camera. During the first 30 seconds the photo and robot entrance play while Crowd accepts ideas. With the venue photo, the opening uses the extended, art-directed version of that same hallway. A new photo gets an in-browser camera move, theatrical lighting and the shared robot cutout. Genie receives that composition when the host starts a live round. The opening sequence itself is rendered locally.
+## On a teammate’s laptop
 
-For the combined rehearsal checkout, install the Crowd and Brain branches and their dependencies alongside World. Run this from the combined checkout root:
+Use Node.js 22.12 or newer with npm. Run these commands from the checkout root.
 
 ```sh
-apps/crowd/node_modules/.bin/vite-node -c apps/crowd/vitest.config.ts apps/world/rehearsal/lane-host.ts
+npm run rehearsal:setup
+npm run rehearsal
 ```
 
-The local server binds to loopback on port 8914. Set `PG_VENUE_PHOTO` to a local JPEG to show the original shot in the introduction. The offline round uses the fixture Brain service at `PG_BRAIN_URL`, defaulting to `http://127.0.0.1:8903/api/brain/tick`. The three-bay route takes about 45 seconds of walking and ends after 72 seconds if the robot is delayed. Rehearsal fear increases once per distinct flinch, and three flinches end the round. A clean sidestep earns zero.
+Setup installs the locked Crowd and Brain dependencies. Run it once per checkout and again when either lane changes its lockfile. The server prints three local links.
 
-For a paid round, set `PG_ALLOW_GENIE=1` and `PG_CAPTURE_DIR` to the absolute path to World’s `apps/world/painted-door` directory, with its dependencies installed and the project’s local Gemini credentials configured. The **Start Genie round** control opens one Genie 4 interaction after the opening. The projector switches to streamed Genie frames. Gemini Robotics ER 2 locates the robot’s feet, obstacles and exit from the unannotated camera frame. Brain’s navigation function chooses the input. Crowd’s moderated dispatch enters the same interaction. Submitting a prompt or sending it to Genie cannot score fear. Live fear needs a seen matching obstacle and an observed transition to stumbling. The live round defaults to 45 seconds; uploads and offline rehearsals use no model calls.
+1. Open [Host](http://127.0.0.1:8914/team). Choose **Rehearse offline** to start the 30-second audience opening.
+2. Open [Audience](http://127.0.0.1:8914/haunt) in another tab. Submit “A gust blows loose papers across the aisle” or choose a preset. The phone displays an assigned ghost name and a private receipt.
+3. Open [Projector](http://127.0.0.1:8914/stage). Open **Queue** to see the proposal. After play begins, Crowd dispatches the approved idea, Brain reacts to the hallway frames, and World resolves the round.
 
-The throwaway room identities here are for the local rehearsal. Crowd owns the production phone, naming rules, and conductor. Queue order currently follows the Crowd scheduler. Teammate phones need a shared host URL for the actual event.
+This checkout runs the three lanes together on one loopback server. Offline play uses Courtney’s rules-based moderation, Sri’s fixture perception and navigation, and Kevin’s local renderer. It runs on CPU without a Gemini key. Each laptop starts its own round. To share one round on a projector, open all three links against the same running host. Stop the local server with **Ctrl+C**.
+
+Set `PG_STAGE_PORT` to use a different local port. Set `PG_VENUE_PHOTO` to show a local JPEG in the venue opening. The included sample is an empty version of the venue. In **Host** you can also capture or choose a new photo. A newly selected photo receives a local preview during an offline rehearsal.
+
+## On Kevin’s live World host
+
+Use the same setup above. Install the capture package once on the World laptop.
+
+```sh
+npx --yes pnpm@9.15.9 --dir apps/world/painted-door install --frozen-lockfile --ignore-workspace
+npm run rehearsal:world
+```
+
+The live host uses its private root `.env` with `GEMINI_API_KEY`. If the capture package and credentials already live in another checkout, set `PG_CAPTURE_DIR` to that checkout’s absolute `apps/world/painted-door` directory. Keep the key on that laptop.
+
+Open **Host**, capture or choose the hallway photo, and select **Prepare photo for Genie**. This sends the selected photo to Gemini to build the angled room. **Start Genie round** opens one paid world interaction. The projector shows the complete stream from that interaction. A new run uses the same robot reference. Gemini Robotics ER 2 observes the floor and obstacles from pixels, and Brain chooses the next input. A haunting can pause the robot or request a flinch. Fear increases only after World observes the reaction.
+
+The host serves on loopback. Any event deployment or audience gateway should expose Courtney’s audience route separately from the host controls.
