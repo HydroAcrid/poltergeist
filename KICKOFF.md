@@ -36,7 +36,7 @@ Clone this repository on your hackathon laptop (or update your existing checkout
 |---|---|---|
 | Kevin | [World](apps/world/TODO.md) | Start from the hallway photo. Frame the avatar’s feet and the hazard together. Apply one approved activity, show the ghost where it happens, and return a fresh frame after each move. Record the finish on replay and close the session. Verify the ledger shows zero active sessions. |
 | Sri | [Brain](apps/brain/TODO.md) | Give Gemini a destination and a third-person frame of its avatar. Have it choose a move, observe where its feet land and continue toward the goal. Show its response to a hazard and the evidence it used to claim arrival. |
-| Courtney | [Crowd](apps/crowd/TODO.md) | Let someone submit a distraction from a phone. Show a private receipt, put approved ideas in a shared first-in, first-out queue, and let players filter to their own ideas. Show the operator which idea World received and when. |
+| Courtney | [Crowd](apps/crowd/TODO.md) | Let someone submit a distraction from a phone. Show private receipts and a shared sidebar of approved ideas. Own the conductor that reserves a feasible, visually readable next effect. Show why it was picked, when World received it, and what appeared. |
 
 Sri and Courtney can swap lanes if they prefer. Confirm your lane in the [laptop check-in](https://github.com/HydroAcrid/poltergeist/issues/1).
 
@@ -99,7 +99,7 @@ Start the Brain contracts and fixtures. Use the committed frames in apps/world/p
 ```text
 I'm Courtney. Start my Crowd lane (PG_LANE=crowd). Read FEATURES.md, CLAUDE.md, SPEC.md, CONTRACTS.md, and the Crowd lane guide and TODO. Read issue #2 and post my check-in with my lane, branch, short commit, and first task. Use #2 to acknowledge handoffs and share blockers or ready fixtures with World and Brain.
 
-Start the Crowd contracts, fixtures, and an activity preset such as “Drop a banana peel in the aisle.” Build toward a two-phone test where the author immediately gets a private receipt, rejected text stays private, and approved ideas appear on both phones in FIFO order. Show “Up next” and let each player switch between “All ideas” and “Mine”. Use rules-only moderation and a fake World for this first pass. Share the fixture path and what you verified on #2.
+Start the Crowd contracts, fixtures, and an activity preset such as “Drop a banana peel in the aisle.” Build toward a two-phone test where the author immediately gets a private receipt, rejected text stays private, and approved ideas appear on both phones. Design the conductor and its sidebar using the feature map. Show the reserved “Up next” idea with a short reason and let each player switch between “All ideas” and “Mine”. Use rules-only moderation and a fake World for this first pass. Share the fixture path and what you verified on #2.
 ```
 
 ## If something goes wrong in the first hour

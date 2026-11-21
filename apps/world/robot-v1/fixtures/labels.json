@@ -1,0 +1,74 @@
+{
+  "source": "One live Genie 4 flashlight round at 24 fps. Manual visual labels; world-space lane and depth are unavailable.",
+  "coordinates": "[y,x] normalized 0\u20131000, origin top-left.",
+  "frames": [
+    {
+      "file": "chair-ahead.jpg",
+      "sourceFrame": 290,
+      "feet": {
+        "left": [
+          753,
+          362
+        ],
+        "right": [
+          731,
+          416
+        ]
+      },
+      "hazard": {
+        "kind": "chair",
+        "point": [
+          542,
+          470
+        ],
+        "box": [
+          428,
+          423,
+          636,
+          498
+        ]
+      },
+      "goal": [
+        478,
+        716
+      ],
+      "arrived": false,
+      "stumbling": false,
+      "observation": "A yellow chair is several strides ahead, slightly right of the robot in the screen image. Open floor continues to its right."
+    },
+    {
+      "file": "chair-left.jpg",
+      "sourceFrame": 571,
+      "feet": {
+        "left": [
+          658,
+          461
+        ],
+        "right": [
+          644,
+          495
+        ]
+      },
+      "hazard": {
+        "kind": "chair",
+        "point": [
+          561,
+          392
+        ],
+        "box": [
+          436,
+          345,
+          689,
+          438
+        ]
+      },
+      "goal": [
+        486,
+        661
+      ],
+      "arrived": false,
+      "stumbling": false,
+      "observation": "The chair is now left of the robot. The immediate floor ahead toward the signed exit is clear."
+    }
+  ]
+}
