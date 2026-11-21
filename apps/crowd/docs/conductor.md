@@ -1,4 +1,4 @@
-# Audience conductor v0 (proposal)
+# Audience conductor v0 (wired into the scheduler)
 
 Crowd's answer to World's [conductor brief](../../../FEATURES.md#the-audience-conductor). The policy is code: [`server/conductor.ts`](../server/conductor.ts). The trace below is asserted by [`test/conductor.test.ts`](../test/conductor.test.ts). **It's wired into the live scheduler** ([`server/crowd.ts`](../server/crowd.ts) `reserve()`/`tick()`), reading World's `/rehearsal/state` through [`server/scene.ts`](../server/scene.ts) when `PG_CROWD_SCENE_URL` is set. With no fresh scene it's FIFO, as before.
 
