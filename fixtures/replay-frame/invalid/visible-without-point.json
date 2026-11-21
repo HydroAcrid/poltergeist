@@ -1,0 +1,16 @@
+{
+  "frameId": "fr_01JDPG00000000000000000001",
+  "episodeId": "ep_01JDPG00000000000000000002",
+  "seq": 31,
+  "t": 15500,
+  "path": "data/episodes/ep_01JDPG00000000000000000002/frames/31.jpg",
+  "label": {
+    "visible": true
+  },
+  "labelSource": "human",
+  "tags": [
+    "distractor"
+  ],
+  "split": "heldout",
+  "clean": false
+}

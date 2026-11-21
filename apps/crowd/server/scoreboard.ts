@@ -16,9 +16,15 @@ export interface ScoreInput {
 const clip90 = (s: string) => (s.length > 90 ? s.slice(0, 89) + "…" : s);
 const nameOf = (h?: Haunt) => h?.displayName || "anon";
 
-/** "Landed" = the verdict blames the adversary and this haunting is the culprit. */
+/** Hallway rounds credit each observed scare. Other games use the referee’s culprit. */
 export function landedIds(verdicts: Verdict[]): Set<string> {
-  return new Set(verdicts.filter((v) => v.blame === "adversary" && v.culpritHauntId).map((v) => v.culpritHauntId!));
+  const ids = new Set<string>();
+  for (const v of verdicts) {
+    if (v.hallway) {
+      for (const reaction of v.hallway.reactions) if (reaction.kind === "scare") ids.add(reaction.hauntId);
+    } else if (v.blame === "adversary" && v.culpritHauntId) ids.add(v.culpritHauntId);
+  }
+  return ids;
 }
 
 export function buildScoreboard({ haunts, injected, verdicts, policyVersion, now }: ScoreInput): Scoreboard {
@@ -45,7 +51,19 @@ export function buildScoreboard({ haunts, injected, verdicts, policyVersion, now
   // Kill feed, newest first: one line per landed or shrugged-off haunting, plus world glitches.
   const feed: { ts: number; text: string }[] = [];
   const endedEpisodes = new Set(verdicts.map((v) => v.episodeId));
+  const hallwayWins = { robot: 0, audience: 0 };
+  const hallwayEpisodes = new Set(verdicts.filter(v => v.hallway).map(v => v.episodeId));
   for (const v of verdicts) {
+    if (v.hallway) {
+      if (v.hallway.reason === "exit") hallwayWins.robot++;
+      if (v.hallway.reason === "fear" || v.hallway.reason === "time") hallwayWins.audience++;
+      for (const reaction of v.hallway.reactions) {
+        const h = byId.get(reaction.hauntId);
+        const action = reaction.kind === "scare" ? "scared the robot" : "made the robot sidestep";
+        feed.push({ ts: reaction.at, text: clip90(`${nameOf(h)} ${action} · ${h?.moderated?.text ?? "a haunting"}`) });
+      }
+      continue;
+    }
     if (v.blame === "world") feed.push({ ts: v.createdAt, text: "👻 world glitch: Genie forgot the target" });
     if (v.blame === "adversary" && v.culpritHauntId) {
       const h = byId.get(v.culpritHauntId);
@@ -53,7 +71,7 @@ export function buildScoreboard({ haunts, injected, verdicts, policyVersion, now
     }
   }
   for (const i of okInjected) {
-    if (landed.has(i.hauntId) || !endedEpisodes.has(i.episodeId)) continue;
+    if (hallwayEpisodes.has(i.episodeId) || landed.has(i.hauntId) || !endedEpisodes.has(i.episodeId)) continue;
     const h = byId.get(i.hauntId);
     const v = verdicts.find((x) => x.episodeId === i.episodeId);
     feed.push({ ts: v?.createdAt ?? now, text: clip90(`🛡️ ${nameOf(h)}: ${h?.moderated?.text ?? "a haunting"} → robot shrugged it off`) });
@@ -64,6 +82,7 @@ export function buildScoreboard({ haunts, injected, verdicts, policyVersion, now
     updatedAt: now,
     rounds: endedEpisodes.size,
     episodes: endedEpisodes.size,
+    ...(hallwayEpisodes.size ? { hallwayWins } : {}),
     successes: verdicts.filter((v) => v.outcome === "success").length,
     attacks: {
       submitted: audience.length,

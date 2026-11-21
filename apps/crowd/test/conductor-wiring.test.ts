@@ -23,6 +23,7 @@ async function phone() {
   const res = await hub.app.inject({ method: "GET", url: "/api/crowd/state" });
   const cookie = String(res.headers["set-cookie"]).split(";")[0]!;
   return {
+    page: async () => CrowdState.parse((await hub.app.inject({ method: "GET", url: "/api/crowd/state?waitingPage=0", headers: { cookie } })).json()),
     state: async () => CrowdState.parse((await hub.app.inject({ method: "GET", url: "/api/crowd/state", headers: { cookie } })).json()),
     submit: (body: object) => hub.app.inject({ method: "POST", url: "/api/crowd/haunt", headers: { cookie }, payload: body }),
   };
@@ -46,6 +47,11 @@ describe("conductor in the scheduler", () => {
     expect(s.upNext).toMatchObject({ reason: "It will roll right through the flashlight beam", mode: "conductor" });
     expect(s.queue[0]!.moderated?.text).toBe("Thick fog rolls down the hallway"); // the reserved pick leads the queue
     expect(s.holds).toContainEqual(expect.objectContaining({ reason: "A chair already fills the beam" }));
+
+    const paged = await a.page();
+    expect(paged.waiting).toMatchObject({ page: 0, size: 15, total: 1 });
+    expect(paged.upNext).toEqual(s.upNext);
+    expect(paged.waitingReasons).toEqual(s.waiting);
 
     hub.clock.advance(8_000);
     hub.crowd.tick();

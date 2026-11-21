@@ -1,6 +1,6 @@
 # Audience conductor v0 (wired into the scheduler)
 
-Crowd's answer to World's [conductor brief](../../../FEATURES.md#the-audience-conductor). The policy is code: [`server/conductor.ts`](../server/conductor.ts). The trace below is asserted by [`test/conductor.test.ts`](../test/conductor.test.ts). **It's wired into the live scheduler** ([`server/crowd.ts`](../server/crowd.ts) `reserve()`/`tick()`), reading World's `/rehearsal/state` through [`server/scene.ts`](../server/scene.ts) when `PG_CROWD_SCENE_URL` is set. With no fresh scene it's FIFO, as before.
+Crowd's answer to World's [conductor brief](../../../FEATURES.md#the-audience-conductor). The policy is code: [`server/conductor.ts`](../server/conductor.ts). The trace below is asserted by [`test/conductor.test.ts`](../test/conductor.test.ts). **It's wired into the live scheduler** ([`server/crowd.ts`](../server/crowd.ts) `reserve()`/`tick()`), reading the stage host’s current round directly through [`server/scene.ts`](../server/scene.ts). A separate Crowd host can set `PG_CROWD_SCENE_URL` to World’s `/rehearsal/state`. With no fresh scene it's FIFO, as before.
 
 | | Projector (robot first, feed beside it) | Phone, 390 px (live view, then the same feed below) |
 |---|---|---|
@@ -107,7 +107,7 @@ type EffectKind = "floor_prop" | "airborne" | "lighting" | "visibility" | "sign"
 
 **Scares:** Crowd needs a per-haunting "startle confirmed" signal (from Brain's tick observations or World's camera) to count scares; "ambiguous" should be flagged, not counted.
 
-**Interim option from Brain, needing no new contract:** until `haunt.seen` exists, Crowd can mark an idea "Seen in the hallway" at the first `tick` after `haunt.injected { ok: true }` whose `perception.hazards` gains a new label. The observed response can be that tick's display-safe `rationale` (≤ 60, e.g. "obstacle ahead, stepping left"). This is heuristic: a hazard the player notices isn't proof of what the audience sees. So `haunt.seen` from World's camera stays the target, and the tick rule is the fallback. With neither, the idea stays at "Sent to world".
+The hosted conductor reads the World round directly. Live placement needs a fresh camera frame that confirms the obstacle in the walking path. Delivery alone leaves the idea at “Sent to world.” The rehearsal renderer uses its simulated lane and depth. When the live camera feed is stale, dispatch falls back to FIFO.
 
 Crowd-side contract changes this would need (all minor under CONTRACTS §9): `HauntStatus` gains `reserved` (Up next) and `seen`, and `HauntPublic` gains an optional public `reason` (≤ 60).
 

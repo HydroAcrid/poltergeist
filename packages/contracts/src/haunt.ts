@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.8.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/holds (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: CrowdState.joined
+export const VERSION = "1.11.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: paged waiting list and waitingReasons · 1.9.0: joined, lobbyPhase and holds · 1.10.0: roundPausedRemainingMs · 1.11.0: verifiedPathHauntIds
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed", "withdrawn"]); // withdrawn: replaced by the author's newer idea (1.7.0)
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -128,20 +128,31 @@ export const HauntSubmitResponse = z.object({ hauntId: Id, status: HauntStatus }
 export type HauntSubmitResponse = z.infer<typeof HauntSubmitResponse>;
 
 /** `GET /api/crowd/state`: `mine` is derived from the caller's cookie; `queue` is eligible, display-safe items in dispatch order. */
+const WaitingReasons = z.array(z.object({ hauntId: Id, reason: z.string().max(60) }).strict());
+const WaitingPage = z.object({
+  page: z.number().int().nonnegative(), size: z.number().int().positive(),
+  total: z.number().int().nonnegative(), myPositions: z.record(z.number().int().positive()),
+}).strict();
+
 export const CrowdState = z
   .object({
     episodeActive: z.boolean(),
     round: z.number().int().nonnegative().optional(),
     nextRoundAt: EpochMs.optional(), // only between rounds
-    roundEndsAt: EpochMs.optional(), // only during a round: Episode.startedAt + maxDurationMs
+    roundEndsAt: EpochMs.optional(), // authoritative running deadline
+    roundPausedRemainingMs: z.number().int().nonnegative().optional(), // game time held between live chapters
     you: z.object({ ghostName: z.string().min(1).max(16) }).strict().optional(), // the caller's assigned ghost name
     mine: z.array(HauntReceipt),
     queue: z.array(HauntPublic),
+    verifiedPathHauntIds: z.array(Id).optional(), // live camera confirmed these effects in the robot’s walking path
     hallway: z.array(HauntPublic).max(8).optional(), // this round's sent ideas, newest first, display-safe
-    slotsPerRound: z.number().int().positive().optional(), // ideas sent per round, for "about N rounds away"
+    slotsPerRound: z.number().int().nonnegative().optional(), // ideas sent per round, for "about N rounds away"
+    holds: WaitingReasons.optional(),
+    lobbyPhase: z.enum(["before-photo", "lobby", "starting", "playing", "ended"]).optional(),
     joined: z.number().int().nonnegative().optional(), // guest phones here now (projector polls excluded)
     upNext: z.object({ hauntId: Id, reason: z.string().max(60), mode: z.enum(["conductor", "fifo"]) }).strict().optional(), // the reserved pick
-    holds: z.array(z.object({ hauntId: Id, reason: z.string().max(60) }).strict()).optional(), // public reasons the conductor is holding ideas (named "holds"; Kevin's paging uses "waiting")
+    waiting: z.union([WaitingReasons, WaitingPage]).optional(), // existing unpaged and paged phone shapes
+    waitingReasons: WaitingReasons.optional(), // conductor reasons for this page and the caller’s own ideas
   })
   .strict();
 export type CrowdState = z.infer<typeof CrowdState>;

@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";
 import { Haunt, HauntDispatch, HauntPublic, Preset } from "@poltergeist/contracts/haunt.js";
+import { Episode } from "@poltergeist/contracts/episode.js";
 import { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import { Verdict } from "@poltergeist/contracts/verdict.js";
 
 import { fixturesDir, ModerationCase } from "./helpers.js";
 const schemas: Record<string, ZodTypeAny> = {
+  episode: Episode,
   haunt: Haunt,
   "haunt-public": HauntPublic,
   "haunt-dispatch": HauntDispatch,

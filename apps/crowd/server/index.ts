@@ -1,6 +1,6 @@
 // Real crowd LaneModule (CONTRACTS C18). The hub picks it with PG_CROWD=real.
 import type { HubContext, LaneModule } from "@poltergeist/contracts/hub-types.js";
-import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
+import { configFromEnv, CrowdService, type CrowdConfig, type CrowdDeps } from "./crowd.js";
 import { HAUNT_PAGE, loadPresets, loadSeededPool, OVERLAY_MODEL, OVERLAY_PAGE, VEIL_DIR } from "./load.js";
 import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
@@ -18,6 +18,8 @@ export interface CrowdModuleOptions {
   onService?: (service: CrowdService) => void;
   /** Scene for the conductor; defaults to polling PG_CROWD_SCENE_URL (World's /rehearsal/state) if set. */
   scene?: () => SceneObservation | undefined;
+  lobbyPhase?: CrowdDeps["lobbyPhase"];
+  matchClock?: CrowdDeps["matchClock"];
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
@@ -28,7 +30,14 @@ function pickModeration(ctx: HubContext): ModerationAdapter {
   // Logs how many keys and where from, never the keys themselves.
   ctx.log("crowd", `Gemini moderation on with ${keys.length} key(s) from ${source}`);
   const maxPerMinute = Number(ctx.env.PG_CROWD_GEMINI_MAX_PER_MIN) || undefined;
-  return new GeminiModeration(keys, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault), { maxPerMinute });
+  const concurrency = Number(ctx.env.PG_MODERATION_CONCURRENCY || 4);
+  return new GeminiModeration(
+    keys,
+    ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen",
+    fetch,
+    (fault) => ctx.log("crowd", fault),
+    { maxPerMinute, concurrency },
+  );
 }
 
 export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
@@ -42,6 +51,8 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
       const sceneUrl = ctx.env.PG_CROWD_SCENE_URL;
       if (!opts.scene && sceneUrl) sceneSource = createRehearsalSceneSource(sceneUrl, { now: opts.now });
       service = new CrowdService({
+        lobbyPhase: opts.lobbyPhase,
+        matchClock: opts.matchClock,
         scene: opts.scene ?? (sceneSource ? () => sceneSource!.scene() : undefined),
         bus: ctx.bus,
         moderation: pickModeration(ctx),

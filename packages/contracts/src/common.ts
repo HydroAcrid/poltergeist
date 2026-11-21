@@ -1,12 +1,7 @@
-// TEMPORARY stand-in for World's packages/contracts/src/common.ts (C01).
-// World owns the real file; it is not on main yet. Crowd contract files import
-// "./common.js", and tsconfig (rootDirs) and vitest (plugin) route that import
-// here until World's scaffold lands. Delete this file then.
-//
-// Same naming as apps/brain/test/shims/contracts/common.ts: each export is a
-// zod schema with a same-named inferred type. Crowd also needs Lane, Source,
-// Blame, WorldMode and Instance.
+// C01. Shared primitives used by World, Brain and Crowd.
 import { z } from "zod";
+
+export const VERSION = "1.0.0";
 
 export const Lane = z.enum(["world", "brain", "crowd"]);
 export type Lane = z.infer<typeof Lane>;

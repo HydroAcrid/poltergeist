@@ -128,7 +128,10 @@ export interface Episode {
   policyVersion: string;         // e.g. "v1"
   round?: number;
   startedAt: EpochMs;
-  maxDurationMs: Ms;             // ≤ 90000
+  maxDurationMs: Ms;             // single provider session, ≤ 90000
+  match?:                        // one episode ID across all provider sessions
+    | { clockMode: "active"; durationMs: Ms }
+    | { clockMode: "wall"; durationMs: Ms; deadline: EpochMs };
 }
 export interface EpisodeEnded {
   episodeId: Id;
@@ -395,7 +398,7 @@ data/
 
 For crowd state, derive `mine` from the caller’s device cookie. Return `queue` in dispatch order, containing only eligible, approved proposals with display-safe text and nicknames. Raw text, unreviewed nicknames and moderation reasons stay off shared views. A successful `haunt.injected` acknowledges delivery to Genie; visual confirmation comes from the world frames.
 
-Every error response has the form `{ error: { code: string, message: string } }`. Codes used across lanes: `BUSY`, `CAP_SESSIONS`, `CAP_USD`, `GENIE_UNAVAILABLE`, `RATE_LIMITED`, `REJECTED`, `INVALID`, `UNAUTHORIZED`.
+Every error response has the form `{ error: { code: string, message: string } }`. Codes used across lanes: `BUSY`, `CAP_USD`, `GENIE_UNAVAILABLE`, `RATE_LIMITED`, `REJECTED`, `INVALID`, `UNAUTHORIZED`.
 
 ## 7. C18: Hub integration interface (`hub-types.ts`, world)
 

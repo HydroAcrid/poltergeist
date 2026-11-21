@@ -1,0 +1,38 @@
+# Genie camera and hauntings: public evidence and acceptance recipe
+
+Verified 2026-11-21. This brief separates published capabilities from proposed Poltergeist checks. No paid session was run for this research.
+
+## Which Genie
+
+World's `capture.mjs` requests Google `genie-4`, `v1beta`. [Google's November 19 API announcement](https://blog.google/innovation-and-ai/technology/developers-tools/genie-4-in-gemini-api/) establishes the current developer route. Earlier articles saying there is no API are stale. Project Genie is the consumer experience, with multiple models and product-specific controls; it is not an interchangeable API specification.
+
+[The November 18 Project Genie launch](https://blog.google/innovation-and-ai/models-and-research/google-deepmind/genie-4-now-available-project-genie/) assigns panorama grounding, three-minute generations and world chaining to **Genie 3**. Do not assume these apply to our Genie 4 session. [Reactor](https://www.reactor.inc/models/genie-4/info) hosts a separate wrapper with its own duration and image limits. Gemini Omni clip generation and Gemini live understanding are also different products.
+
+## Published guidance we can use
+
+- [Genie 4 API guide](https://aistudio.google.com/docs/genie): native WASD controls movement; arrows pan/tilt the camera. `key_down` persists across steps until `key_up`. Camera pan is not proof of a corresponding robot-body turn. `space` and `key_e` exist in the wire schema without built-in jump/interact semantics. One startup image is supported. Complete or cancel the interaction to end generation; detaching is not a billing stop or supported pause/resume. Keep asynchronous frame decoding in order. Reference JPEGs sent over WebRTC must fit its message limit. These API semantics take precedence over the consumer help page.
+- [Google's tested prompting patterns](https://aistudio.google.com/docs/genie-prompting): favor short forward-moving scenes, keep the interactive subject visible, show the physical source of motion from the opening frame, and use concrete object interactions rather than abstract zone triggers. Continuous in-world changes are preferable to camera cuts. Rules in a prompt remain probabilistic. The documented cockpit example couples held forward motion and camera gaze; that is evidence to calibrate our view, not a universal character-turn mapping.
+- [DeepMind's current prompt guide](https://deepmind.google/models/genie/prompt-guide/): refine the initial framing, specify viewpoint, make a third-person character clear with room around it, and direct one live change at a time.
+- [Genie 4 model card](https://deepmind.google/models/model-cards/genie-4/): visual identity, object permanence, spatial accuracy, text and complex physics can drift, particularly after navigation and complex edits. An accepted intervention does not establish that it appeared or caused a stumble.
+
+No public source inspected establishes our exact shot: a photo-grounded venue, original robot, stable moving rear-right trail camera, readable boots and on-path prop, followed by autonomous avoidance. We must demonstrate that combination locally. “Not found” is not proof nobody has attempted it.
+
+## Firsthand examples and their limits
+
+[DeepMind's October 27 research launch](https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/) publishes recorded interactions and prompts, including a reference-seeded saxophonist with independent camera exploration. It also shows Google's Gemini/Genie simulation of Apptronik's Apollo playing checkers. The trusted-tester section describes industries but does not identify external labs with reproducible robot-follow-camera protocols.
+
+The [November 18 launch](https://blog.google/innovation-and-ai/models-and-research/google-deepmind/genie-4-now-available-project-genie/) does name two credible creator collaborations: **Villa Giallo**, with Will / BLVCKL!GHT, an explorable manor mystery; and **The Life of Ants**, with filmmaker Anand Gandhi, colony exploration from an ant's view. These are Google-reported creative examples, not independent validation of our navigation or camera.
+
+Earlier [Genie 3 SIMA demonstrations](https://deepmind.google/blog/genie-3-a-new-frontier-for-world-models/) establish agent navigation as a research direction. The [original 2024 Genie paper](https://arxiv.org/abs/2402.15391) describes an earlier latent-action model, not this API. For test design, [WMEval](https://arxiv.org/html/2610.33894v2) separates controlled-object motion and causal success from visual similarity; [StrideWorld](https://arxiv.org/html/2611.24408v1) calibrates initial action displacement before evaluating later actions. Their earlier-model results are not Genie 4 benchmarks.
+
+## Proposed Poltergeist acceptance recipe
+
+These are our proposed tests and tolerances, not Google guarantees. Use an already authorized round; research does not authorize spending.
+
+1. **Record the source.** Save the startup image/prompt, model, session ID, raw frame sequence/timestamps and exact key down/up times. Preserve uncropped evidence beside the projector rendering. A crop or digital zoom cannot pass as native following.
+2. **Establish framing at rest.** Mark the robot box, both feet, flashlight, floor route, a near prop and a far booth/door. Agree a readable robot-height band before the run, for example 25–45% of source height. Require boots and floor ahead to remain visible. Keep the same character colors/equipment; flag identity changes.
+3. **Calibrate separately.** Hold W briefly, release, then obtain a fresh settled observation. Repeat with one arrow pulse and release. Do not overlap pulses initially. Record actual displacement and camera motion instead of deriving world heading from screen-right. Wait for fresh frames after release; input acknowledgement alone is insufficient.
+4. **Prove native near/far parallax.** During a forward segment track at least two stationary near landmarks and two far landmarks across several raw frames. Nearby furniture should generally move faster relative to the image than distant booths, with coherent occlusion and changing perspective. Require the robot to remain within the agreed size band while the venue passes. Uniform whole-frame translation/scale, a shrinking robot, or landmark morphing is a failure or inconclusive result. Parallax alone does not prove physically correct depth.
+5. **Prove on-path placement.** Before injecting, mark the projected walking corridor from the boots in the calibrated heading and identify open floor beyond the reaction distance. Introduce one prop there, not under the boots or behind the camera. Mark its actual bottom/floor-contact region after it appears. Compare against a deliberately off-path control. A chair seat overlapping the corridor is insufficient if its feet land elsewhere.
+6. **Separate delivery, visibility and reaction.** Keep “Sent to the hallway” on delivery. Confirm visible prop, reachable floor location and time to react from subsequent source frames. Only then credit “Seen.” Record clean avoidance separately from a visible startle/stumble; ambiguous or unseen reactions earn no scare. Compare before/after frames and multiple observations, not a single rationale string.
+7. **Stop and report honestly.** Release controls on timeout/error; complete/cancel the session. Preserve failed examples. Keep results per run, including lost character, drift, clipping, missing prop or unclear reaction. Do not claim reliable following from one selected clip. A browser refresh retaining our server-owned stream is not model-level session resumption.

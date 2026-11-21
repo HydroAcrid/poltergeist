@@ -4,17 +4,30 @@ The [robot reference and haunted hallway](apps/world/robot-v1/README.md) define 
 
 Gemini has to reach an exit in a hallway photographed at the venue. Genie 4 turns that photo into the world. The audience is the poltergeist. Someone might drop a banana peel in Gemini’s path or send a gust through the hall. When the change happens, a stylized ghost briefly appears at that spot and fades. The projector shows how Gemini responds and whether it gets out.
 
+
+For a live rehearsal, open the [host controls](https://poltergeist-world.vercel.app/debug), choose a room photo, and wait for guests to join. Choose **5-minute demo** for a stage slot or **10 minutes of play** for a longer game. Guests submit ideas from their phones. The conductor considers camera visibility, impact, and recent effects when choosing what comes next. A guest can press Enter or tap **Send this version** to accept a suggested change. [Projector](https://poltergeist-world.vercel.app/stage) · [Guest entrance](https://poltergeist-world.vercel.app/haunt)
+
 ## Try the prototype on your laptop
 
 From your existing Poltergeist checkout, run `git pull --ff-only origin main`. Open `apps/world/painted-door/haunting/index.html` from the checkout in your browser. All assets are bundled and the test runs offline without a Gemini key.
 
 Choose **Drop banana peel**, then **Walk ahead** to see the stumble. Once the robot recovers, choose **Walk ahead** again. Reset, drop another peel, choose **Step left**, then **Walk ahead** to reach the far end. Sri can compare the two routes in **Player view**. Courtney can check the brief ghost cue in **Audience view**.
 
+## Joining a round
+
+Kevin’s World host takes the photo and prepares the hallway. Courtney owns the waiting room on phones and the projector, including the join code, assigned names, guest count and first submissions. The host presses Start when the room and audience are ready. Sri’s Brain begins choosing moves from the live frames after play starts.
+
+## During a longer game
+
+Guests join once and keep their ghost names. For a five-minute presentation, open submissions while people scan in and use **Start 5-minute demo** to set a five-minute deadline. Hosts can also choose a short live test or a game with ten minutes of active play. In the longer game, the hallway lights falter and go dark between Genie interactions. The five-minute demo clock keeps running through the reconnect. The ten-minute active-play clock pauses. Guests can keep submitting hauntings, and the score carries over. The lights return when the projector sees movement in the next stream. The match ends when the robot reaches the exit, the ghosts earn enough scares, or playing time expires.
+
+World prepares the next opening from the current hallway while play is running. It uses a recent settled frame of the same explorer with a clear path ahead, then closes the current interaction before opening the next. If the frame or connection cannot be confirmed, the host reports an interruption. A new interaction can redraw objects, so check placement and the robot's response from fresh video. [Genie 4 session limits](https://aistudio.google.com/docs/genie#limitations)
+
 ## The demo in three steps
 
 1. **Make the hallway walkable.** In the first local test, scripted camera controls carried us through the wood arch in Photo 1 and up to the table beneath the skyline picture. That arch gave us a visible finish line for a short test route.
 2. **Trigger one activity and reveal the ghost.** In the [local audience prototype](apps/world/painted-door/haunting/index.html), tap a spot in the aisle. The page renders a banana peel there and briefly shows a ghost beside it. The ghost fades by 1.7 seconds and the peel stays until reset. Switch to **Player view** to see the peel with the ghost cue hidden. The empty-hallway background and artwork are included. An earlier 12-second walking-ghost clip tested visibility in this same hallway.
-3. **Give Sri’s player a turn.** Show the hallway in third person, with the robot’s whole body, both feet and the hazard in frame. In the local playtest, walking straight onto the peel triggered a visible stumble. After recovery the robot could continue. Stepping left first let it reach the end of the test aisle without slipping. Keep the camera fixed. In the shared round, Sri’s Gemini chooses the moves and the audience supplies one approved activity from a phone. Let Gemini recover and continue. Reaching the designated threshold in time wins the round for Gemini. If time expires, review the replay to see whether the audience’s trick delayed it, Gemini lost its way, or the world changed unexpectedly.
+3. **Give Sri’s player a turn.** The local peel prototype uses a full-body view so spectators can see the stumble. In the local playtest, walking straight onto the peel triggered a visible stumble. After recovery the robot could continue. Stepping left first let it reach the end of the test aisle without slipping. The live camera should travel behind the robot’s right shoulder while it walks diagonally from lower left toward upper right. Leave most of the frame for the path, the approaching obstacle and the robot’s response. Extend the venue through connected bays with one reachable exit beyond them. At an encounter the robot can pause to inspect the path, move around a blockage, or recoil from a sudden scare. In the shared round, Sri’s Gemini chooses the moves and the audience supplies one approved activity from a phone. Let Gemini recover and continue. Reaching the designated threshold in time wins the round for Gemini. If time expires, review the replay to see whether the audience’s trick delayed it, Gemini lost its way, or the world changed unexpectedly.
 
 The operator also sent a banana-peel request during a live Genie 4 session. The session completed, but the footage showed no clear peel. A collision in the live Genie world and an autonomous response from Sri’s player still need separate tests.
 

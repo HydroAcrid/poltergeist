@@ -1,0 +1,27 @@
+{
+  "episodeId": "ep_01JDPG00000000000000000001",
+  "seq": 7,
+  "t": 3500,
+  "policyVersion": "v1",
+  "successClaim": false,
+  "brainLatencyMs": 690,
+  "perception": {
+    "visible": true,
+    "box": [
+      300,
+      560,
+      560,
+      660
+    ],
+    "conf": 0.86,
+    "hazards": [],
+    "model": "gemini-robotics-er-2-preview",
+    "latencyMs": 640
+  },
+  "action": {
+    "key": "W",
+    "holdMs": 600
+  },
+  "mode": "track",
+  "rationale": "door ahead"
+}

@@ -68,7 +68,6 @@ textarea::placeholder{color:#8f857c}
 .idea span{display:block;font-size:14px;color:var(--muted);margin-top:2px}
 .idea:active{background:var(--raised)}
 .hero{text-align:center;padding:8px 0 4px}
-.hero .big{font-size:44px;line-height:1}
 .hero h1{margin-top:8px}
 .actions{display:grid;gap:10px;margin-top:18px}
 .actions .btn{display:flex;align-items:center;justify-content:center;text-decoration:none}
@@ -100,6 +99,9 @@ ol,ul{list-style:none;margin:0;padding:0}
 .p-go{color:var(--amber)}
 .p-bad{color:var(--bad)}
 .reason{color:var(--bad);font-size:14px;margin-top:6px}
+.receipt-status{font-size:15px;color:var(--amber);margin:.65em 0}
+.key-help{font-size:13px;color:var(--muted)}
+@media(hover:none){.key-help{display:none}}
 .revision{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:8px}
 .edit{min-height:44px;padding:0;background:none;color:var(--amber);font-weight:600}
 .steps{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;color:#8f857c}
@@ -140,7 +142,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
     <div class="card lobby" id="lobby" hidden>
       <strong>👻 You're in the waiting room</strong>
-      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span> Send an idea now so it's ready.</div>
+      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span></div>
     </div>
     <form class="card" id="form" autocomplete="off">
       <label for="text" class="by" id="composer-label">What happens in the hallway?</label>
@@ -169,10 +171,11 @@ ol,ul{list-style:none;margin:0;padding:0}
   </section>
 
   <section class="screen" id="screen-sent" aria-labelledby="h-sent" hidden>
-    <div class="hero"><div class="big" aria-hidden="true">👻</div><h1 id="h-sent" tabindex="-1">Sent!</h1></div>
+    <div class="hero"><h1 id="h-sent" tabindex="-1">Sent!</h1></div>
     <p class="lede" id="sent-who" style="text-align:center;margin-left:auto;margin-right:auto"></p>
+    <p id="receipt-status" class="receipt-status" role="status" aria-live="polite" aria-atomic="true"></p>
     <div class="card" id="sent-card"></div>
-    <div class="actions">
+    <div class="actions" id="sent-actions">
       <a class="btn" href="#mine">Track it in My ideas</a>
       <a class="btn ghost" href="#haunt">Send another idea</a>
     </div>
@@ -252,8 +255,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (text != null) e.textContent = text;
     return e;
   }
-  const clock = (at) => {
-    const s = Math.max(0, Math.round((at - Date.now()) / 1000));
+  const duration = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
 
@@ -306,7 +309,6 @@ ol,ul{list-style:none;margin:0;padding:0}
   }
 
   let inflight = false;
-  let lobby = null;
   async function refresh() {
     if (inflight) return;
     inflight = true;
@@ -314,12 +316,6 @@ ol,ul{list-style:none;margin:0;padding:0}
     try {
       const headers = stateTag && loadedPage === requested ? { "if-none-match": stateTag } : {};
       const res = await fetch("/api/crowd/state?waitingPage=" + requested, { credentials: "same-origin", headers: { ...headers, "x-pg-client": "phone" } });
-      // World's waiting-room phase (before-photo, lobby, starting, playing, ended), when World serves it.
-      try {
-        const lr = await fetch("/rehearsal/lobby", { cache: "no-store" });
-        const next = lr.ok ? await lr.json() : null;
-        if (JSON.stringify(next) !== JSON.stringify(lobby)) { lobby = next; render(); }
-      } catch { lobby = null; }
       if (res.status !== 304 && !res.ok) throw Error("Queue unavailable");
       $("offline").hidden = true;
       if (res.status !== 304 && requested === waitingPage) {
@@ -345,7 +341,12 @@ ol,ul{list-style:none;margin:0;padding:0}
     m.className = "msg" + (bad ? " bad" : "");
   }
 
+  function waitingForPhoto() {
+    return state.lobbyPhase === "before-photo" || state.lobbyPhase === "ended";
+  }
+
   async function send(payload, rawText) {
+    if (waitingForPhoto()) { say("You can send your idea when the host opens the hallway."); return; }
     if (sending) return;
     sending = true;
     $("send").disabled = true;
@@ -377,7 +378,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       showError("No connection. Try again in a moment.");
     } finally {
       sending = false;
-      $("send").disabled = false;
+      $("send").disabled = waitingForPhoto();
+      document.querySelectorAll("[data-send-revision]").forEach(button => { button.disabled = waitingForPhoto(); });
     }
   }
 
@@ -408,11 +410,14 @@ ol,ul{list-style:none;margin:0;padding:0}
     steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
     STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
     card.append(steps);
+    if (card.id !== "sent-card" && state.verifiedPathHauntIds?.includes(h.hauntId))
+      card.append(el("div", "by", "Seen in the robot’s path."));
     // Where a waiting idea stands: carries over between rounds, about N rounds away.
     if (h.status === "queued") {
-      const pos = state.waiting?.myPositions?.[h.hauntId] ?? state.queue.findIndex((q) => q.hauntId === h.hauntId) + 1;
-      const per = state.slotsPerRound || 6;
-      if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
+      const pos = state.waiting?.myPositions?.[h.hauntId] ?? (state.queue.findIndex((q) => q.hauntId === h.hauntId) + 1);
+      const per = state.slotsPerRound ?? 6;
+      if (per === 0) card.append(el("div", "why", "Waiting for the host to open a slot"));
+      else if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
       else if (pos > per) card.append(el("div", "why", "#" + pos + " in line · may carry over to the next round"));
     }
   }
@@ -432,12 +437,14 @@ ol,ul{list-style:none;margin:0;padding:0}
     const actions = el("div", "revision");
     function button(label, fn, cls) {
       const b = el("button", cls, label);
+      b.dataset.revisionFor = id;
       b.type = "button";
       b.onclick = async () => {
         b.disabled = true;
         try { await fn(); } finally { b.disabled = false; }
       };
       actions.append(b);
+      return b;
     }
     function edit(value) {
       editingRevision = id;
@@ -449,7 +456,11 @@ ol,ul{list-style:none;margin:0;padding:0}
     }
     if (suggestion) {
       card.append(el("h2", "", "Try this instead"), el("div", "text", suggestion));
-      button("Send this version", () => send({ text: suggestion, revisionOf: id }, suggestion), "btn");
+      const accept = button("Send this version", () => send({ text: suggestion, revisionOf: id }, suggestion), "btn");
+      accept.dataset.sendRevision = id;
+      accept.disabled = sending || waitingForPhoto();
+      accept.setAttribute("aria-keyshortcuts", "Enter");
+      if (card.id === "sent-card") actions.append(el("span", "key-help", "or press Enter"));
       button("Edit suggestion", () => edit(suggestion), "edit");
     }
     if (raw) button("Edit original", () => edit(raw), "edit");
@@ -461,13 +472,45 @@ ol,ul{list-style:none;margin:0;padding:0}
     }
   }
 
+  document.addEventListener("keydown", event => {
+    if (!["sent", "mine"].includes(screen) || event.key !== "Enter" || event.isComposing || event.keyCode === 229 ||
+        event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+    const scope = screen === "sent" ? $("sent-card") : (event.target.closest?.("#mine li") || $("mine"));
+    const choices = scope.querySelectorAll("[data-send-revision]");
+    if (choices.length !== 1 || choices[0].disabled) return;
+    const accept = choices[0];
+    const otherAction = event.target.closest?.("a,button,input,textarea,select,summary,[contenteditable=true]");
+    if (otherAction && otherAction !== accept) return;
+    event.preventDefault();
+    if (!event.repeat) accept.click();
+  });
+
+  function receiptStatus(h, reserved) {
+    if (!h) return "";
+    if (h.status === "rejected") return revised[h.hauntId] ? "Revision sent." :
+      h.moderated?.suggestion ? "The idea check has a suggested change." : "The idea check needs a change.";
+    if (h.status === "submitted") return "Checking whether your idea can work in the hallway…";
+    if (h.status === "failed" || h.status === "withdrawn") return STATUS[h.status][0];
+    if (state.verifiedPathHauntIds?.includes(h.hauntId)) return "Seen in the robot’s path.";
+    if (h.status === "injected") return "Delivered to the hallway.";
+    if (h.status === "dispatched") return "Placing your haunting in the hallway…";
+    if (reserved?.hauntId === h.hauntId) return state.upNext?.reason ? "Up next. " + state.upNext.reason : "Your idea is up next.";
+    const hold = state.holds?.find(item => item.hauntId === h.hauntId);
+    if (hold) return "Approved. " + hold.reason;
+    return state.episodeActive ? "Approved. Waiting for a place in the round." : "Approved. Waiting for the round to start.";
+  }
+
+  const clock = (at) => duration(at - Date.now());
+
   function renderPhase() {
     const ph = $("phase");
     ph.textContent = "";
     // Follow World's phase; never invent a countdown while World waits for the host.
-    const lp = lobby?.phase;
+    const lp = state.lobbyPhase;
     const ghosts = state.joined > 1 ? " · " + state.joined + " ghosts here" : "";
-    if (state.episodeActive || lp === "playing") {
+    if (state.roundPausedRemainingMs != null) {
+      ph.append(el("span", "live", "The hallway is shifting"), " · ", el("b", "", duration(state.roundPausedRemainingMs)), " left · Keep sending ideas");
+    } else if (lp === "playing" || (!lp && state.episodeActive)) {
       ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
     } else if (lp === "before-photo") {
@@ -476,20 +519,28 @@ ol,ul{list-style:none;margin:0;padding:0}
       ph.append(el("span", "live", "● Starting…"));
     } else if (lp === "ended") {
       ph.append("Round over" + ghosts);
-    } else {
+    } else if (lp === "lobby") {
       ph.append(el("span", "live", "● Waiting room open"), ghosts);
+    } else if (state.nextRoundAt) {
+      ph.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
+    } else if (state.you) {
+      ph.textContent = "Waiting for the host";
     }
     const card = $("lobby");
-    card.hidden = state.episodeActive || lp === "playing";
+    $("send").disabled = sending || waitingForPhoto();
+    card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
-      $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the first ghost here.";
-      $("lobby-next").textContent = lp === "before-photo" ? "The host is setting up the hallway." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "The host starts the round soon.";
+      $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
+      $("lobby-next").textContent = lp === "before-photo" ? "You can draft an idea while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "Send an idea while you wait for the host to start.";
     }
   }
 
   function render() {
+    const previousButton = document.activeElement;
+    const focusedRevision = previousButton?.dataset?.revisionFor;
     const mineIds = new Set(state.mine.map((h) => h.hauntId));
     const head = state.queue[0];
+    const reserved = head && state.upNext?.hauntId === head.hauntId ? head : null;
     const hall = state.hallway || [];
 
     if (state.you) { const y = $("you"); y.textContent = ""; y.append("You are ", el("b", "", state.you.ghostName), " 👻"); }
@@ -499,20 +550,23 @@ ol,ul{list-style:none;margin:0;padding:0}
     const live = state.mine.find((h) => h.status === "dispatched" || (h.status === "injected" && hall.some((x) => x.hauntId === h.hauntId)));
     hap.textContent = "";
     if (live) {
-      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
+      hap.append(state.verifiedPathHauntIds?.includes(live.hauntId) ? "Your haunting appeared in the robot’s path!" : live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
       hap.href = "#hallway";
-    } else if (head && mineIds.has(head.hauntId)) {
+    } else if (reserved && mineIds.has(reserved.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
       hap.href = "#next";
     }
-    hap.hidden = hap.textContent.length === 0;
+    const featured = live || (reserved && mineIds.has(reserved.hauntId) ? reserved : null);
+    hap.hidden = !featured || (screen === "sent" && featured.hauntId === lastSent);
 
     // Up next
     const up = $("upnext");
     up.textContent = "";
     if (head) {
-      up.append(el("div", "label", mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next"), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
-      if (state.upNext?.hauntId === head.hauntId && state.upNext.mode === "conductor") up.append(el("div", "why", state.upNext.reason));
+      const label = reserved ? (mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next") : "Waiting for a turn";
+      up.append(el("div", "label", label), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
+      const why = reserved ? state.upNext.reason : (state.holds || state.waitingReasons)?.find((w) => w.hauntId === head.hauntId)?.reason;
+      if (why) up.append(el("div", "why", why));
     } else {
       up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
     }
@@ -532,7 +586,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       const li = el("li");
       const b = el("div", "body");
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds));
-      const why = (state.holds || []).find((w) => w.hauntId === h.hauntId);
+      const why = (state.holds || state.waitingReasons || []).find((w) => w.hauntId === h.hauntId);
       if (why) b.append(el("div", "why", why.reason));
       li.append(el("span", "pos", String(i)), b);
       q.append(li);
@@ -545,7 +599,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     for (const h of hall) {
       const li = el("li");
       const b = el("div", "body");
-      const [label, cls] = STATUS[h.status] || [h.status, ""];
+      const [label, cls] = state.verifiedPathHauntIds?.includes(h.hauntId)
+        ? ["Seen in the robot’s path", "p-ok"] : STATUS[h.status] || [h.status, ""];
       b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds), el("span", "pill " + cls, label));
       li.append(b);
       hw.append(li);
@@ -569,7 +624,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       } else if (h.status === "withdrawn") {
         b.append(el("span", "pill", STATUS.withdrawn[0]));
       } else {
-        progress(b, h, head);
+        progress(b, h, reserved);
       }
       li.append(b);
       m.append(li);
@@ -578,21 +633,31 @@ ol,ul{list-style:none;margin:0;padding:0}
     const sc = $("sent-card");
     sc.textContent = "";
     const sentItem = mine.find((h) => h.hauntId === lastSent);
+    const status = receiptStatus(sentItem, reserved);
+    if ($("receipt-status").textContent !== status) $("receipt-status").textContent = status;
     const rejected = sentItem?.status === "rejected";
-    $("h-sent").textContent = rejected ? "Revise your idea" : "Sent!";
-    $("sent-who").textContent = rejected ? "Only you can see this feedback." : state.you ? "Thanks, " + state.you.ghostName + "." : "";
+    $("sent-actions").hidden = rejected && !revised[sentItem.hauntId];
+    $("h-sent").textContent = rejected ? "Revise your idea" : "Your haunting";
+    $("sent-who").hidden = !rejected;
+    $("sent-who").textContent = rejected ? "Only you can see this feedback." : "";
     if (sentItem) {
       const raw = rawById[sentItem.hauntId];
       sc.append(el("div", "label", "Your idea"), el("div", "text", sentItem.status !== "rejected" && sentItem.moderated?.text ? sentItem.moderated.text : raw || "Your idea"));
       if (sentItem.status === "rejected") {
         rejection(sc, sentItem, raw);
-      } else {
-        progress(sc, sentItem, head);
+      } else if (sentItem.status !== "failed" && sentItem.status !== "withdrawn") {
+        progress(sc, sentItem, reserved);
       }
     } else {
       sc.append(el("div", "empty", "Send an idea and it will show up here."));
     }
 
+    if (focusedRevision) {
+      const replacement = [...$("screen-" + screen).querySelectorAll("button[data-revision-for]")].find(
+        button => button.dataset.revisionFor === focusedRevision && button.textContent === previousButton.textContent
+      );
+      replacement?.focus({preventScroll:true});
+    }
     $("replace-hint").hidden = !state.mine.some((h) => ["submitted", "approved", "queued"].includes(h.status) && h.hauntId !== state.upNext?.hauntId);
     badge("b-mine", screen === "mine" ? 0 : state.mine.filter((h) => seen.mine[h.hauntId] && seen.mine[h.hauntId] !== h.status).length);
     badge("b-hallway", screen === "hallway" ? 0 : hall.filter((h) => !seen.hallway.includes(h.hauntId + ":" + h.status)).length);
@@ -679,7 +744,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     });
   }
   $("text").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); if (!e.repeat) $("form").requestSubmit(); }
   });
   for (const [id, f] of [["f-all", "all"], ["f-mine", "mine"]]) {
     $(id).addEventListener("click", () => {

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hallway · Poltergeist</title>
+<style>
+* { box-sizing: border-box }
+body { margin: 0; background: #191c18; color: #f7f2e5; font: 16px/1.45 'DM Sans', system-ui, sans-serif }
+main { max-width: 980px; margin: 0 auto; padding: clamp(16px,4vw,48px) 18px }
+header, footer, .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px }
+header { justify-content: space-between; margin-bottom: 14px }
+h1 { font: 500 clamp(32px,6vw,54px)/1.1 Georgia,serif; margin: 0 }
+#scene { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #252824 }
+footer { margin: 16px 0 8px; gap: 12px }
+button { font: inherit; color: inherit; border: 1px solid #788074; border-radius: 6px; background: #30362e; padding: 7px 13px; cursor: pointer; min-height: 42px }
+button:focus-visible { outline: 3px solid #ffde86; outline-offset: 2px }
+button:disabled { opacity: .45; cursor: default }
+#start { background: #c8dfa4; color: #17220d; border-color: #c8dfa4 }
+p { color: #c9cbbb; margin: 12px 0 }
+small { font-size: 14px; color: #c9cbbb }
+</style>
+<main>
+  <header><h1>Hallway</h1><span id="state" role="status">Photo preview</span></header>
+  <img id="scene" src="/frame" alt="A wood-floored aisle between stools and booths">
+  <footer><button id="start">Start live session</button><button id="end" disabled>End session</button><small>Uses Genie credits · 30 seconds maximum</small></footer>
+  <p>Tap W, A, S, D to step. Use the left and right arrows to turn.</p>
+  <div class="controls" aria-label="World controls">
+    <button disabled data-action="key_w">Forward</button><button disabled data-action="key_a">Step left</button>
+    <button disabled data-action="key_d">Step right</button><button disabled data-action="key_s">Back</button>
+    <button disabled data-action="arrow_left">Turn left</button><button disabled data-action="arrow_right">Turn right</button>
+    <button disabled data-action="peel">Request banana peel</button>
+  </div>
+  <p id="detail" role="status"></p>
+</main>
+<script>
+const scene = document.querySelector('#scene');
+const state = document.querySelector('#state');
+const detail = document.querySelector('#detail');
+const start = document.querySelector('#start');
+const end = document.querySelector('#end');
+const controls = [...document.querySelectorAll('[data-action]')];
+const keys = { KeyW: 'key_w', KeyA: 'key_a', KeyS: 'key_s', KeyD: 'key_d', ArrowLeft: 'arrow_left', ArrowRight: 'arrow_right' };
+let version = -1, phase = 'ready', heartbeat = 0, refreshed = false, starting = false;
+async function command(action) {
+  try {
+    const response = await fetch('/' + action, { method: 'POST', headers: { 'X-Operator': '1' } });
+    const result = await response.json();
+    if (!response.ok) detail.textContent = result.error || 'Control unavailable.';
+  } catch { detail.textContent = 'The local controller is unreachable.'; }
+}
+async function refresh() {
+  try {
+    const response = await fetch('/status');
+    if (!response.ok) throw Error();
+    const update = await response.json();
+    const changed = phase !== update.phase || !refreshed;
+    refreshed = true;
+    phase = update.phase;
+    const busy = ['starting', 'live', 'ending'].includes(phase);
+    start.disabled = busy || starting;
+    end.disabled = !['starting', 'live'].includes(phase);
+    controls.forEach(button => button.disabled = phase !== 'live');
+    const seconds = Math.max(0, Math.ceil((update.expiresAt - Date.now()) / 1000));
+    state.textContent = ({ ready: 'Photo preview', starting: 'Opening Genie…', live: 'Live · ' + seconds + 's', ending: 'Closing…', closed: 'Session closed' })[phase];
+    if (changed) detail.textContent = update.detail;
+    if (update.version !== version) {
+      version = update.version;
+      scene.src = '/frame?v=' + version;
+    }
+    if (busy && Date.now() - heartbeat > 1500) {
+      heartbeat = Date.now();
+      await command('heartbeat');
+    }
+  } catch { state.textContent = 'Controller offline'; controls.forEach(b => b.disabled = true); start.disabled = true; end.disabled = true; }
+  setTimeout(refresh, phase === 'live' ? 150 : 450);
+}
+start.onclick = async () => { starting = true; start.disabled = true; await command('start'); starting = false; };
+end.onclick = () => command('end');
+controls.forEach(button => button.onclick = () => command(button.dataset.action));
+document.addEventListener('keydown', event => {
+  if (phase !== 'live' || !keys[event.code] || event.metaKey || event.ctrlKey || event.altKey) return;
+  event.preventDefault();
+  if (!event.repeat) command(keys[event.code]);
+});
+refresh();
+</script>
+</html>

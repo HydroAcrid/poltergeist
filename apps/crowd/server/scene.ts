@@ -2,7 +2,7 @@
 // test/fixtures/rehearsal-*.json) into the conductor's SceneObservation. When World ships a
 // shared `scene.observed` event, only this file changes.
 import type { EffectKind, SceneObservation } from "./conductor.js";
-import { kindOf } from "./conductor.js";
+import { kindOf, POLICY } from "./conductor.js";
 
 /** World's prop `kind` words → the conductor's effect kinds, and a short noun for public reasons. */
 const WORLD_KIND: Record<string, { kind: EffectKind; noun: string }> = {
@@ -28,31 +28,48 @@ export function sceneFromRehearsal(json: unknown, now: number, producible: Effec
   const r = (body.round && typeof body.round === "object" ? body.round : body) as Record<string, unknown>;
   const phase = typeof r.phase === "string" ? r.phase : "";
   if (!/play|live|open/.test(phase)) return undefined; // no round to conduct (lobby, ended, …)
-  const robotProgress = Math.min(1, Math.max(0, num(r.depth) ?? 0));
+  const live = r.live === true;
+  const observedAt = live ? num(r.trackedAt) : now;
+  if (observedAt === undefined || observedAt > now || now - observedAt > POLICY.sceneMaxAgeMs) return undefined;
+  const depth = Math.min(1, Math.max(0, num(r.depth) ?? 0));
   const robotLane = num(r.lane) ?? 0;
+  const atExit = r.trackedDoorwayProgress === "at-threshold" || r.trackedDoorwayProgress === "through";
   const deadline = num(r.deadline) ?? 0;
   const playing = /play|live/.test(phase);
   const props = Array.isArray(r.props) ? (r.props as Record<string, unknown>[]) : [];
+  const obstacles: SceneObservation["obstacles"] = [];
+  const verifiedPathHauntIds: string[] = [];
+  for (const p of props) {
+    const word = String(p.kind ?? "").toLowerCase();
+    const known = WORLD_KIND[word];
+    const kind = known?.kind ?? kindOf({ tags: [], text: String(p.name ?? word) });
+    const label = known?.noun ?? "prop";
+    if (live) {
+      // A delivery acknowledgment says nothing about what the camera sees.
+      const confirmedNow = p.seen === true && p.inPath === true && p.confirmedFrame === r.observed && num(r.observed) !== undefined;
+      if (confirmedNow) obstacles.push({ label, kind, inBeam: true });
+      // World retains the first verified path sighting even if the prop later moves.
+      const firstPathSighting = num(p.inPathPresentedAt);
+      if ((confirmedNow || (firstPathSighting !== undefined && firstPathSighting > 0 && firstPathSighting <= now)) && typeof p.id === "string")
+        verifiedPathHauntIds.push(p.id);
+    } else if (set(p.acked) || set(p.placedAt) || set(p.sentAt)) {
+      const progress = num(p.depth) ?? depth + 0.1;
+      const ahead = progress - depth;
+      const lane = num(p.lane) ?? robotLane;
+      const inBeam = p.placement !== "off-path" && ahead > 0 && ahead <= AHEAD && Math.abs(lane - robotLane) < 0.5;
+      obstacles.push({ label, kind, inBeam: inBeam || p.placement === "in-path", progress });
+    }
+  }
   return {
     t: playing ? Math.max(0, now - (num(r.startedAt) ?? now)) : 0,
-    observedAt: now,
-    robotProgress,
+    observedAt,
+    robotProgress: live ? (atExit ? 1 : undefined) : depth,
     timeRemainingMs: playing && deadline > 0 ? Math.max(0, deadline - now) : 60_000,
-    cameraStable: r.cameraStable !== false,
-    obstacles: props
-      .filter((p) => set(p.acked) || set(p.placedAt) || set(p.sentAt))
-      .map((p) => {
-        const word = String(p.kind ?? "").toLowerCase();
-        const known = WORLD_KIND[word];
-        const kind = known?.kind ?? kindOf({ tags: [], text: String(p.name ?? word) });
-        const depth = num(p.depth) ?? robotProgress + 0.1;
-        const lane = num(p.lane) ?? robotLane;
-        const ahead = depth - robotProgress;
-        const offPath = p.placement === "off-path";
-        const inBeam = !offPath && ahead > 0 && ahead <= AHEAD && Math.abs(lane - robotLane) < 0.5;
-        return { label: known?.noun ?? "prop", kind, inBeam: inBeam || p.placement === "in-path", progress: depth };
-      }),
+    cameraStable: live ? Array.isArray(r.trackedBody) && r.trackedBody.length === 4 &&
+      r.cameraStable !== false && (num(r.lastCameraAt) ?? 0) <= observedAt : r.cameraStable !== false,
+    obstacles,
     producible,
+    verifiedPathHauntIds,
     seenHauntIds: props.filter((p) => set(p.seen) || set(p.reactedAt)).map((p) => String(p.id ?? p.hauntId ?? "")).filter(Boolean),
   };
 }

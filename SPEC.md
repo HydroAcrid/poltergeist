@@ -94,17 +94,17 @@ All model IDs are set through env vars. **Verify every ID at kickoff.**
 
 1. **Genie only goes through the world broker.**
    - One active session per instance.
-   - Daily session and dollar caps, plus a maximum duration per session.
+   - A daily spending budget, plus a maximum duration per session.
    - A watchdog ends any session at `hardKillAt`.
    - Every end path calls Genie's explicit close (`complete()` or `cancel()`). Closing a browser tab does **not** stop billing.
    - Real sessions start only from `/operator` (a human click), or from the world laptop with `PG_ALLOW_GENIE=1`.
-2. **Caps per instance** (adjust when the real quota is known; the total must stay under the daily quota):
+2. **Spending and timeout settings by instance.** End each run as soon as the requested evidence is captured.
 
-   | Instance | Sessions | USD | Max duration |
-   |---|---|---|---|
-   | local (world laptop) | 6 | $40 | 60 s |
-   | staging | 12 | $80 | 60 s |
-   | prod | 28 | $260 | 90 s |
+   | Instance | Daily USD budget | Max duration |
+   |---|---|---|
+   | local (world laptop) | $40 | 60 s |
+   | staging | $80 | 60 s |
+   | prod | $260 | 90 s |
 
 3. **No paid APIs in tests.** Live calls exist only in tests tagged `@live`, which run only with `PG_LIVE=1`, and only a human runs them.
 4. **No secrets in git.** `GEMINI_API_KEY` lives in `.env` locally and in host secrets in the cloud.

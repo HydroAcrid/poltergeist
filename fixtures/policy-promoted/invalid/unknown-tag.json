@@ -1,0 +1,43 @@
+{
+  "version": "v2",
+  "parent": "v1",
+  "createdBy": "coach",
+  "rationale": "Lower the lost-tick threshold so fog makes the player scan sooner instead of walking blind.",
+  "eval": {
+    "heldout": {
+      "n": 48,
+      "hitRate": 0.73,
+      "byTag": {
+        "smoke": {
+          "n": 3,
+          "hitRate": 0.5
+        }
+      }
+    },
+    "clean": {
+      "n": 60,
+      "hitRate": 0.9,
+      "byTag": {}
+    },
+    "parentHeldout": {
+      "n": 48,
+      "hitRate": 0.65,
+      "byTag": {
+        "visibility": {
+          "n": 14,
+          "hitRate": 0.43
+        },
+        "distractor": {
+          "n": 9,
+          "hitRate": 0.78
+        }
+      }
+    },
+    "parentClean": {
+      "n": 60,
+      "hitRate": 0.91,
+      "byTag": {}
+    }
+  },
+  "promotedAt": 1795276800000
+}

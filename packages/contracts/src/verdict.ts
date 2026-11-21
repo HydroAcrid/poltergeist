@@ -2,11 +2,20 @@
 import { z } from "zod";
 import { Blame, EpochMs, Id, Ms } from "./common.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
+
+export const HallwayResult = z.object({
+  reason: z.enum(["exit", "time", "fear", "interrupted"]),
+  reactions: z.array(z.object({
+    hauntId: Id, at: EpochMs, kind: z.enum(["scare", "sidestep"]),
+  }).strict()),
+}).strict();
+export type HallwayResult = z.infer<typeof HallwayResult>;
 
 export const Verdict = z
   .object({
     episodeId: Id,
+    hallway: HallwayResult.optional(),
     stage: z.enum(["provisional", "final"]),
     outcome: z.enum(["success", "failure", "aborted"]),
     failureT: Ms.optional(), // required iff outcome = failure

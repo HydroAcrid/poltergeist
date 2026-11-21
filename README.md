@@ -6,6 +6,17 @@ A game for the Gemini 4 NYC Hackathon. Genie 4 builds a world from a photo of a 
 
 Start with the [feature map](FEATURES.md) and [lane assignments](KICKOFF.md#team-assignments). Share blockers and ready fixtures in the [lane handoffs issue](https://github.com/HydroAcrid/poltergeist/issues/2). The [review workflow kit](docs/workflows/README.md) is available for anyone who wants to try Kevin’s checks in Claude Code.
 
+## Rehearse the team game
+
+With Node.js 22.12+ and npm installed, run these commands from the checkout root.
+
+```sh
+npm run rehearsal:setup
+npm run rehearsal
+```
+
+Open [Host](http://127.0.0.1:8914/team) and choose **Rehearse offline**. Use [Projector](http://127.0.0.1:8914/stage) for the game and [Audience](http://127.0.0.1:8914/haunt) for the phone view. The first 30 seconds are open for proposals. Crowd moderates and queues them, Brain chooses moves from labeled hallway frames, and World shows the round. This rehearsal uses no API key or credits. [World host and live Genie setup](apps/world/rehearsal/README.md)
+
 ## Play the third-person prototype
 
 After pulling `main`, open [the hallway](apps/world/painted-door/haunting/index.html) from your local checkout in a browser. Choose **Drop banana peel → Walk ahead**. Reset and try **Drop banana peel → Step left → Walk ahead**. Both paths work offline without installing packages or adding a key.

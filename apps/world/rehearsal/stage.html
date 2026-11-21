@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>Poltergeist</title>
+    <link rel="stylesheet" href="/stage.css" />
+  </head>
+  <body class="projector">
+    <main class="world" aria-label="Poltergeist game">
+      <figure class="viewport">
+        <canvas
+          width="1280"
+          height="720"
+          id="scene"
+          aria-label="The venue transforms into the robot’s hallway"
+        ></canvas>
+        <img id="live" class="decode-source" aria-hidden="true" alt="" />
+      </figure>
+      <header class="hud">
+        <h1 id="title" class="brand">Poltergeist</h1>
+        <div class="score" hidden>
+          <div
+            class="fear-readout"
+            title="Three scares give the ghosts the win"
+          >
+            <span class="hud-label">Fear</span>
+            <div
+              class="fear"
+              role="meter"
+              aria-label="Robot fear"
+              aria-valuemin="0"
+              aria-valuemax="3"
+              aria-valuenow="0"
+              aria-valuetext="0 of 3 scares"
+            >
+              <i></i><i></i><i></i>
+            </div>
+            <span id="fear" class="visually-hidden">0 / 3</span>
+          </div>
+          <div id="round-clock" class="clockbox" hidden>
+            <span id="timer-label" class="hud-label"></span
+            ><strong id="clock"></strong>
+          </div>
+        </div>
+      </header>
+      <section id="lobby-intro" class="lobby-intro" aria-labelledby="lobby-title" hidden>
+        <h2 id="lobby-title">You are the ghosts.</h2>
+        <p id="lobby-invite">Join on your phone to haunt the hallway and keep the robot from reaching the exit.</p>
+      </section>
+      <section id="story" class="story" hidden aria-label="Hallway action">
+        <span id="cue"></span><strong id="caption"></strong><small id="ghost-by"></small>
+      </section>
+      <nav class="audience-dock" aria-label="Audience">
+        <details id="book" class="popover">
+          <summary>Queue <span id="count">0</span></summary>
+          <section class="panel queue-panel" aria-label="Haunting queue">
+            <h2>Up next</h2>
+            <div id="next" class="next">Waiting for an idea.</div>
+            <ol id="queue"></ol>
+          </section>
+        </details>
+        <a id="join-link" class="join" href="/haunt" target="_blank" rel="noopener">
+          <img id="join-qr" alt="" hidden>
+          <span><span id="join-label">Join the ghosts ↗</span><small id="guests" hidden></small></span>
+        </a>
+        <details id="host" class="popover" hidden>
+          <summary>Host</summary>
+          <section class="panel host-panel" aria-label="Host controls">
+            <header>
+              <h2 id="setup-title">Choose the hallway</h2>
+              <a href="/stage" target="_blank" rel="noopener">Projector ↗</a>
+            </header>
+            <p id="host-readiness" class="host-readiness" role="status">Connecting to the room…</p>
+            <p id="host-guests" hidden></p>
+            <details id="photo-choice" class="photo-choice" open>
+              <summary hidden>Change photo</summary>
+              <div id="photo-actions" class="photo-actions">
+              <button id="upload" class="primary">Choose photo</button>
+              <button id="capture">Take photo</button>
+            </div>
+            <button id="default" class="quiet" hidden>Use the venue photo</button>
+            </details>
+            <button id="prepare" hidden>Prepare photo</button>
+            <label id="show-length" class="show-length" hidden>Game length
+              <select id="show-minutes">
+                <option value="5">5-minute demo</option>
+                <option value="10">10 minutes of play</option>
+              </select>
+            </label>
+            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start 5-minute demo</button>
+            <small id="show-cost" hidden></small>
+            <button id="offline-primary" class="primary" hidden>Start offline rehearsal</button>
+            <button id="stop-show" hidden>End game</button>
+            <p id="message" role="status"></p>
+            <details id="host-tools" class="host-tools">
+              <summary>Host tools</summary>
+              <div class="tool-actions">
+                <button id="go-live" hidden disabled>Start camera test</button>
+                <button id="start" disabled>Rehearse offline</button>
+                <button id="copy-report" hidden>Copy run report</button>
+              </div>
+              <textarea id="report-text" readonly aria-label="Run report to copy" hidden></textarea>
+            <details id="obstacle-test" class="obstacle-test">
+              <summary>Test an obstacle</summary>
+              <form id="test-form">
+                <label for="test-idea">What happens in the hallway?</label>
+                <textarea id="test-idea" maxlength="80" rows="2" required
+                  placeholder="A wind-up penguin crosses the robot’s path."></textarea>
+                <button id="test-send" type="submit">Submit idea</button>
+              </form>
+              <p id="test-status" role="status"></p>
+              <button id="test-revise" type="button" hidden>Edit suggested idea</button>
+              <dl id="test-observations" hidden>
+                <dt>Last pose</dt><dd id="test-pose"></dd>
+                <dt>Navigation</dt><dd id="test-instruction"></dd>
+                <dt>Obstacle</dt><dd id="test-placement"></dd>
+                <dt>Response</dt><dd id="test-response"></dd>
+              </dl>
+            </details>
+            </details>
+          </section>
+        </details>
+      </nav>
+      <input type="file" accept="image/*" id="file" hidden />
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        id="camera-file"
+        hidden
+      />
+      <dialog id="camera" aria-label="Take a venue photo">
+        <video autoplay playsinline muted></video>
+        <div class="photo-actions">
+          <button id="shutter" class="primary">Capture photo</button
+          ><button id="cancel">Cancel</button>
+        </div>
+      </dialog>
+      <span id="phase" class="visually-hidden"></span>
+      <p id="announce" class="visually-hidden" role="status"></p>
+    </main>
+    <script type="module" src="/stage.js"></script>
+  </body>
+</html>

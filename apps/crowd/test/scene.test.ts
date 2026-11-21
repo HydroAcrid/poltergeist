@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { kindOf } from "../server/conductor.js";
 import { createRehearsalSceneSource, sceneFromRehearsal } from "../server/scene.js";
 
 const load = (f: string) => JSON.parse(readFileSync(join(__dirname, "fixtures", f), "utf8"));
@@ -32,6 +33,24 @@ describe("sceneFromRehearsal", () => {
     expect(s.seenHauntIds).toEqual(["ht_01M7ZQ0D7XEXJ2KFTXE5KEMT0C"]);
   });
 
+  it("uses dated visual evidence in a live session", () => {
+    const r = { phase: "playing", live: true, observed: 7, trackedAt: 1500, trackedBody: [20, 40, 280, 180],
+      props: [{ id: "penguin", kind: "chair", acked: true, seen: false, inPath: false, confirmedFrame: 0 }] };
+    expect(sceneFromRehearsal(r, 2000)).toMatchObject({ observedAt: 1500, cameraStable: true, obstacles: [], seenHauntIds: [] });
+    expect(sceneFromRehearsal(r, 2000)?.verifiedPathHauntIds).toEqual([]);
+    expect(sceneFromRehearsal(r, 2000)?.robotProgress).toBeUndefined();
+    Object.assign(r.props[0]!, { seen: true, inPath: true, confirmedFrame: 7 });
+    expect(sceneFromRehearsal(r, 2000)?.obstacles).toEqual([{ label: "chair", kind: "floor_prop", inBeam: true }]);
+    expect(sceneFromRehearsal(r, 2000)?.verifiedPathHauntIds).toEqual(["penguin"]);
+    expect(sceneFromRehearsal({ ...r, observed: 8 }, 2000)?.verifiedPathHauntIds).toEqual([]);
+    expect(sceneFromRehearsal({ ...r, props: [{...r.props[0], seen:true, inPath:false}] }, 2000)?.verifiedPathHauntIds).toEqual([]);
+    expect(sceneFromRehearsal({ ...r, observed: 8, props: [{...r.props[0], inPath:false, inPathPresentedAt:1550}] }, 2000)?.verifiedPathHauntIds).toEqual(["penguin"]);
+    expect(sceneFromRehearsal({ ...r, observed: 8 }, 2000)?.obstacles).toEqual([]);
+    expect(sceneFromRehearsal({ ...r, trackedBody: null }, 2000)?.cameraStable).toBe(false);
+    expect(sceneFromRehearsal({ ...r, lastCameraAt: 1650 }, 2000)?.cameraStable).toBe(false);
+    expect(sceneFromRehearsal(r, 5000)).toBeUndefined();
+    expect(kindOf({ tags: ["distractor"], text: "A windup penguin waddles across the floor" })).toBe("floor_prop");
+  });
   it("no scene outside a round (lobby, ended) or for junk", () => {
     expect(sceneFromRehearsal({ round: { phase: "ended" } }, 1)).toBeUndefined();
     expect(sceneFromRehearsal({ round: { phase: "lobby" } }, 1)).toBeUndefined();
