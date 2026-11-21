@@ -1,11 +1,11 @@
-import moves from './player-moves.json' with { type: 'json' };
-import type { Intent } from '@poltergeist/contracts/tick-response.js';
 // `er2` PerceptionAdapter: Gemini Robotics-ER 2 (model from PG_MODEL_PERCEPTION).
 // Third-person scene perception: ER 2 reports what it sees (boots, facing,
 // obstacles, exit threshold, pose); Brain's controller decides the move.
 // The request carries only the frame plus the task (PlayerInput).
 import type { Box, Point } from "@poltergeist/contracts/common.js";
 import type { ModelDecision, PerceiveOptions, PerceptionAdapter, PerceptionResult, PlayerInput, Scene } from "./types.js";
+import type {Intent} from "@poltergeist/contracts/tick-response.js";
+import playerMoves from "./player-moves.json" with { type: "json" };
 
 export const DEFAULT_MODEL = "gemini-robotics-er-2-preview";
 
@@ -57,14 +57,16 @@ export const SCENE_SCHEMA = {
   required: ["robotVisible", "obstacles", "exit", "pose"],
 } as const;
 
-export const INTENTS = moves.intents as Intent[];
+export const INTENTS = playerMoves.intents as Intent[];
+/** Shared with World's live vision prompt (it imports player-moves.json). */
+export const MOVE_GUIDANCE: string = playerMoves.guidance;
 
 /**
  * Decision mode: the same perception plus the player's own choice. The wording
  * is deliberately general (no object names, no per-event rules) and identical
  * for every frame; only the images change. The audience's text never appears.
  */
-export function buildDecisionPrompt(input: PlayerInput, promptAddenda: string[] = []): string {
+export function buildDecisionPrompt(input: PlayerInput, promptAddenda: string[] = [], previousMove?: string): string {
   return [
     `You are the player in a third-person game: ${ROBOT_DESCRIPTION}. The camera follows close behind the robot.`,
     `Goal: ${input.targetLabel}. Task: ${input.instruction}`,
@@ -72,14 +74,15 @@ export function buildDecisionPrompt(input: PlayerInput, promptAddenda: string[] 
       ? "The first image is the previous frame, about half a second ago; the second image is the current frame. Compare them."
       : "The image is the current frame; there is no earlier frame yet.",
     "Report what is visible in the CURRENT frame. Coordinates are integers [y, x] normalized to 0-1000, origin top-left; boxes are [ymin, xmin, ymax, xmax].",
-    "robotVisible: whether the robot is in frame. robotCount: how many separate robot bodies of any kind are visible, counting each robot once even if it looks different from the player. feet: where its boots touch the floor; omit if the boots are outside the frame.",
+    "robotVisible: whether the robot is in frame. robotCount: how many separate robot bodies of any kind are visible, counting each robot once even if it looks different from the player. robotBox: the player's visible body box. feet: where its boots touch the floor; omit if the boots are outside the frame.",
     "obstacles: up to 5 things on or above the floor near the robot's route. Box each one down to where it meets the floor, give a short label, and set solid: true if the robot could not walk through or over it, false if it is flat, soft or would not stop a step.",
     "exit: whether the exit doorway is visible, and the floor point at the middle of its threshold.",
     "pose: 'stumbling' if the robot is visibly slipping, tipping, falling or thrown off balance; otherwise 'upright'.",
     "change: in a few words, what visibly changed near the robot or its route since the previous frame; 'nothing' if nothing did.",
     `Then choose the robot's next move from what actually happened in the images. intent: one of ${INTENTS.join(", ")}.`,
-    moves.guidance,
-    "target: the floor point [y, x] the move heads for. reason: why, at most 60 characters. avoiding: true only if the move responds to something in or near the way.",
+    ...(previousMove ? [`Your previous move was ${previousMove}.`] : []),
+    MOVE_GUIDANCE,
+    "target: the floor point [y, x] the move heads for. reason: why, at most 60 characters. avoiding: true only if the move responds to something in or near the way. then: the move you would make after this one if nothing changes.",
     ...promptAddenda,
   ].join("\n");
 }
@@ -102,6 +105,8 @@ export const DECISION_SCHEMA = {
       },
     },
     robotCount: { type: "integer" },
+    robotBox: { type: "array", items: { type: "integer" }, minItems: 4, maxItems: 4 },
+    then: { type: "string", enum: [...INTENTS] },
     change: { type: "string" },
     intent: { type: "string", enum: [...INTENTS] },
     target: pointSchema,
@@ -123,6 +128,7 @@ export function parseDecision(text: string): ModelDecision | undefined {
     reason: String(raw.reason ?? "").slice(0, 60) || raw.intent,
     avoiding: raw.avoiding === true,
     ...(Number.isInteger(raw.robotCount) && raw.robotCount >= 0 ? { robotCount: raw.robotCount } : {}),
+    ...(INTENTS.includes(raw.then) ? { then: raw.then } : {}),
   };
 }
 
@@ -183,6 +189,7 @@ export function parseScene(text: string, anchor?: Point): ParsedScene {
   const feetR = estimated ? ([anchor![0], Math.min(1000, anchor![1] + 15)] as Point) : right;
   const robotVisible = raw.robotVisible === true && !!feetL && !!feetR;
   const forward = toPoint(raw.forward);
+  const robotBox = toBox(raw.robotBox);
   return {
     robotVisible,
     exit,
@@ -192,6 +199,7 @@ export function parseScene(text: string, anchor?: Point): ParsedScene {
           scene: {
             feet: { left: feetL!, right: feetR! },
             ...(estimated ? { feetEstimated: true } : {}),
+            ...(robotBox ? { robotBox } : {}),
             obstacles: obstacles.map((o) => ({
               point: [Math.round((o.box[0] + o.box[2]) / 2), Math.round((o.box[1] + o.box[3]) / 2)] as Point,
               box: o.box,
@@ -224,7 +232,7 @@ export class Er2Perception implements PerceptionAdapter {
   async perceive(input: PlayerInput, opts: PerceiveOptions): Promise<PerceptionResult> {
     const started = this.now();
     const decide = opts.decide === true;
-    const prompt = decide ? buildDecisionPrompt(input, opts.promptAddenda) : buildScenePrompt(input, opts.promptAddenda);
+    const prompt = decide ? buildDecisionPrompt(input, opts.promptAddenda, opts.previousMove) : buildScenePrompt(input, opts.promptAddenda);
     const image = (f: PlayerInput["frame"]) => ({ inlineData: { mimeType: f.mime, data: f.b64 } });
     const images = decide && input.previousFrame ? [image(input.previousFrame), image(input.frame)] : [image(input.frame)];
     const fail = (error: "timeout" | "parse" | "api"): PerceptionResult => ({

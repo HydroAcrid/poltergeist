@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { Box, Id, Key, Ms, Point } from "./common.js";
 
-export const VERSION = "1.1.0"; // 1.1.0: optional `decision`
+export const VERSION = "1.2.0"; // 1.1.0: optional `decision` · 1.2.0: decision.source "steady", decision.next
 
 export const Hazard = z.object({
   label: z.string().min(1).max(30),
@@ -49,14 +49,17 @@ export type Intent = z.infer<typeof Intent>;
  * How this tick's action was chosen (1.1.0). `model`: the player model chose it
  * from the frames. `veto`: the model chose `intent`, but geometry found a solid
  * obstacle that way, so `action` differs. `geometry`: fixed rules decided
- * (mid-stumble, arrival, exit not in view).
+ * (mid-stumble, arrival, exit not in view, two robots, robot too small).
+ * `steady` (1.2.0): the model proposed a non-urgent change of plan; Brain keeps
+ * the previous move until a second look agrees, so `action` follows the plan.
  */
 export const Decision = z.object({
-  source: z.enum(["model", "veto", "geometry"]),
+  source: z.enum(["model", "veto", "geometry", "steady"]),
   intent: Intent,
   target: Point.optional(), // floor point the chosen move heads for, in this frame
   observed: z.string().max(80).optional(), // what visibly changed, in the model's own words
   blocked: z.boolean().optional(), // something solid on the route within the next steps (geometry)
+  next: Intent.optional(), // 1.2.0: the model's planned follow-up move, if nothing changes
 });
 export type Decision = z.infer<typeof Decision>;
 

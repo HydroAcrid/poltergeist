@@ -1,7 +1,7 @@
-{ "lane": "brain", "updatedAt": "2026-11-21T19:45", "tier": 0, "demoPathOk": null,
-  "working": ["live reaction decision (decision mode model) ready for World to wire in"],
-  "next": ["hold-streak follow-up for persistent hazards", "real Genie frames in the shoulder POV from World", "mount tick routes in the hub + fake brain (need World scaffold)"],
-  "blocked": ["World scaffold not on main (common.ts, episode.ts, haunt-injected.ts, hub-types, LaneModule); Brain runs against local shims"],
-  "implements": { "TickResponse": "1.1.0", "TickLog": "1.2.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
-  "measured": { "perceptionP50Ms": 1763, "perceptionP95Ms": 2007 },
-  "notes": "ER 2 live probe on World's 8 labeled third-person frames, thinking budget 0: robot 8/8, feet 8/8, exit 8/8, obstacles 7/7, same move as labels 6/8. Default thinking truncated JSON at MAX_TOKENS (~8 s). ER 2's forward point is noisy, so facing comes from the follow camera (useForwardPoint: false). See apps/brain/EVALS.md." }
+{ "lane": "brain", "updatedAt": "2026-11-21T21:20", "tier": 0, "demoPathOk": null,
+  "working": ["steady decisions, previous move, too-small hold, planned next move (18b5bb6), waiting for World to merge"],
+  "next": ["live before/after take once World merges 18b5bb6 or Sri runs the local host", "too-close hold if World wants it (feet cropped)", "mount tick routes in the hub + fake brain (need World scaffold)"],
+  "blocked": ["World scaffold not on main (common.ts, episode.ts, haunt-injected.ts, hub-types, LaneModule); Brain runs against local shims", "take 2 Genie interaction closure unconfirmed; paid takes paused"],
+  "implements": { "TickResponse": "1.2.0", "TickLog": "1.3.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
+  "measured": { "perceptionP50Ms": 1682, "perceptionP95Ms": 1982 },
+  "notes": "Replay of take 1's 11 real Genie frames, live ER 2: direction changes old 7 and 3, new 2 and 0; perception p50 about 1.6-1.8 s either way. ER 2 streaming was slower (p50 2133 vs 1449 ms) and returned empty text, so it was not adopted. See apps/brain/evals/ab-replay-take1.md." }

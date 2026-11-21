@@ -4,7 +4,7 @@ import { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import { initialState, step, type ControllerState } from "./controller.js";
 import { stepNav } from "./navigate.js";
-import { stepReact } from "./react.js";
+import { planFallback, stepReact } from "./react.js";
 import { buildPlayerInput, type PlayerTask } from "./perception/player-input.js";
 import { resolvePerception } from "./perception/resolve.js";
 import type { PerceptionAdapter, PerceptionResult } from "./perception/types.js";
@@ -51,6 +51,7 @@ export class TickHandler {
           promptAddenda: policy.perception.promptAddenda,
           thinking: policy.perception.thinking,
           decide: modelDecides,
+          ...(modelDecides && this.states.get(req.episodeId)?.plan ? { previousMove: this.states.get(req.episodeId)!.plan!.intent } : {}),
           signal,
         }),
       policy.perception.timeoutMs,
@@ -59,12 +60,14 @@ export class TickHandler {
 
     const seen = resolvePerception(result);
     const prev = this.states.get(req.episodeId) ?? initialState();
+    const planned = modelDecides && result.error ? planFallback(prev, req, policy) : undefined;
     const ctl =
-      seen.scene && modelDecides && result.decision
+      planned ??
+      (seen.scene && modelDecides && result.decision
         ? stepReact(prev, seen.scene, result.decision, req, policy)
         : seen.scene
           ? stepNav(prev, seen.scene, req, policy)
-          : step(prev, seen, req, policy);
+          : step(prev, seen, req, policy));
     this.states.set(req.episodeId, ctl.state);
     if (modelDecides) this.lastFrames.set(req.episodeId, req.frame);
 

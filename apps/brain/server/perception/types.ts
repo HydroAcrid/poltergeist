@@ -27,6 +27,8 @@ export interface ModelDecision {
   avoiding: boolean;
   /** How many robots matching the player's description are visible (>1: can't tell which is the player). */
   robotCount?: number;
+  /** The planned follow-up move if nothing changes (lets the next tick act if its look is late). */
+  then?: Intent;
 }
 
 /** A target-shaped thing the perceiver saw. It never says which one is real. */
@@ -46,6 +48,8 @@ export interface Scene {
   feet: { left: Point; right: Point };
   /** True when the boots were out of frame and `feet` is the camera rig's estimated ground anchor. */
   feetEstimated?: boolean;
+  /** The player's visible body box, when the perceiver reports it (used to tell if the shot is too wide). */
+  robotBox?: Box;
   /** `solid: false` = the perceiver judged it walkable (flat, soft, harmless); geometry ignores it. */
   obstacles: { point: Point; box?: Box; solid?: boolean }[];
   goal?: Point;
@@ -62,6 +66,8 @@ export interface PerceiveOptions {
   promptAddenda: string[];
   /** Ask the model to choose the move too (policy decision mode "model"). */
   decide?: boolean;
+  /** The move Brain applied last tick, so the model can keep a plan (not audience data). */
+  previousMove?: Intent;
   /** Model thinking effort from the policy; "low" means no thinking budget. */
   thinking?: "low" | "medium" | "high";
   signal?: AbortSignal;

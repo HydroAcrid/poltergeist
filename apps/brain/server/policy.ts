@@ -20,7 +20,13 @@ export const Policy = z.object({
     timeoutMs: ms.max(2900),
     promptAddenda: z.array(z.string().max(300)).max(10),
   }),
-  decision: z.object({ mode: z.enum(["rules", "model"]), maxHolds: z.number().int().min(1).max(40) }),
+  decision: z.object({
+    mode: z.enum(["rules", "model"]),
+    maxHolds: z.number().int().min(1).max(40),
+    steady: z.boolean(),
+    useNext: z.boolean(),
+    nextMaxAgeMs: ms.max(10_000),
+  }),
   controller: z.object({
     emaAlpha: unit,
     maxPointJump: z.number().positive(),
@@ -61,6 +67,7 @@ export const Policy = z.object({
       headingX: z.number().min(0).max(1000),
       pathHalfWidth: z.number().positive(),
       arriveRow: z.number().min(0).max(1000),
+      minRobotWidth: unit,
     }),
     useForwardPoint: z.boolean(),
   }),

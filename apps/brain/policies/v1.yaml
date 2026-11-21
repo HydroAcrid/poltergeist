@@ -10,7 +10,11 @@ perception: { adapter: er2, thinking: low, timeoutMs: 2500, promptAddenda: [] }
 # 2 Hz), the next move comes from geometry, which still never walks into what
 # the model called solid; then the model decides again. Safety holds (stumble,
 # two robots) don't count.
-decision: { mode: rules, maxHolds: 4 }
+# steady: a non-urgent change of plan waits for a second look that agrees
+# (a new hazard or a hold switches at once). useNext: if a look fails or is late,
+# carry out the model's planned follow-up move when the last scene showed it clear,
+# within nextMaxAgeMs of that look.
+decision: { mode: rules, maxHolds: 4, steady: true, useNext: true, nextMaxAgeMs: 2500 }
 controller:
   emaAlpha: 0.5
   maxPointJump: 300
@@ -65,6 +69,7 @@ navigation:
     headingX: 700        # where the route converges (the hall's vanishing point)
     pathHalfWidth: 110   # the robot is large in this shot, so its corridor is wide
     arriveRow: 800       # exit threshold at or below this row = arrived
+    minRobotWidth: 0.2   # robot narrower than this share of the frame = camera drifted wide; hold
   # ER 2's forward floor point varied between runs on the same frames (live probe
   # 2026-11-21), so facing comes from the follow camera until a calibration pair.
   useForwardPoint: false

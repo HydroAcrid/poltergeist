@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Driver, Id, Ms } from "./common.js";
 import { Action, Decision, Perception, TickMode } from "./tick-response.js";
 
-export const VERSION = "1.2.0"; // 1.1.0: optional `reaction` · 1.2.0: optional `decision`
+export const VERSION = "1.3.0"; // 1.1.0: optional `reaction` · 1.2.0: optional `decision` · 1.3.0: decision "steady"/next
 
 /**
  * What Brain observed the robot do on this tick, set only on the tick it was

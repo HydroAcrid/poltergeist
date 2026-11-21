@@ -170,3 +170,81 @@ describe("hold cap (decision.maxHolds)", () => {
     expect(keys).toEqual(Array(6).fill("NOOP"));
   });
 });
+
+describe("steadier decisions (decision.steady)", () => {
+  const run = async (...texts: string[]) => {
+    const { h, calls } = handler(...texts);
+    const out = [];
+    for (let seq = 0; seq < texts.length; seq++) out.push(await h.handle(req(seq, b64("clear-route.jpg"))));
+    return { out, calls };
+  };
+
+  it("a non-urgent switch waits for a second look; the plan continues meanwhile", async () => {
+    const { out } = await run(
+      reply({ intent: "step_right", avoiding: true, reason: "bucket ahead" }),
+      reply({ intent: "walk", reason: "way clear" }),
+      reply({ intent: "walk", reason: "way clear" }),
+    );
+    expect(out.map((r) => r.action.key)).toEqual(["D", "D", "W"]);
+    expect(out.map((r) => r.decision?.source)).toEqual(["model", "steady", "model"]);
+    expect(out[1]!.rationale).toBe("keeping step right; 2nd look before walk");
+  });
+
+  it("a newly avoided hazard and a hold switch at once", async () => {
+    const hazard = await run(reply({ intent: "walk" }), reply({ intent: "step_left", avoiding: true }));
+    expect(hazard.out.map((r) => r.action.key)).toEqual(["W", "A"]);
+    const hold = await run(reply({ intent: "walk" }), reply({ intent: "hold" }));
+    expect(hold.out.map((r) => r.action.key)).toEqual(["W", "NOOP"]);
+  });
+
+  it("flip-flopping proposals on an unchanged scene no longer flip the robot", async () => {
+    // take 1's real sequence: step_right, walk, walk, step_right, step_right, turn_right
+    const { out } = await run(
+      reply({ intent: "step_right", avoiding: true }), reply({ intent: "walk" }), reply({ intent: "walk" }),
+      reply({ intent: "step_right", avoiding: true }), reply({ intent: "step_right", avoiding: true }), reply({ intent: "turn_right" }),
+    );
+    expect(out.map((r) => r.action.key)).toEqual(["D", "D", "W", "D", "D", "D"]);
+  });
+
+  it("tells the model its previous move from the second tick", async () => {
+    const { calls } = await run(reply({ intent: "walk" }), reply({ intent: "walk" }));
+    const prompt = (c: any) => c.contents[0].parts.at(-1).text as string;
+    expect(prompt(calls[0])).not.toContain("Your previous move was");
+    expect(prompt(calls[1])).toContain("Your previous move was walk.");
+    expect(prompt(calls[1])).toContain("Keep to the current plan unless the images show something new");
+  });
+});
+
+describe("hold when the robot looks too small (shoulder.minRobotWidth)", () => {
+  it("holds when the robot's body is under 20% of the frame width", async () => {
+    const { res } = await second(reply({ robotBox: [300, 120, 900, 280], intent: "walk" }));
+    expect([res.action.key, res.decision?.source, res.rationale]).toEqual(["NOOP", "geometry", "robot too small in frame, holding"]);
+  });
+  it("acts normally at take 1's widths (23-30%)", async () => {
+    const { res } = await second(reply({ robotBox: [262, 143, 903, 375], intent: "walk" }));
+    expect([res.action.key, res.decision?.source]).toEqual(["W", "model"]);
+  });
+});
+
+describe("plan the next move (decision.next + useNext)", () => {
+  it("reports the model's planned follow-up as decision.next", async () => {
+    const { res } = await second(reply({ intent: "step_right", avoiding: true, then: "walk" }));
+    expect(res.decision?.next).toBe("walk");
+  });
+
+  it("when the next look fails, carries out the planned move if the last scene showed it clear", async () => {
+    const { h } = handler(reply({ intent: "walk", then: "walk" }), "not json", "still not json");
+    await h.handle(req(0, b64("clear-route.jpg")));
+    const late = await h.handle(req(1, b64("clear-route.jpg")));
+    expect([late.action.key, late.mode, late.decision?.source]).toEqual(["W", "fallback", "steady"]);
+    expect(late.rationale).toBe("look late, doing planned walk");
+  });
+
+  it("doesn't carry out a planned walk into something solid; falls back to holding", async () => {
+    const { h } = handler(reply({ obstacles: [{ label: "barrier", box: NEAR_SOLID, solid: true }], intent: "step_right", avoiding: true, then: "walk" }), "not json", "still not json");
+    await h.handle(req(0, b64("clear-route.jpg")));
+    const late = await h.handle(req(1, b64("clear-route.jpg")));
+    expect(late.action.key).not.toBe("W");
+    expect(late.mode).toBe("fallback");
+  });
+});
