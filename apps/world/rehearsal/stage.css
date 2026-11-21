@@ -468,7 +468,7 @@ body:not(.projector) main {
 
 .story.haunt-card {
   box-sizing: border-box;
-  top: max(86px, calc(env(safe-area-inset-top) + 78px));
+  top: var(--cue-top, 100px);
   right: max(env(safe-area-inset-right), clamp(16px, 3.5vw, 60px));
   bottom: auto;
   left: auto;
@@ -493,5 +493,5 @@ body:not(.projector) main {
   .story.haunt-card { width: min(270px, 80vw); }
 }
 @media (max-height: 480px) and (min-aspect-ratio: 1/1) {
-  .story.haunt-card { top: 52px; padding: 7px 10px; }
+  .story.haunt-card { padding: 7px 10px; }
 }

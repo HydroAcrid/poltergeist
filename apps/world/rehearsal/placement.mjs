@@ -314,7 +314,11 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         const result = inspectPlacement(scene, job.effect, job.baseline);
         if (result && freshObservation(latest, time)) {
           job.lastChecked = frame;
-          if (result.visible && !p.seen) p.seenAt = at;
+          if (result.visible && !p.seen) {
+            p.seenAt = at;
+            p.seenPresentedAt = time;
+          }
+          if (result.inPath && !p.inPath) p.inPathPresentedAt = time;
           p.seen ||= result.visible;
           p.inPath = result.inPath;
           if (result.inPath) {
@@ -352,7 +356,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
             ) {
               p.reactedAt = at;
               round.fear++;
-              round.lastReaction = { at, name: p.name, flinch: true };
+              round.lastReaction = { at, presentedAt: time, name: p.name, flinch: true };
             }
             // Keep tracking the verified object until contact or the robot passes.
             // Sending a second hazard into the same encounter blurs attribution.
