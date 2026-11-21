@@ -17,8 +17,65 @@ export async function createScene(canvas) {
   const [hall, robot, peel] = await Promise.all(
     ['/hall.webp', '/explorer.webp', '/peel.webp'].map(image),
   );
+  let preparedHall=null, cameraDepth=0, cameraPan=0, cameraZoom=1, tickTime=0;
+  function followLive(img) {
+    if (!img.naturalWidth || !img.naturalHeight) return false;
+    ctx.drawImage(img, 0, 0, W, H);
+    return true;
+  }
   let source = await image('/rehearsal/source'),
     reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  function aislePoint(img, expected) {
+    const sample = document.createElement('canvas');
+    sample.width = 112;
+    sample.height = Math.round(112 * img.height / img.width);
+    const w = sample.width, h = sample.height;
+    const g = sample.getContext('2d', {willReadFrequently:true});
+    g.drawImage(img, 0, 0, w, h);
+    const rgb = g.getImageData(0, 0, w, h).data;
+    const lum = (x, y) => { const i = 4*(y*w+x); return (rgb[i]+2*rgb[i+1]+rgb[i+2])/4; };
+    const edges = [];
+    for(let y=2; y<h-2; y+=2) for(let x=2; x<w-2; x+=2) {
+      const gx=lum(x+1,y)-lum(x-1,y), gy=lum(x,y+1)-lum(x,y-1);
+      const weight=Math.hypot(gx,gy);
+      if(weight>21 && Math.min(Math.abs(gx),Math.abs(gy))>.15*weight)
+        edges.push({x,y,nx:gx/weight,ny:gy/weight,weight:Math.min(75,weight)});
+    }
+    // Diagonal floorboards and ceiling ducts vote for a common point in the image.
+    let best=-1, point=expected;
+    for(let dy=-3; dy<=3; dy++) for(let dx=-4; dx<=4; dx++) {
+      const px=clamp(expected.x+dx*.025), py=clamp(expected.y+dy*.025);
+      let votes=0;
+      for(const e of edges){
+        const ax=px*w-e.x, ay=py*h-e.y;
+        if(Math.hypot(ax,ay)<w*.15)continue;
+        const distance=Math.abs(ax*e.nx+ay*e.ny);
+        if(distance<3)votes+=e.weight*(1-distance/3);
+      }
+      votes/=1+.009*(dx*dx+dy*dy);
+      if(votes>best){best=votes;point={x:px,y:py};}
+    }
+    return best>0 ? point : expected;
+  }
+  let sourceAisle=aislePoint(source,{x:.52,y:.54});
+  const hallAisle=aislePoint(hall,{x:.88,y:.45});
+  let roomAisle=hallAisle;
+  function openingPhoto(progress) {
+    const fit=Math.min(W/source.width,H/source.height);
+    const fill=Math.max(W/source.width,H/source.height);
+    const startWidth=source.width*fit, startHeight=source.height*fit;
+    const x0=(W-startWidth)/2+sourceAisle.x*startWidth;
+    const y0=(H-startHeight)/2+sourceAisle.y*startHeight;
+    const finalZoom=Math.max(1.15,roomAisle.x/Math.max(.23,sourceAisle.x));
+    const scale=fit*Math.pow(fill*finalZoom/fit,progress);
+    const width=source.width*scale, height=source.height*scale;
+    const x=x0+(roomAisle.x*W-x0)*progress-sourceAisle.x*width;
+    const y=y0+(roomAisle.y*H-y0)*progress-sourceAisle.y*height;
+    // Until a dimension fills the screen retain its matte. Afterwards keep the
+    // vanishing point aligned with the room without exposing an empty border.
+    const align=(offset,span,screen)=>span<screen?(screen-span)/2:Math.min(0,Math.max(screen-span,offset));
+    ctx.drawImage(source,align(x,width,W),align(y,height,H),width,height);
+  }
   function cover(i, zoom = 1, cx = 0.5, cy = 0.5) {
     const scale = Math.max(W / i.width, H / i.height) * zoom,
       w = i.width * scale,
@@ -28,22 +85,18 @@ export async function createScene(canvas) {
   function room(custom, amount = 1) {
     ctx.save();
     ctx.globalAlpha = amount;
-    if (custom) {
-      ctx.filter = 'brightness(.68) saturate(.69) contrast(1.10)';
-      cover(source, 1.1, 0.4, 0.68);
-      ctx.filter = 'none';
-      const tint = ctx.createLinearGradient(0, 0, W, H);
-      tint.addColorStop(0, '#263d402b');
-      tint.addColorStop(1, '#f9bf6020');
-      ctx.fillStyle = tint;
-      ctx.fillRect(0, 0, W, H);
-    } else cover(hall);
+    if (custom && !preparedHall) {
+      ctx.filter = 'brightness(.72) saturate(.72)';
+      cover(source,1.05,.50,.66);ctx.filter='none';
+    } else {
+      cover(custom ? preparedHall : hall,cameraZoom,cameraZoom>1?cameraPan/(cameraZoom-1):0,.72);
+    }
     ctx.restore();
   }
   function floor(d, l, custom) {
     return {
-      x: (0.235 + (custom ? 0.36 : 0.537) * d + l * (0.115 - 0.075 * d)) * W,
-      y: (0.93 - (custom ? 0.345 : 0.43) * d) * H,
+      x: ((.22+.69*d)*cameraZoom-cameraPan)*W,
+      y: ((.84-.19*d+.07*l)*cameraZoom-(cameraZoom-1)*.72)*H,
     };
   }
   function adventurer(
@@ -56,12 +109,12 @@ export async function createScene(canvas) {
     entry = 0,
   ) {
     const p = floor(d, l, custom),
-      h = H * 0.34 * (1 - 0.68 * d),
+      h = H * .435 * (1-.13*d+.045*l),
       w = (h * robot.width) / robot.height;
-    p.x -= entry * 0.065 * W;
+    p.x -= entry * .055 * W; p.y += entry*.012*H;
     ctx.save();
     ctx.globalAlpha = opacity;
-    ctx.translate(p.x, p.y);
+    ctx.translate(p.x,p.y); ctx.scale(1+.025*entry,1+.025*entry);
     ctx.fillStyle = '#15140d58';
     ctx.beginPath();
     ctx.ellipse(0, -2, w * 0.32, h * 0.035, 0, 0, Math.PI * 2);
@@ -91,7 +144,7 @@ export async function createScene(canvas) {
   }
   function prop(item, custom, now) {
     const p = floor(item.depth, item.lane, custom),
-      s = 1 - item.depth * 0.61,
+      s = 1.18 - item.depth * .14,
       age = now - item.placedAt;
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -165,43 +218,27 @@ export async function createScene(canvas) {
   function paint(state, now, forceGame = false) {
     const r = state.round,
       custom = state.custom;
-    const elapsed = r ? (now - r.openedAt) / 1000 : 0,
-      show = r?.phase === 'opening' ? smooth((elapsed - 2) / 6) : r ? 1 : 0;
-    if (!forceGame && show < 1) {
-      ctx.fillStyle = '#121611';
-      ctx.fillRect(0, 0, W, H);
-      ctx.save();
-      const scale = Math.min(W / source.width, H / source.height),
-        w = source.width * scale,
-        h = source.height * scale;
-      ctx.drawImage(source, (W - w) / 2, (H - h) / 2, w, h);
-      ctx.restore();
+    const elapsed = r ? (now-r.openedAt)/1000 : 0;
+    const opening = r?.phase==='opening' && !forceGame;
+    const depth=r?.depth||0, dt=Math.max(0,Math.min(.08,(now-tickTime)/1000));tickTime=now;
+    const blendStep=1-Math.exp(-dt*4.5);
+    cameraDepth=forceGame||!r||r.phase==='opening'?0:cameraDepth+(depth-cameraDepth)*blendStep;
+    cameraZoom=1+.58*smooth(cameraDepth/.18);
+    const targetPan=Math.max(0,Math.min(cameraZoom-1,(.22+.69*cameraDepth)*cameraZoom-.32));
+    cameraPan=forceGame||!r||r.phase==='opening'?0:cameraPan+(targetPan-cameraPan)*blendStep;
+    const showPhoto=!forceGame && (!r || (opening && elapsed < 5.4));
+    if (showPhoto) {
+      ctx.fillStyle='#0b0e0d';
+      ctx.fillRect(0,0,W,H);
+      const push=reduced.matches ? 0 : smooth((elapsed-1.15)/3.85);
+      const blend=smooth((elapsed-(reduced.matches ? 4.8 : 3.85))/(reduced.matches ? .6 : 1.55));
+      openingPhoto(push);
+      if(blend)room(custom,blend);
+    } else {
+      room(custom);
     }
-    const blend = forceGame ? 1 : reduced.matches ? Number(show >= 0.5) : show;
-    if (blend) room(custom, blend);
-    if (
-      !forceGame &&
-      r?.phase === 'opening' &&
-      show > 0 &&
-      show < 1 &&
-      !reduced.matches
-    ) {
-      const x = show * (W + 220) - 110,
-        g = ctx.createLinearGradient(x - 100, 0, x + 100, 0);
-      g.addColorStop(0, 'transparent');
-      g.addColorStop(0.5, '#efdfb334');
-      g.addColorStop(1, 'transparent');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - 100, 0, 200, H);
-    }
-    const entry = forceGame
-      ? 1
-      : r?.phase === 'opening'
-        ? smooth((elapsed - 8) / 2.8)
-        : r
-          ? 1
-          : 0;
-    if (!entry) return;
+    const entry=forceGame || (!opening && r) ? 1 : smooth((elapsed-5.15)/1.6);
+    if(!entry)return;
     const props = r?.live ? [] : r?.props || [];
     for (const item of props.filter((i) => i.depth >= (r?.depth || 0)))
       prop(item, custom, now);
@@ -214,8 +251,8 @@ export async function createScene(canvas) {
       r?.depth || 0,
       r?.lane || 0,
       custom,
-      entry,
-      r?.phase === 'playing' && !reduced.matches ? Math.sin(now / 145) : 0,
+      smooth(entry/.53),
+      (r?.phase === 'playing' || (opening && entry<1)) && !reduced.matches ? Math.sin(now / 125) : 0,
       flinch,
       reduced.matches ? 0 : 1 - entry,
     );
@@ -223,9 +260,14 @@ export async function createScene(canvas) {
       prop(item, custom, now);
   }
   return {
-    paint,
+    paint,drawLive:followLive,
+    async setPlate(key) {
+      preparedHall=key && key!=='venue' ? await image('/rehearsal/plate?key='+encodeURIComponent(key)) : null;
+      roomAisle=preparedHall ? aislePoint(preparedHall,{x:.88,y:.45}) : hallAisle;
+    },
     async setPhoto(rev) {
       source = await image('/rehearsal/source?v=' + rev);
+      sourceAisle=aislePoint(source,{x:.52,y:.54});
     },
     seed(state) {
       paint({ ...state, round: null }, Date.now(), true);

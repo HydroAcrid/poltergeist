@@ -69,3 +69,15 @@ test('a clear hallway spans all three bays and the clock can independently end p
   );
   assert.deepEqual([r2.winner, r2.reason], ['audience', 'time']);
 });
+
+test('trailing camera maps visible obstructions and locomotion relative to each observed heading', async()=>{
+ const {fromTrailView,trailInput}=await import('../apps/world/rehearsal/trail-view.mjs');
+ const scene={feet:{left:[780,220],right:[780,245]},obstacles:[{point:[778,480]}],pose:'upright',rightFloorVisible:true};
+ const ground=fromTrailView(scene);
+ assert.ok(ground.obstacles[0].point[0]<ground.feet.left[0]);
+ assert.ok(ground.goal[0]<ground.obstacles[0].point[0]);
+ assert.equal(fromTrailView({...scene,rightFloorVisible:false}).goal,undefined);
+ for (const key of ['W','A','D','ArrowLeft','ArrowRight']) {
+   assert.deepEqual(trailInput({action:{key, holdMs:600}}).action,{key,holdMs:600});
+ }
+});

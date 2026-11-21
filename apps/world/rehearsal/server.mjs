@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createPlateCache, photoKey } from './photo-plate.mjs';
 import { openLive } from './live.mjs';
+import { createPlacementController } from './placement.mjs';
 import {
   newRound,
   beginPlay,
@@ -22,6 +24,8 @@ export async function registerStage(
     defaultPhoto,
     captureDir,
     makePilot,
+    generatePlate,
+    crowdPhone = false,
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
@@ -35,6 +39,23 @@ export async function registerStage(
   let photo = basePhoto,
     custom = false,
     revision = 0;
+  const stockPlate = readFileSync(resolve(root, 'long-hall.webp'));
+  const plates = createPlateCache({
+    captureDir,
+    reference: stockPlate,
+    generate: generatePlate,
+  });
+  let sourceKey = 'venue';
+  function plateStatus() {
+    const entry = custom ? plates.get(sourceKey) : null;
+    const ready = !custom || !!entry?.image;
+    return {
+      plateReady: ready,
+      platePreparing: !!entry?.pending,
+      plateError: entry?.error || null,
+      plateKey: ready ? sourceKey : null,
+    };
+  }
   const aliases = new Map(),
     queue = new Map(),
     frames = new Map(),
@@ -99,6 +120,7 @@ export async function registerStage(
   });
   app.addHook('preValidation', async (req, reply) => {
     if (
+      !crowdPhone &&
       req.url === '/api/crowd/haunt' &&
       req.method === 'POST' &&
       req.body &&
@@ -108,7 +130,7 @@ export async function registerStage(
   });
   // Use our phone presentation for this rehearsal. All proposals still go through Crowd's real moderation.
   app.addHook('onRequest', async (req, reply) => {
-    if (req.url.split('?')[0] === '/haunt') return reply.redirect('/phone');
+    if (!crowdPhone && req.url.split('?')[0] === '/haunt') return reply.redirect('/phone');
   });
   let publicStatus = '',
     live = null,
@@ -116,7 +138,7 @@ export async function registerStage(
     seed = null,
     pilot = null,
     pendingWinner = null,
-    lastPose = null;
+    placement = null;
   const viewers = new Set();
   const liveMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
   function sendFrame(stream, bytes) {
@@ -159,16 +181,7 @@ export async function registerStage(
     )
       return;
     if (round.live) {
-      const prop = {
-        id: h.hauntId,
-        name: h.text,
-        by: ghosts.get(h.hauntId),
-        sentAt: Date.now(),
-        acked: false,
-        seen: false,
-      };
-      round.props.push(prop);
-      live?.send({ haunt: { id: h.hauntId, text: h.text } });
+      placement?.add(h.hauntId, h.text, ghosts.get(h.hauntId));
       return;
     }
     const ok = place(round, h, Date.now());
@@ -232,74 +245,38 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
-              if (m.injected && r.phase === 'playing') {
-                const p = r.props.find((p) => p.id === m.injected);
-                if (p && !p.acked) {
-                  p.acked = true;
-                  bus.publish(
-                    'haunt.injected',
-                    'world',
-                    {
-                      hauntId: p.id,
-                      episodeId: r.id,
-                      t: Date.now() - r.startedAt,
-                      ok: true,
-                      simulated: false,
-                    },
-                    r.id,
-                  );
-                }
-              }
+              if (m.injected && r.phase === 'playing')
+                placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
+              if (m.injectionFailed && r.phase === 'playing') placement?.failed(m.injectionFailed, m.attempt ?? 1);
               if (
                 m.scene &&
                 r.phase === 'playing' &&
                 Date.now() < r.deadline &&
                 !pendingWinner
               ) {
+                r.trackedFeet = m.scene.visible
+                  ? [0, 1].map((i) => Math.round((m.scene.feet.left[i] + m.scene.feet.right[i]) / 2))
+                  : null;
+                r.trackedAt = m.observedAt;
+                r.trackedBody = m.scene.visible ? m.scene.bodyBox ?? null : null;
+                r.trackedObstacles = m.scene.obstacles.map((obstacle) => obstacle.box);
                 const decision = pilot(m.scene);
                 r.seq++;
                 r.action = decision.rationale;
                 r.observed = m.observed;
-                const prop = r.props.findLast(
-                  (p) =>
-                    p.acked && !p.reactedAt && Date.now() - p.sentAt < 12000,
-                );
-                const labels = m.scene.obstacles.map((o) =>
-                  o.label.toLowerCase(),
-                );
-                if (prop) {
-                  const words =
-                    prop.name
-                      .toLowerCase()
-                      .match(/chair|peel|bucket|balloon|marble|paper|fog/g) ||
-                    [];
-                  if (
-                    words.some((w) => labels.some((label) => label.includes(w)))
-                  )
-                    prop.seen = true;
-                  if (
-                    prop.seen &&
-                    lastPose === 'upright' &&
-                    m.scene.pose === 'stumbling'
-                  ) {
-                    prop.reactedAt = Date.now();
-                    r.fear++;
-                    r.lastReaction = {
-                      at: prop.reactedAt,
-                      name: prop.name,
-                      flinch: true,
-                    };
-                  }
-                }
-                lastPose = m.scene.visible ? m.scene.pose : null;
+                placement?.observe(m.scene, m.observed, m.observedAt);
                 if (decision.successClaim || r.fear >= 3) {
                   pendingWinner = decision.successClaim ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
-                } else if (decision.action.key !== 'NOOP')
+                } else if (placement?.navigationPaused()) {
+                  r.action = 'Assessing the path';
+                } else if (decision.action.key !== 'NOOP') {
+                  placement?.moved();
                   live.send({
                     key: decision.action.key,
                     ms: decision.action.holdMs,
                   });
+                }
               }
               if (m.observationFailed)
                 r.action = 'Waiting for a clear observation';
@@ -323,6 +300,7 @@ export async function registerStage(
                         : 'time'
                       : 'interrupted',
               });
+              placement?.finish();
               if (wasPlaying) notifyEnd(r);
             },
           });
@@ -429,6 +407,7 @@ export async function registerStage(
     canLive: !!captureDir,
     custom,
     revision,
+    ...plateStatus(),
     publicStatus,
     now: Date.now(),
   }));
@@ -441,6 +420,10 @@ export async function registerStage(
       return reply.code(409).send({ error: 'A round is already open.' });
     const paid = req.body?.mode === 'genie';
     if (paid) {
+      if (custom && (!plateStatus().plateReady || req.body?.plateKey !== sourceKey))
+        return reply.code(409).send({
+          error: 'Prepare this photo for Genie before starting a live round.',
+        });
       seed = Buffer.from(req.body?.seed || '', 'base64');
       if (
         !captureDir ||
@@ -456,11 +439,20 @@ export async function registerStage(
     number++;
     liveFrame = null;
     pendingWinner = null;
-    lastPose = null;
+    placement = null;
     publicStatus = '';
     round = newRound(newId('ep'), Date.now());
     round.live = paid;
     pilot = paid ? makePilot() : null;
+    if (paid) {
+      const r=round;
+      placement=createPlacementController(r, command=>live?.send(command), (prop,ok)=>{
+        bus.publish('haunt.injected','world',{
+          hauntId:prop.id, episodeId:r.id, t:Date.now()-r.startedAt, ok, simulated:false,
+          ...(!ok ? {error:'The haunting could not be placed in the visible walking lane.'} : {}),
+        },r.id);
+      });
+    }
     return { id: round.id, openingMs };
   });
   app.addContentTypeParser(
@@ -481,6 +473,7 @@ export async function registerStage(
     )
       return reply.code(400).send({ error: 'Choose a readable photo.' });
     photo = b;
+    sourceKey = photoKey(b);
     custom = true;
     revision++;
     round = null;
@@ -491,10 +484,35 @@ export async function registerStage(
     if (round && round.phase !== 'ended')
       return reply.code(409).send({ error: 'Change photos between rounds.' });
     photo = basePhoto;
+    sourceKey = 'venue';
     custom = false;
     revision++;
     round = null;
     return { revision };
+  });
+  app.post('/rehearsal/prepare-photo', async (req, reply) => {
+    if (req.headers['x-show-control'] !== '1') return reply.code(403).send();
+    if (round && round.phase !== 'ended')
+      return reply.code(409).send({ error: 'Prepare photos between rounds.' });
+    if (!custom) return plateStatus();
+    if (!captureDir)
+      return reply.code(503).send({
+        error: 'Photo preparation is unavailable on this host.',
+      });
+    if (req.body?.revision !== undefined && req.body.revision !== revision)
+      return reply.code(409).send({ error: 'The selected photo has changed.' });
+    const job = plates.prepare(sourceKey, photo);
+    return reply.code(job.pending ? 202 : 200).send(plateStatus());
+  });
+  app.get('/rehearsal/plate', async (req, reply) => {
+    reply.header('cache-control', 'no-store');
+    if (req.query?.key && req.query.key !== sourceKey)
+      return reply.code(409).send({ error: 'The selected photo has changed.' });
+    if (!custom) return reply.type('image/webp').send(stockPlate);
+    const image = plates.get(sourceKey)?.image;
+    if (!image)
+      return reply.code(409).send({ error: 'The room is not ready yet.' });
+    return reply.type(image.mime).send(image.bytes);
   });
   app.get('/rehearsal/source', async (_, reply) =>
     reply.header('cache-control', 'no-store').type('image/jpeg').send(photo),

@@ -7,6 +7,7 @@ import { newId } from '../../crowd/server/ids';
 import { stepNav } from '../../brain/server/navigate';
 import { initialState } from '../../brain/server/controller';
 import { loadPolicy } from '../../brain/server/policy';
+import { fromTrailView, trailInput } from './trail-view.mjs';
 import { registerStage } from './server.mjs';
 
 const requireCrowd = createRequire(
@@ -29,9 +30,9 @@ const makePilot = () => {
         rationale: 'Robot out of view — holding still',
       };
     }
-    const decision = stepNav(state, scene, { driver: 'brain' } as any, policy);
+    const decision = stepNav(state, fromTrailView(scene), { driver: 'brain' } as any, policy);
     state = decision.state;
-    return decision;
+    return trailInput(decision);
   };
 };
 await registerStage(app, {
@@ -39,6 +40,7 @@ await registerStage(app, {
   root,
   newId,
   makePilot,
+  crowdPhone: true,
   captureDir:
     process.env.PG_ALLOW_GENIE === '1' ? process.env.PG_CAPTURE_DIR : undefined,
   defaultPhoto: process.env.PG_VENUE_PHOTO,
@@ -47,7 +49,7 @@ await registerStage(app, {
 await crowd.register(app, {
   bus,
   dataDir: './data-test',
-  env: {},
+  env: { ...process.env },
   instance: 'local',
   log: () => {},
 });
