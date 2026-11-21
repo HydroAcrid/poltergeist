@@ -11,7 +11,8 @@
 
 ## Tier 0: H+1:30
 - [ ] `POST /api/crowd/haunt` + cookie + rate limits + `rules-only` moderation; `GET /presets`, `GET /state`
-- [ ] Queue + scheduler driven by `episode.started` / `ended` and `haunt.injected`
+- [ ] Verify with two phones: each author immediately sees their submission; approved ideas appear on both phones, rejected text stays private, and the first eligible idea is sent once. Check All ideas / Mine after refreshing.
+- [ ] FIFO queue + scheduler driven by `episode.started` / `ended` and `haunt.injected`
 - [ ] `/haunt` phone page v1 (text, chips, nickname, my hauntings, countdown)
 - [ ] `hydrogen` moderation adapter + `@live` accuracy test on `moderation-cases.json` (your human runs it)
 

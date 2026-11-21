@@ -22,6 +22,8 @@ Drop the **contents** of this folder into the root of an empty repo at H+0:00. I
 
 Sri and Courtney can swap lanes if they prefer. Confirm your lane in the [laptop check-in](https://github.com/HydroAcrid/poltergeist/issues/1).
 
+Kevin’s [painted-door replay](apps/world/painted-door/README.md) shows the first sideways test. Courtney’s first phone flow shows a private submission receipt, filters the idea, and puts approved proposals in a shared first-in, first-out queue. Players can filter the list to their own ideas.
+
 For the first shared round, Courtney triggers the trick from a phone, Sri shows the player's move, and Kevin replays the choice. Score the round by which exit the player chose. Reaching the painting counts as a win for the ghost.
 
 ## Before hacking starts (H−0:15)

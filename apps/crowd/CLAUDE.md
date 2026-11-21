@@ -27,7 +27,8 @@
 - **Text box:** 80 characters max, with a counter.
 - **Preset chips:** 6–10, from `presets.json`. Tapping one sends it.
 - **Optional nickname:** 16 characters max.
-- **"My hauntings" list:** each item shows its status: queued, injected, then 💀 *landed* or 🛡️ *robot survived*.
+- **My ideas:** after the server accepts a submission, show it immediately to its author as “Checking”. Keep that same item through approval, rejection, queueing and dispatch. A rejected idea gets a short reason and an edit-and-resubmit action.
+- **Round queue:** show approved, rewritten ideas to everyone, in dispatch order. Mark the first “Up next”. Let people switch between “All ideas” and “Mine”. Refresh from the server on reconnect. On the stage, show the approved proposal as “Sent to world” once World confirms the send. The replay shows whether it appeared.
 - **Next-round countdown**, from `GET /api/crowd/state` polled every 2 s.
 - **Consent line:** "Approved hauntings may appear on the big screen with your nickname."
 - **Device identity:** a `pg_device` cookie (random id).
@@ -44,7 +45,7 @@
    - violence or gore, weapons
    - sexual content, hate or slurs, self-harm
    - brands or logos
-   - text or instructions meant to appear as words in the world
+   - arbitrary user-supplied text or instructions meant to appear as words in the world. A curated painted-door preset may use a fixed EXIT sign.
    - anything that isn't a world event
 4. **Tags** are chosen from `HauntTag` and must be 1–3 of them.
 5. **`moderation-cases.json`:** 30 cases, at least 10 of them adversarial. Use placeholder tokens such as `<SLUR>` and `<CELEB_NAME>`; never write real slurs. Each case has an expected safe/unsafe value and expected tags. Write a `@live` test so your human can measure accuracy.
@@ -52,14 +53,13 @@
 
 ## Queue and scheduler
 
-- **Score:** `votes + 2·diversity + 0.5·freshness`.
-  - `diversity` is 1 if the haunting's main tag isn't among the last 2 dispatched.
-  - `freshness` decays over 3 minutes.
+- **First prototype:** use a FIFO queue of eligible proposals, oldest submission first (break timestamp ties by haunt ID). Skip proposals still awaiting approval. Once approved, a proposal becomes eligible for the next open slot. Reserve it once so two scheduler ticks cannot send it twice.
+- **When to add priority:** if playtests show more approved ideas than available slots and players want a vote, rank the approved pool by votes, breaking ties oldest first. Keep FIFO for the first round so “Up next” is predictable.
 - **During an active episode** (`episode.started` with no `episode.ended` yet):
   - The first dispatch happens at `t ≥ 8000`.
   - Then one every `PG_HAUNT_INTERVAL_MS` (default 12000), up to `PG_HAUNT_MAX_PER_EPISODE` (default 6).
 - **Finals approval mode:** only operator-approved hauntings are dispatched.
-- **Empty queue:** if fewer than 2 are queued when a slot comes up and `seededFallback` is on, use the seeded pool.
+- **Empty queue:** if no eligible audience ideas are queued when a slot comes up and `seededFallback` is on, use the seeded pool.
 - **Failed injection:** when `haunt.injected { ok: false }` arrives, set the haunting's status to `failed` and don't retry it.
 
 ## Referee: rule first (fast, deterministic), then the model

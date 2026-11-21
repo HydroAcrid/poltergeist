@@ -6,6 +6,8 @@ A game for the Gemini 4 NYC Hackathon. A player changes the room, Gemini investi
 
 Start with the [team assignments and first deliverables](KICKOFF.md#team-assignments).
 
+[Watch the first painted-door test](apps/world/painted-door/replay/painted-door.mp4) · [Open the replay locally](apps/world/painted-door/README.md)
+
 ## First playable round
 
 1. Start in a hallway with one working door. Let the host add a painted door with a flickering EXIT sign.

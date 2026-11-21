@@ -383,10 +383,12 @@ data/
 | `POST /mcp` | brain | MCP Streamable HTTP, `Authorization: Bearer PG_MCP_TOKEN` | the Managed Agent coach |
 | `POST /api/crowd/haunt` | crowd | `{ text? , preset?, displayName? }` + `pg_device` cookie → `{ hauntId, status }` | phones |
 | `GET /api/crowd/presets` | crowd | → `{ id, label, text, tags }[]` | phones |
-| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntPublic[] }` | phones (poll every 2 s) |
+| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntPublic[], queue: HauntPublic[] }` | phones (poll every 2 s) |
 | `GET /api/crowd/scoreboard` | crowd | → `Scoreboard` | `/stage`, `/operator` |
 | `GET /api/crowd/queue` | crowd | → `Haunt[]` (includes raw; operator token) | `/operator` |
 | `GET /api/bus/history` | hub | `?episodeId&types&since` → `Envelope[]` | referee, tests |
+
+For crowd state, derive `mine` from the caller’s device cookie. Return `queue` in dispatch order, containing only eligible, approved proposals with display-safe text and nicknames. Raw text, unreviewed nicknames and moderation reasons stay off shared views. A successful `haunt.injected` acknowledges delivery to Genie; visual confirmation comes from the world frames.
 
 Every error response has the form `{ error: { code: string, message: string } }`. Codes used across lanes: `BUSY`, `CAP_SESSIONS`, `CAP_USD`, `GENIE_UNAVAILABLE`, `RATE_LIMITED`, `REJECTED`, `INVALID`, `UNAUTHORIZED`.
 

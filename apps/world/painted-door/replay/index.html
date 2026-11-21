@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#171614">
+  <title>The painted exit · Poltergeist</title>
+  <link rel="stylesheet" href="stage.css">
+  <script src="stage.js" defer></script>
+</head>
+<body>
+  <header><div class="mast"><a href="./" aria-label="Poltergeist home">Poltergeist</a><span>World replay</span></div></header>
+  <main>
+    <div class="title"><h1>The painted exit</h1><p>One real door. One painted onto the wall. Watch the red frame as the camera moves.</p></div>
+    <div class="switch" aria-label="View">
+      <button id="watch" aria-pressed="true">Watch round</button>
+      <button id="inspect" aria-pressed="false">Compare angles</button>
+    </div>
+    <section id="round" aria-label="Round replay">
+      <video id="film" controls playsinline preload="metadata" poster="hallway.jpg" aria-label="A painted exit appears on the cinema wall, then the camera moves right"><source src="painted-door.mp4" type="video/mp4"></video>
+      <div class="chapters" aria-label="Play from a moment">
+        <button data-start="0"><span>00:00</span>Enter the lobby</button>
+        <button data-start="1"><span>00:01</span>Paint the door</button>
+        <button data-start="6"><span>00:06</span>Step right</button>
+      </div>
+    </section>
+    <section id="angles" aria-label="Compare two camera angles" hidden>
+      <figure><img src="head-on.jpg" alt="A thin red door outline on the cream wall, to the left of a recessed green door."><figcaption>Head-on <time>00:05.9</time></figcaption></figure>
+      <figure><img src="sideways.jpg" alt="After stepping right, the red outline stays on the plaster while the green door retains a deep jamb."><figcaption>After the sidestep <time>00:09.0</time></figcaption></figure>
+    </section>
+    <div class="proposal"><span>The ghost’s move</span><blockquote>“Paint a life-size red exit door directly onto the blank left half of the wall.”</blockquote></div>
+  </main>
+</body>
+</html>
