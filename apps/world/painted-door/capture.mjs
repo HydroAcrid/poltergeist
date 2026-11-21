@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { basename, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { inspectRoom } from '../rehearsal/live-perception.mjs';
 import { cameraPrompt, cameraPilot } from './camera-pilot.mjs';
 
 const seed = 'First-person eye-level view inside a bright old cinema lobby. A wide cream plaster wall faces the camera square on, three metres away. The left half of this wall is completely bare. On the far right is one real dark green door with a deep jamb. Burgundy carpet, brass sconces, warm light. Camera still. No people.';
@@ -32,15 +33,17 @@ function sequenceFor(values) {
 async function capture() {
   const { values } = parseArgs({ options: {
     live: { type: 'boolean' }, photo: { type: 'string' }, haunt: { type: 'boolean' },
-    'ghost-walk': { type: 'boolean' }, 'two-moves': { type: 'boolean' }, 'chair-test': { type: 'boolean' }, round: { type: 'boolean' }, drive: { type: 'boolean' },
+    'ghost-walk': { type: 'boolean' }, 'two-moves': { type: 'boolean' }, 'chair-test': { type: 'boolean' }, round: { type: 'boolean' }, 'stage-pilot': { type: 'boolean' }, drive: { type: 'boolean' },
   } });
   if (values.drive && (!process.send || !values.photo || values.haunt || values['ghost-walk'])) {
     throw new Error('Start manual driving from the local operator page.');
   }
   const autonomous = values['two-moves'] || values['chair-test'] || values.round;
+  const stagePilot = values['stage-pilot'];
+  if (stagePilot && (!values.round || !process.send)) throw Error('Start the spectator round from the World broker.');
   if (values.round) {
-    if (values['two-moves'] || values['chair-test'] || values.photo) throw new Error('A game round uses its fixed hallway seed.');
-    values.photo = '../robot-v1/hallway-seed.jpg';
+    if (values['two-moves'] || values['chair-test']) throw new Error('Choose a single round mode.');
+    values.photo ??= '../robot-v1/hallway-seed.jpg';
   }
   const publish = data => { if (process.connected) process.send(data, () => {}); };
   if (autonomous && (!values.photo || values.drive || values.haunt || values['ghost-walk'])) throw new Error('Use --two-moves with a hallway photo and no other mode.');
@@ -63,6 +66,7 @@ async function capture() {
   }
   if (autonomous) setup.world_prompt = { text: cameraPrompt };
   if (values.round) setup.world_prompt.text += ' Keep the same small cautious robot, orange twin-strap backpack and lit brass-rim flashlight in its RIGHT hand. Preserve the dark room and warm beam from the seed. It walks toward the signed exit with both feet on the floor.';
+  if (stagePilot) setup.world_prompt.text += ' Extend the photographed room into three successive long connected hallway bays of its own architecture. Elevated wider rear three-quarter view above the robot’s RIGHT shoulder, boots and floor in frame, avoid zooming in. An open signed exit is distant. The shy robot steadies its flashlight and steps cautiously. Moody, legible amber lighting.';
   const { trick, moves, endFrame } = sequenceFor(values);
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1beta' });
   const request = { retries: { strategy: 'none' }, timeout_ms: 10000 };
@@ -94,8 +98,8 @@ async function capture() {
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   if (values.drive || values.round) process.once('disconnect', stop);
-  let gameClock;
-  if (autonomous) watchdog = setTimeout(stop, values.round ? 60000 : 45000);
+  let gameClock, looking=false, heldStageKey=null, nextLook=0;
+  if (autonomous) watchdog = setTimeout(stop, stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) + 35000 : values.round ? 60000 : 45000);
   try {
     interaction = await ai.interactions.create({ model: 'genie-4', api_version: 'v1beta' }, request);
     log.interactionId = interaction.id;
@@ -115,11 +119,22 @@ async function capture() {
       }
       await session.complete();
     };
-    const pilot = autonomous && cameraPilot({ ai, model: process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview', send: event => ending ? Promise.resolve() : session.send(event), record, finish, fail: error => abort.abort(error), signal: abort.signal, chairTest: values['chair-test'], gameRound: values.round, isActive: () => !ending });
+    const pilot = autonomous && !stagePilot && cameraPilot({ ai, model: process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview', send: event => ending ? Promise.resolve() : session.send(event), record, finish, fail: error => abort.abort(error), signal: abort.signal, chairTest: values['chair-test'], gameRound: values.round, isActive: () => !ending });
     if (values.round) process.on('message', async command => {
       if (ending) return;
       try {
-        if (command === 'end') await finish();
+        if (stagePilot && command?.haunt) {
+          await session.send(command.haunt.text + ' Put this change on the walkable floor inside the flashlight beam, several strides ahead. Keep the avatar and the route toward the distant exit visible.');
+          publish({injected:command.haunt.id}); record('Audience intervention sent',{id:command.haunt.id,text:command.haunt.text});
+        } else if (stagePilot && command?.key && !heldStageKey) {
+          const keys={A:'key_a',D:'key_d',W:'key_w',S:'key_s',ArrowRight:'arrow_right',ArrowLeft:'arrow_left'};
+          const key=keys[command.key]; if (!key) return;
+          heldStageKey=key;
+          await session.send({event_type:'user_action',action:'key_down',input:key});
+          record('Player applied '+command.key,{holdMs:command.ms,frame:log.frames});
+          releaseKey=setTimeout(async()=>{try{if(!ending) await session.send({event_type:'user_action',action:'key_up',input:key});}catch(error){abort.abort(error);}finally{heldStageKey=null;nextLook=Math.max(nextLook,Date.now()+450);}},Math.min(1500,Math.max(1,command.ms)));
+        } else if (stagePilot && command?.winner) await finish(command.winner);
+        else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {
           const object = command === 'chair' ? 'One bright yellow cafe chair stands sideways' : 'A yellow banana peel lies flat';
           await session.send(object + ' in the flashlight beam on the open floor three or four robot strides ahead. It stays still and leaves a visible route to the right. Keep the same robot and camera.');
@@ -169,14 +184,21 @@ async function capture() {
         if (!log.frames) console.log('Video payload:', delta.mime_type, bytes.subarray(0, 12).toString('hex'));
         log.frames++;
         if (values.round && log.frames === 1) {
-          const durationMs = 30000;
+          const durationMs = stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) : 30000;
           publish({expiresAt: Date.now() + durationMs});
           gameClock = setTimeout(() => { finish('audience').catch(error => abort.abort(error)); }, durationMs);
         }
-        if ((values.drive || values.round) && process.connected && (log.frames - 1) % 4 === 0) {
+        if ((values.drive || values.round) && process.connected && (log.frames - 1) % (stagePilot ? 2 : 4) === 0) {
           process.send({ frame: delta.data }, error => { if (error) stop(); });
         }
         writeFileSync(join(out, String(log.frames).padStart(5, '0') + '.frame'), bytes);
+        if(stagePilot && !ending && !looking && !heldStageKey && Date.now()>=nextLook && log.frames>12) {
+          looking=true;
+          const observed=log.frames;
+          inspectRoom(ai,delta.data,abort.signal).then(scene=>{
+            if(!ending){publish({scene,observed});record('Gemini observed live frame',{observed,scene});}
+          }).catch(()=>{if(!ending) publish({observationFailed:true});}).finally(()=>{looking=false;nextLook=Date.now()+1600;});
+        }
         if (pilot && !ending) await pilot(log.frames, delta.data);
         if (log.frames === 24 && trick) {
           await session.send(trick);
