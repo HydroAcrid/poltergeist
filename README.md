@@ -4,7 +4,7 @@
 
 A game for the Gemini 4 NYC Hackathon. A player changes the room, Gemini investigates through its character’s camera, and the audience watches it choose an exit.
 
-Start with the [team assignments and first deliverables](KICKOFF.md#team-assignments).
+Start with the [feature map](FEATURES.md) and [lane assignments](KICKOFF.md#team-assignments). Share blockers and ready fixtures in the [lane handoffs issue](https://github.com/HydroAcrid/poltergeist/issues/2). The [review workflow kit](docs/workflows/README.md) is available for anyone who wants to try Kevin’s checks in Claude Code.
 
 [Watch the first painted-door test](apps/world/painted-door/replay/painted-door.mp4) · [Open the replay locally](apps/world/painted-door/README.md)
 

@@ -29,6 +29,8 @@ If you're blocked for more than 10 minutes, post a `BLOCKER`, tell your human, a
 
 ## Messaging (git is the bus; humans are the fast channel)
 
+Until the repo inbox commands below ship, use [lane handoffs, issue #2](https://github.com/HydroAcrid/poltergeist/issues/2) for cross-lane messages. From your checkout, read it with `gh issue view 2 --comments` at the start of a work block and before changing a shared interface. With your lane lead’s authorization, post an addressed request or handoff with `gh issue comment 2 --body-file <file>`. Include the commit or fixture path and what the receiver needs to do. Leave a short acknowledgment when you pick it up. Keep fixture files and agreed contract decisions in Git. When the repo inbox works across all three laptops, agree on the cutover at a huddle.
+
 - **Outbox:** `comms/outbox/<lane>.md` is append-only, and only that lane writes it. Use `pnpm msg <TYPE> <to> "<body>"` to append one with an automatic id and time.
 - **Cursor:** `comms/cursor/<lane>.json` holds `{ "world": "<last id handled>", "brain": …, "crowd": … }`.
 - **Message types:**

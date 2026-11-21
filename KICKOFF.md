@@ -26,6 +26,8 @@ Kevin’s [painted-door replay](apps/world/painted-door/README.md) shows the fir
 
 For the first shared round, Courtney triggers the trick from a phone, Sri shows the player's move, and Kevin replays the choice. Score the round by which exit the player chose. Reaching the painting counts as a win for the ghost.
 
+Read the [feature map](FEATURES.md) together before starting lane work. Use the [lane handoffs issue](https://github.com/HydroAcrid/poltergeist/issues/2) until the repo inbox is available.
+
 ## Before hacking starts (H−0:15)
 
 - [ ] One person creates an empty private GitHub repo and adds everyone.
