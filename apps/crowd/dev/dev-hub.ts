@@ -45,6 +45,43 @@ app.get("/dev", async (_req, reply) =>
 <p id=out></p><p><a href="/haunt">Open /haunt</a></p></body>`),
 );
 
+// DEV-ONLY stand-in for World's GET /rehearsal/state, shaped like World's description on #2
+// (Unix-ms timestamps, trackedAt, integer `observed` frame, trackedFeet [y,x] 0–1000, props with
+// acked/seen/inPath/reactedAt). The real route comes from World's rehearsal host. Each injected
+// haunting is walked through seen (+1.5 s), in path (+3 s) and reacted (+5 s) so the overlay can
+// be demoed; the robot drifts left to right across the round.
+const injectedAt = new Map<string, number>();
+bus.subscribe(["haunt.injected"], (e) => {
+  const p = e.payload as { hauntId: string; ok: boolean };
+  if (p.ok) injectedAt.set(p.hauntId, Date.now());
+});
+bus.subscribe(["episode.started"], () => injectedAt.clear());
+app.get("/rehearsal/state", async () => {
+  const now = Date.now();
+  const ep = world.current;
+  const frac = ep ? Math.min(1, (now - ep.startedAt) / ep.maxDurationMs) : 0;
+  const props = [...injectedAt].map(([hauntId, at]) => ({
+    hauntId,
+    acked: at,
+    seen: now - at > 1500 ? at + 1500 : null,
+    inPath: now - at > 3000,
+    reactedAt: now - at > 5000 ? at + 5000 : null,
+    ...(now - at > 5000 ? { reaction: "Robot steps right around it" } : {}),
+  }));
+  return {
+    round: {
+      phase: ep ? "live" : "opening",
+      now,
+      deadline: ep ? ep.startedAt + ep.maxDurationMs : now + 24_000,
+      fear: Math.min(3, props.filter((p) => p.reactedAt).length),
+      trackedFeet: [740, Math.round(250 + frac * 550)],
+      trackedAt: now - 300,
+      observed: Math.round(frac * 1440),
+      props,
+    },
+  };
+});
+
 // Design mocks (apps/crowd/docs) and World's shared art (apps/world/robot-v1), read-only.
 const here = dirname(fileURLToPath(import.meta.url));
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png" };

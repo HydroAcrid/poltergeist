@@ -330,6 +330,21 @@ describe("scheduler and fake World", () => {
 });
 
 describe("operator and page", () => {
+  it("serves a self-contained /overlay, its logic module and a join QR", async () => {
+    const page = await hub.app.inject({ method: "GET", url: "/overlay" });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers["content-type"]).toMatch(/text\/html/);
+    expect(page.body).not.toMatch(/<script[^>]+src="https?:|<link[^>]+stylesheet/);
+    expect(page.body).toContain("/overlay-model.js");
+    const js = await hub.app.inject({ method: "GET", url: "/overlay-model.js" });
+    expect(js.statusCode).toBe(200);
+    expect(js.headers["content-type"]).toMatch(/javascript/);
+    const qr = await hub.app.inject({ method: "GET", url: "/api/crowd/join.svg", headers: { host: "venue.local:8788" } });
+    expect(qr.statusCode).toBe(200);
+    expect(qr.headers["content-type"]).toMatch(/image\/svg\+xml/);
+    expect(qr.body).toMatch(/^<svg|<\?xml/);
+  });
+
   it("serves the raw queue only with the operator token", async () => {
     const a = await phone();
     await a.submit({ text: "fog lol" });
