@@ -15,7 +15,7 @@ export async function inspectRoom(ai, image, signal) {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: image } },
           {
-            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; when cropped use [0,0] placeholders for left and right. The camera trails close over its right shoulder; the knees and boots often fall below frame. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
+            text: 'Count the distinct sage, orange-backpack player robots visible in this image. If two separate matching robots are visible, report playerCount=2. Exclude unrelated toys, wall art and reflections. Locate the player and the passable signed exit. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; when cropped use [0,0] placeholders for left and right. The camera trails close over its right shoulder; the knees and boots often fall below frame. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
           },
         ],
       },
@@ -30,6 +30,7 @@ export async function inspectRoom(ai, image, signal) {
       responseJsonSchema: {
         type: 'object',
         properties: {
+          playerCount: { type: 'integer', minimum: 0, maximum: 2 },
           robotVisible: { type: 'boolean' },
           goalVisible: { type: 'boolean' },
           rightFloorVisible: {type:'boolean'},
@@ -63,7 +64,7 @@ export async function inspectRoom(ai, image, signal) {
           },
         },
         required: [
-          'robotVisible',
+          'playerCount', 'robotVisible',
           'goalVisible',
           'rightFloorVisible',
           'bodyBox', 'upperBodyBox', 'feetVisible', 'doorwayProgress',
@@ -87,7 +88,7 @@ export async function inspectRoom(ai, image, signal) {
       p.every((c) => Number.isInteger(c) && c >= 0 && c <= 1000);
   const validBox = (b) => valid(b,4) && b[0]<b[2] && b[1]<b[3];
   const feetVisible = v.feetVisible && valid(v.left,2) && valid(v.right,2);
-  if (!v.robotVisible || (!feetVisible && !validBox(v.bodyBox)))
+  if (v.playerCount !== 1 || !v.robotVisible || (!feetVisible && !validBox(v.bodyBox)))
     return { visible: false, obstacles: [] };
   const centre = validBox(v.bodyBox) ? Math.round((v.bodyBox[1]+v.bodyBox[3])/2) : 0;
   // Ground-plane projection only. Never publish these estimates as observed boot positions.

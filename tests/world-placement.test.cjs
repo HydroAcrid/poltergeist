@@ -97,6 +97,13 @@ test('papers in the path provide a visible gust and a free-text object uses its 
     false,
   );
 });
+test('windup toys keep their identity when unrelated paper crosses the lane', async () => {
+  const { describeEffect } = await moduleUnderTest;
+  const toy = describeEffect('Tiny windup penguins march in unison, clicking softly.');
+  assert.equal(toy.matches('scattered papers'), false);
+  assert.equal(toy.matches('group of penguins'), true);
+  assert.doesNotMatch(toy.hint, /stream of loose papers/);
+});
 test('outdated or moved observations wait, and native ack alone cannot prove placement or score fear', async () => {
   const { createPlacementController } = await moduleUnderTest;
   const r = { props: [], fear: 0, deadline: 100000 };

@@ -12,7 +12,7 @@ const box = (b) =>
   b[1] < b[3];
 const effects = [
   [
-    /gust|hurricane|wind|paper|tornado/i,
+    /\b(?:gusts?|hurricanes?|wind(?:s|y)?|tornado(?:es)?)\b|\bpaper storm\b/i,
     /paper|sheet|leaf|leaves|debris/i,
     'Blow a clearly visible stream of loose papers across the next footsteps, from one side of the walking lane to the other.',
   ],
