@@ -43,5 +43,9 @@ export function observations(round, hauntId, now) {
   const matching = prop?.reactedAt && round.lastReaction?.at === prop.reactedAt ? round.lastReaction : null;
   const response = matching ? matching.flinch ? 'Flinched' : 'Sidestepped' :
     prop?.reactedAt ? 'Reaction confirmed' : 'No confirmed reaction';
-  return { pose, instruction: round?.seq ? round.action : 'Awaiting a decision', placement, response };
+  const held = round?.lastMoveHeld;
+  const instruction = held && held.observed === round.observed
+    ? `Frame ${held.observed} · held ${held.key} · ${held.reason}`
+    : round?.seq ? round.action : 'Awaiting a decision';
+  return { pose, instruction, placement, response };
 }

@@ -153,12 +153,12 @@ function localScale(start, end) {
 
 // Position and size are fractions of the entire unmodified native image.
 // Left-third composition leaves the diagonal aisle open on the flashlight side.
-export function mustStopTravel(subject) {
+export function mustStopTravel(subject, stationaryWideResponse = false) {
   return (
     !subject.known ||
     subject.lost ||
     !subject.grounded ||
-    subject.distanceHeld ||
+    (subject.distanceHeld && !stationaryWideResponse) ||
     subject.x < 0.055 ||
     subject.x > 0.94
   );
@@ -195,13 +195,18 @@ export function createMoveWindow(fps) {
     settledFrame(frame, at) {
       return firstFrameAt===undefined ? frame+1 : Math.max(frame,mediaFrameAt(at))+1;
     },
-    accept(command, subject, frame, at) {
-      if (firstFrameAt === undefined || mustStopTravel(subject) ||
-          !Number.isInteger(command.observed) || command.observed !== subject.observed ||
-          command.observed < earliestObservation || command.observed > frame) return false;
-      // Beyond the framing report's four-second gap, a fresh visual decision
-      // is unverified even if its vision request just returned.
-      if (Math.max(frame, mediaFrameAt(at)) - command.observed > 4 * fps) return false;
+    reason(command, subject, frame, at, stationaryWideResponse = false) {
+      if (firstFrameAt === undefined) return 'No native frame yet';
+      if (mustStopTravel(subject, stationaryWideResponse)) return subject.holdReason || 'Player tracking unavailable';
+      if (!Number.isInteger(command.observed) || command.observed !== subject.observed || command.observed > frame)
+        return 'Decision belongs to another observation';
+      if (command.observed < earliestObservation) return 'Waiting for a frame after the previous action';
+      if (Math.max(frame, mediaFrameAt(at)) - command.observed > 4 * fps)
+        return 'Observation is over four seconds behind the native view';
+      return null;
+    },
+    accept(command, subject, frame, at, stationaryWideResponse = false) {
+      if (this.reason(command, subject, frame, at, stationaryWideResponse)) return false;
       // A turn needs half a second of subsequent motion; a full stride needs a second.
       settle(frame, at, command.key.startsWith('Arrow') ? .5 : 1);
       return true;

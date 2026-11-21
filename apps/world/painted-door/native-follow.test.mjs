@@ -357,3 +357,19 @@ test('a grounded rear-right diagonal stays steady; two head-on aisle sightings p
   assert.equal(read(31,'head-on',[{box:[510,545,970,810]}]),null,'a chair beside the camera blocks the sideways motion');
   assert.equal(read(41,'diagonal-right'),null);
 });
+
+test('native movement holds report the exact freshness or tracking constraint and permit a scoped wide sidestep only on new pixels', () => {
+  const window = createMoveWindow(24);
+  const key = {key:'D',observed:310};
+  const wide = {...still,observed:310,distanceHeld:true,holdReason:'recovering shoulder distance'};
+  assert.equal(window.reason(key,wide,310,12780), 'No native frame yet');
+  window.start(0);
+  assert.equal(window.reason(key,wide,379,15800), 'recovering shoulder distance');
+  assert.equal(window.reason(key,wide,379,15800,true), null);
+  assert.equal(window.accept(key,wide,379,15800,true),true);
+  assert.equal(window.reason(key,wide,379,15800,true),'Waiting for a frame after the previous action');
+  const newRead={key:'D',observed:410};
+  assert.equal(window.reason(newRead,{...wide,observed:411},450,19000,true),'Decision belongs to another observation');
+  assert.equal(window.reason(newRead,{...wide,observed:410},550,23000,true),'Observation is over four seconds behind the native view');
+  assert.equal(window.accept(newRead,{...wide,observed:410,lost:true},450,19000,true),false);
+});

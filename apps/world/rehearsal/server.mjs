@@ -8,6 +8,7 @@ import { canCrossThreshold, observedCrossing } from './crossing.mjs';
 import { checkpointEligible,validCheckpoint,matchDurationMs,fiveMinuteShowMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
+import { proposedKey } from './move-trace.mjs';
 import { createPlacementController } from './placement.mjs';
 import {
   newRound,
@@ -393,7 +394,7 @@ export async function registerStage(
                     continuation=null;
                     crossing={};
                     Object.assign(r,{observed:null,trackedAt:null,trackedFeet:null,trackedBody:null,trackedPose:null,
-                      trackedDoorwayProgress:null,trackedObstacles:[],intent:null,brainDecision:null,action:'Exploring the hallway'});
+                      trackedDoorwayProgress:null,trackedObstacles:[],intent:null,brainDecision:null,lastMoveHeld:null,lastMoveProposed:null,lastMoveApplied:null,action:'Exploring the hallway'});
                     if (!first) placement.resumeChapter();
                   } else r.deadline=r.providerDeadline || r.startedAt+liveMs;
                   if (first) {
@@ -411,6 +412,10 @@ export async function registerStage(
               }
               if (m.cameraMoved) r.lastCameraAt = Date.now();
               if (m.navigationMoved && r.phase === 'playing' && m.observed === r.observed) {
+              if (m.moveHeld && m.moveHeld.observed >= (r.lastMoveHeld?.observed ?? -1))
+                r.lastMoveHeld = m.moveHeld;
+              if (m.navigationMoved && r.phase === 'playing' && m.observed >= (r.lastMoveApplied?.observed ?? -1))
+                r.lastMoveApplied = {observed:m.observed,key:m.key};
                 const prop = r.props.find(p => (!r.chapters || p.chapter===r.chapter) && p.inPath && p.confirmedFrame === m.observed && !p.reactedAt);
                 if (prop) r.intent = { hauntId: prop.id, key: m.key, observed: m.observed, at: Date.now() };
               }
@@ -428,6 +433,8 @@ export async function registerStage(
               ) {
                 if (r.chapters) {
                   const checkpoint=m.checkpoint && checkpointEligible(m.scene,m.trackingNavigationHeld) && Buffer.from(m.checkpoint,'base64');
+                if (!Number.isInteger(m.observed) || !Number.isFinite(m.observedAt) || m.observedAt > Date.now() ||
+                    (r.observed != null && (m.observed <= r.observed || m.observedAt < r.trackedAt))) return;
                   continuation=validCheckpoint(checkpoint) && Number.isFinite(m.observedAt) && m.observedAt<=Date.now()
                     ? {bytes:checkpoint,at:m.observedAt,steady:m.trackingPlacementReady===true} : null;
                 }
@@ -440,34 +447,55 @@ export async function registerStage(
                 r.trackedBody = m.scene.visible ? m.scene.bodyBox ?? null : null;
                 r.trackedPose = m.scene.visible ? m.scene.pose ?? null : null;
                 r.trackedObstacles = m.scene.obstacles.map((obstacle) => obstacle.box);
-                const decision = pilot(m.scene);
                 r.seq++;
-                r.action = decision.rationale;
-                r.brainDecision = decision.decision ?? null;
+                r.brainDecision = null;
                 r.observed = m.observed;
                 const now = Date.now();
                 placement?.observe(m.scene, m.observed, m.observedAt, now, m.trackingPlacementReady !== false);
-                const crossed = !m.trackingNavigationHeld && observedCrossing(crossing, m.scene, m.observedAt);
+                const proposed = m.proposedKey || proposedKey(m.scene);
+                if (proposed) r.lastMoveProposed = {observed:m.observed,key:proposed};
+                function holdMove(reason, key = proposed) {
+                  if (!key || key === 'NOOP') return;
+                  const entry = {observed:m.observed, key, reason, source:'world'};
+                  r.lastMoveHeld = entry;
+                  live.send({moveHeld:entry});
+                }
+                const encounterHeld = placement.navigationPaused(now);
+                const crossed = !encounterHeld && !m.trackingNavigationHeld && observedCrossing(crossing, m.scene, m.observedAt);
                 if (crossed || r.fear >= 3) {
                   pendingWinner = crossed ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
                 } else if (ticket.settledFrom) {
                   r.action='Holding the hallway view';
                   r.intent=null;
-                } else if (m.trackingNavigationHeld) {
-                  r.action = m.scene.visible ? 'Camera catching up to the robot' : 'Looking for the robot';
-                  r.intent = null;
-                } else if (placement?.navigationPaused()) {
+                  holdMove('Holding a chapter continuation frame');
+                } else if (encounterHeld) {
+                  holdMove(placement.holdReason(now));
                   r.action = 'Assessing the path';
                   const prop = r.props.find(p => (!r.chapters || p.chapter===r.chapter) && p.acked && p.sentAt <= m.observedAt && !p.reactedAt &&
                     !['off-path', 'passed', 'failed', 'unverified'].includes(p.placement));
                   if (m.scene.visible && prop)
                     r.intent = { hauntId: prop.id, key: 'assess', observed: m.observed, at: Date.now() };
-                } else if (canCrossThreshold(crossing, m.scene, decision)) {
-                  r.action = 'Stepping through the exit';
-                  live.send({ key: 'W', ms: 260, observed: m.observed });
-                } else if (decision.action.key !== 'NOOP') {
-                  live.send({ ...placement.characterCommand(decision), observed: m.observed });
+                } else if (m.trackingNavigationHeld && !placement.canRespond(m.observed)) {
+                  holdMove(m.trackingReason || (m.scene.visible ? 'Recovering player framing' : 'Player identity unavailable'));
+                  r.action = m.scene.visible ? 'Camera catching up to the robot' : 'Looking for the robot';
+                  r.intent = null;
+                } else {
+                  const decision = pilot(m.scene);
+                  r.brainDecision = decision.decision ?? null;
+                  r.action = decision.rationale;
+                  const crossingStride = canCrossThreshold(crossing, m.scene, decision);
+                  const move = crossingStride ? {...decision, action:{key:'W',holdMs:260}} : decision;
+                  const command = placement.characterCommand(move, now);
+                  if (command && !(m.trackingNavigationHeld && command.key === 'W')) {
+                    if (crossingStride) r.action = 'Stepping through the exit';
+                    live.send({...command, observed:m.observed});
+                  } else if (move.action.key !== 'NOOP') {
+                    holdMove(m.trackingNavigationHeld ? 'Forward travel requires recovered player framing' : placement.holdReason(now), move.action.key);
+                    r.action = 'Watching the obstacle';
+                  } else {
+                    holdMove('Brain held the player after checking the observed route');
+                  }
                 }
               }
               if (m.observationFailed) {

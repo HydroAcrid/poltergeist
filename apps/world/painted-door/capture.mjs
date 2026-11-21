@@ -1,6 +1,8 @@
 import { frameSink } from '../rehearsal/video-stream.mjs';
 import { createNativeFollow, characterInstruction, reactionInstruction, holdIfUntracked, receding, createMoveWindow, createPlacementView, recoveryWatchdogMs, shoulderStride } from './native-follow.mjs';
 import { checkpointEligible } from '../rehearsal/chapters.mjs';
+import { proposedKey } from '../rehearsal/move-trace.mjs';
+import { createEncounterControls } from './encounter-controls.mjs';
 import { chapterSeed } from './chapter-seed.mjs';
 import { assessFraming } from './framing-report.mjs';
 import { audienceView, hallwayLighting } from '../rehearsal/look.mjs';
@@ -79,7 +81,7 @@ async function capture() {
     hallwayLighting,
     "The reference image already contains the entire cast: one explorer at lower left. Animate that existing foreground figure for the entire take. The aisle ahead contains only the room and the invited obstacles. Preserve its helmet, orange backpack, flashlight and scale throughout.",
     audienceView,
-    "The robot lifts its flashlight to look down the actual photographed aisle and pauses for its next instruction. Long connected bays, familiar lamps and flooring continue toward a distant illuminated exit in the upper right. Keep the next few unobstructed steps on-screen; the robot can halt, turn, or move around a visible encounter."
+    "The explorer waits with both boots planted, breathing and moving its flashlight in place. Only a travel instruction initiates a step. At the end of each instructed movement it plants its feet and waits, even if an object moves. Long connected bays, familiar lamps and flooring continue toward a distant illuminated exit in the upper right. Keep the next few unobstructed steps on-screen; the robot can halt, turn, or move around a visible encounter."
   ].join(" ");
   const { trick, moves, endFrame } = sequenceFor(values);
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: 'v1beta' });
@@ -124,8 +126,15 @@ async function capture() {
   const placementView = createPlacementView();
   let actorStopping=null, actionPending=false, lastRecoveryObservation=-1;
   const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
+  const encounter = createEncounterControls();
+  let commands = Promise.resolve(), actorStepTimer;
   const noteMotion = () => placementView.moved(motionBoundary());
-  const cameraAllowed = () => !ending && Date.now()>=steadyUntil && !placementView.held(Date.now());
+  function heldMove(command, reason) {
+    const entry = { observed:command.observed, key:command.key, source:'native', reason };
+    record('Move held', entry);
+    publish({moveHeld:entry});
+  }
+  const cameraAllowed = () => !ending && !encounter.held && Date.now()>=steadyUntil && !placementView.held(Date.now());
   const moving = () => Boolean(cameraPress || actorMoving || actorStopping || actionPending);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
   async function releaseCamera(completing=false) {
@@ -173,9 +182,10 @@ async function capture() {
   async function stopActor(force=false) {
     if(actorStopping) return actorStopping;
     if(!actorMoving && !force) return;
+    clearTimeout(actorStepTimer);
     actorMoving=false;
     noteMotion();
-    actorStopping=session.send("Hold the current view. The existing foreground figure finishes its step and stays in place. Preserve the same lit flashlight and room.");
+    actorStopping=session.send("Stop the existing explorer on its current floorboards now. Both boots stay planted on those boards while the flashlight and breathing move subtly. Hold camera position, angle and distance until a new movement instruction.");
     try { await actorStopping; noteMotion(); record('Paused robot travel'); }
     finally { actorStopping=null; }
   }
@@ -185,6 +195,10 @@ async function capture() {
       await releaseCamera();
     if (lock.cameraRecovery) {
       await stopActor();
+    if (encounter.held) {
+      if (cameraPress) await releaseCamera();
+      return !follow.permits('W');
+    }
       if (cameraPress?.recovery && !cameraPress.release && cameraAllowed() &&
           lock.observed>cameraPress.observed && lock.observed>=cameraPress.minRenewFrame) {
         // Only post-command, independently verified pixels may extend a held key.
@@ -222,6 +236,7 @@ async function capture() {
       clearTimeout(gameClock);
       await releaseCamera(true);
       if (winner) {
+      clearTimeout(actorStepTimer);
         log.winner = winner;
         record(winner === 'robot' ? 'Robot reached the exit' : 'Audience wins on time');
         publish({winner});
@@ -229,30 +244,48 @@ async function capture() {
       await session.complete();
     };
     const pilot = autonomous && !stagePilot && cameraPilot({ ai, model: process.env.PG_MODEL_PERCEPTION || 'gemini-robotics-er-2-preview', send: event => ending ? Promise.resolve() : session.send(event), record, finish, fail: error => abort.abort(error), signal: abort.signal, chairTest: values['chair-test'], gameRound: values.round, isActive: () => !ending });
-    if (values.round) process.on('message', async command => {
+    if (values.round) process.on('message', command => {
       if (ending) return;
-      try {
+      if (stagePilot && command?.moveHeld) {
+        record('Move held', command.moveHeld);
+        return;
+      }
+      // Revoke travel immediately. The queued stop follows any instruction
+      // already on the wire, before an injection may reserve a stationary frame.
+      if (stagePilot && command?.releaseEncounter) {
+        encounter.release(command.releaseEncounter, motionBoundary() - 1);
+        return;
+      }
+      if (stagePilot && command?.pause && command.encounter) {
+        if (!encounter.hold(command.encounter)) return;
+        releaseCamera().catch(error => abort.abort(error));
+      }
+      commands = commands.then(async () => {
+        if (ending) return;
         if (stagePilot && command?.haunt) {
           const haunt = command.haunt;
           const lock = follow.status();
           const targetValid=Array.isArray(haunt.target) && haunt.target.length===2 &&
+          if (!encounter.canPlace(haunt.id, haunt.attempt)) return;
             haunt.target.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
-          if (!targetValid || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
+          if (!targetValid || !encounter.canPlace(haunt.id, haunt.attempt, haunt.observed) || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
             publish({injectionDeferred:haunt.id, attempt:haunt.attempt, observed:haunt.observed});
             record('Held placement for a current single-player view',{id:haunt.id,attempt:haunt.attempt,observed:haunt.observed,holdReason:lock.holdReason});
             return;
           }
           const [y, x] = haunt.target || [];
           const location = Number.isFinite(y) && Number.isFinite(x)
+          encounter.placing(haunt.id, haunt.attempt);
             ? `The robot's planned next footfall is at ${Math.round(x/10)} percent across and ${Math.round(y/10)} percent down this view.`
             : "Place it across the walking line joining the robot’s boots and the next stretch of walkable floor.";
-          const instruction = ["Only the audience effect changes. Keep the one existing foreground explorer and camera fixed.", haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
-            /chair/i.test(haunt.text) ? "One bright yellow tipped-over chair spans that path." : "",
-            "Keep the effect, its contact with the floor, and the approaching robot in view."].filter(Boolean).join(" ");
+          const instruction = ["Both boots of the one existing explorer stay planted on the same floorboards. It watches with its flashlight while the effect arrives. The observer stays in place at the same angle and distance.", haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
+            "Keep the effect, its contact with the aisle, and the stationary explorer in the same shot. Wait here for the next player instruction."].filter(Boolean).join(" ");
           try {
             moveWindow.settle(log.frames, Date.now(), .5);
             await session.send(instruction);
-            publish({injected:haunt.id, attempt:haunt.attempt, injectedAt:Date.now(), injectedFrame:log.frames});
+            const injectedFrame = motionBoundary() - 1;
+            encounter.acknowledge(haunt.id, haunt.attempt, injectedFrame);
+            publish({injected:haunt.id, attempt:haunt.attempt, injectedAt:Date.now(), injectedFrame});
             record('Audience intervention sent',{id:haunt.id,attempt:haunt.attempt,text:haunt.text,target:haunt.target});
           } catch (error) {
             publish({injectionFailed:haunt.id, attempt:haunt.attempt});
@@ -260,7 +293,7 @@ async function capture() {
           } finally { placementView.finish(Date.now()); }
         } else if (stagePilot && command?.pause) {
           const now=Date.now();
-          const force=command.settleCamera && now>=placedHoldUntil;
+          const force=Boolean(command.encounter) || (command.settleCamera && now>=placedHoldUntil);
           steadyUntil=now+2700;
           moveWindow.settle(log.frames, now, .5);
           if(command.settleCamera) {
@@ -272,37 +305,62 @@ async function capture() {
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
           const instruction=reactionInstruction(command);
-          if(!instruction || placementView.held(Date.now()) || !follow.permits('W') || (command.observed != null && command.observed !== follow.status().observed)) return;
+          const authorized = () => encounter.permits(command) && follow.permitsPlacement(command.observed);
+          if (!instruction || !authorized()) return;
           moveWindow.settle(log.frames, Date.now(), 1);
           await releaseCamera();
           await stopActor();
-          if(placementView.held(Date.now()) || !follow.permits('W')) return;
+          if(!authorized()) return;
+          encounter.acted();
           actionPending=true;
           try { noteMotion(); await session.send(instruction); }
           finally { noteMotion(); actionPending=false; }
           record('Requested robot reaction',{reaction:command.reaction,toward:command.toward});
         } else if(stagePilot && command?.key) {
-          if(!cameraAllowed() || !follow.permits(command.key)) return;
+          // A wider but grounded view can show a bounded sidestep, retreat or
+          // flashlight turn. Keep the observer still, and reserve forward travel
+          // for the normal tracked shoulder shot.
+          const wideResponse = () => command.encounter && command.key !== 'W' &&
+            follow.status().distanceHeld && follow.permitsPlacement(command.observed);
+          const reasonHeld = () => {
+            if (!encounter.permits(command)) return encounter.held
+              ? 'Waiting for the current encounter and its stationary post-effect frame'
+              : 'Decision predates the end of the encounter';
+            const lock = follow.status();
+            if (lock.observed !== command.observed) return 'A newer player observation superseded the decision';
+            if (!follow.permits(command.key) && !wideResponse()) return lock.holdReason || 'Player tracking does not permit travel';
+            if (!command.encounter && !cameraAllowed()) return placementView.held(Date.now())
+              ? 'Camera is held for a stationary placement view' : 'Camera is settling';
+            return null;
+          };
+          let reason = reasonHeld();
+          if (reason) return heldMove(command, reason);
           const instruction=characterInstruction(command);
-          if(!instruction) return;
+          if(!instruction) return heldMove(command, 'Unsupported native movement');
           const subject = follow.status();
-          if (!moveWindow.accept(command, subject, log.frames, Date.now())) {
-            record('Waiting for post-action footage', {key:command.key, observed:command.observed});
-            return;
-          }
-          const stride = command.key === 'W' ? shoulderStride(subject) : null;
+          const wallTime = Date.now(), wide = Boolean(wideResponse());
+          if (!moveWindow.accept(command, subject, log.frames, wallTime, wide))
+            return heldMove(command, moveWindow.reason(command, subject, log.frames, wallTime, wide));
+          const stride = !command.encounter && command.key === 'W' ? shoulderStride(subject) : null;
           if (cameraPress && (stride || cameraPress.keys.includes('key_w'))) {
             await releaseCamera();
-            if (!cameraAllowed() || !follow.permits(command.key) ||
-                follow.status().observed !== command.observed) return;
+            reason = reasonHeld();
+            if (reason) return heldMove(command, reason);
           }
           actorMoving=['W','A','S','D'].includes(command.key);
           noteMotion();
+          clearTimeout(actorStepTimer);
+          encounter.acted();
           actionPending=true;
           try { await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]); }
           finally { noteMotion(); actionPending=false; }
           publish({navigationMoved:true,key:command.key,observed:command.observed});
           record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
+          if (actorMoving && (!encounter.held || command.encounter)) {
+            // Genie travel is a language action, not a key we can release.
+            // Bound its single step before a new vision read can choose another.
+            actorStepTimer = setTimeout(() => stopActor().catch(error => abort.abort(error)), 1050);
+          }
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {
@@ -310,7 +368,7 @@ async function capture() {
           await session.send(object + ' in the flashlight beam on the open floor three or four robot strides ahead. It stays still and leaves a visible route to the right. Keep the same robot and camera.');
           record(command === 'chair' ? 'Audience requested a chair' : 'Audience requested a peel');
         }
-      } catch (error) { abort.abort(error); }
+      }).catch(error => abort.abort(error));
     });
     if (values.round) { process.off('message',stopDuringSetup); publish({controlsReady:true}); }
     if (values.drive) {
@@ -374,17 +432,24 @@ async function capture() {
         if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>=1) {
           looking=true;
           const observed=log.frames, observedAt=Date.now();
-          inspectRoom(ai,delta.data,abort.signal,playerReference).then(async scene=>{
+          inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
               const held = await updateShot(log.frames);
               const lock=follow.status();
               const current = lock.observed === observed;
               const verifiedScene = follow.verified(observed) ? scene : {visible:false,playerCount:scene.playerCount,obstacles:[]};
-              const trackingPlacementReady = placementView.ready(observed,follow.permitsPlacement(observed),moving());
+              const settled = placementView.ready(observed,follow.permitsPlacement(observed),moving());
+              const {stable: trackingPlacementReady, drift} = encounter.measure(verifiedScene, observed, settled);
+              if (drift) {
+                // The provider can animate uncommanded travel. Do not inject or
+                // verify from that moving view. Plant the feet and measure again.
+                await stopActor(true);
+                record('Held drifting explorer at encounter', {observed});
+              }
               if (trackingPlacementReady) placementView.offered(Date.now());
               if (!held && current) recoveryRequested = false;
-              if (held && current && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
+              if (held && current && !encounter.held && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
                 recoveryRequested = true;
                 const instruction = scene.playerCount > 1
                   ? "Restore the original single-subject shot. Keep the existing closest orange backpack on the left, continuously in place. Clear the duplicate explorer farther down the hallway; the floor ahead belongs to the room and its obstacles."
@@ -394,7 +459,7 @@ async function capture() {
               }
               const checkpoint = chapterNumber && checkpointEligible(verifiedScene,held || !current)
                 ? chapterSeed(delta.data) : null;
-              publish({scene:verifiedScene,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady,
+              publish({scene:verifiedScene,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:held || !current,trackingPlacementReady,
                 ...(checkpoint ? {checkpoint} : {})});
               record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }
@@ -438,6 +503,7 @@ async function capture() {
     clearTimeout(lookRelease);
     clearTimeout(watchdog);
     try {
+    clearTimeout(actorStepTimer);
       if (session && !log.terminal) {
         await session.cancel();
         log.terminal = 'cancel-requested';

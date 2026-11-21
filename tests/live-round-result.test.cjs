@@ -6,6 +6,7 @@ async function liveStage(t, choice = { action: { key: 'NOOP' } }) {
   t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 1_000_000 });
   const { registerStage } = await import('../apps/world/rehearsal/server.mjs');
   const routes = new Map(), events = [], launches = [], commands = [];
+  let dispatch;
   const app = {
     get(path, handler) { routes.set(path, handler); },
     post(path, handler) { routes.set(path, handler); },
@@ -22,7 +23,7 @@ async function liveStage(t, choice = { action: { key: 'NOOP' } }) {
     makePilot: () => () => choice,
     bus: {
       publish(type, _lane, payload) { events.push({ type, ...payload }); },
-      subscribe() { return () => {}; },
+      subscribe(_type, callback) { dispatch = callback; return () => {}; },
     },
     launchLive(callbacks) {
       launches.push(callbacks);
@@ -42,6 +43,7 @@ async function liveStage(t, choice = { action: { key: 'NOOP' } }) {
   assert.equal(launches.length, 1);
   return {
     events, commands, live: launches[0], start, call,
+    submit(payload) { dispatch({type:"haunt.dispatch",payload}); },
     state: async () => (await call('state')).data,
     ended: () => events.filter(e => e.type === 'episode.ended'),
   };
@@ -138,4 +140,41 @@ test('the host keeps a verified wide-shot pose while camera recovery holds the p
   assert.equal(round.trackedPose,'upright');
   assert.equal(round.action,'Camera catching up to the robot');
   assert.equal(room.commands.some(command=>command.key),false);
+});
+
+test('the World records each held move and sends the Brain’s response only on its current confirmed encounter frame',async t=>{
+  const choice={action:{key:'W',holdMs:220},rationale:'Walk down the aisle'};
+  const room=await liveStage(t,choice);
+  room.live.onMessage({frame:Buffer.from('frame').toString('base64')});
+  const {round}=await room.state();
+  const view={visible:true,playerCount:1,pose:'upright',feetVisible:true,feet:{left:[800,440],right:[800,460]},
+    bodyBox:[300,134,880,432],goal:[400,510],ahead:[580,450],move:{intent:'walk'},obstacles:[]};
+  const read=(n,patch={},tracking={})=>room.live.onMessage({scene:{...view,...patch},observed:n,
+    observedAt:Date.now(),trackingPlacementReady:true,trackingNavigationHeld:false,...tracking});
+  room.submit({episodeId:round.id,hauntId:'cart',text:'A cart rolls across the floor'});
+  read(12);
+  assert.equal(room.commands.at(-1).moveHeld.key,'W');
+  assert.match(room.commands.at(-1).moveHeld.reason,/stationary visible footstep/);
+  t.mock.timers.tick(2000);read(32);
+  assert.equal(room.commands.find(c=>c.haunt).haunt.observed,32);
+  room.live.onMessage({injected:'cart',attempt:1,injectedAt:Date.now(),injectedFrame:34});
+  t.mock.timers.tick(3500);read(66);
+  assert.equal(room.commands.some(c=>c.key),false);
+  assert.equal(room.commands.filter(c=>c.haunt).length,2);
+  room.live.onMessage({injected:'cart',attempt:2,injectedAt:Date.now(),injectedFrame:80});
+  t.mock.timers.tick(3000);
+  const threat={label:'cart',box:[560,430,690,470],solid:true};
+  read(110,{obstacles:[threat]});
+  assert.match(round.lastMoveHeld.reason,/ignore the visible obstacle/);
+  assert.equal(round.lastMoveHeld.observed,110);
+  choice.action={key:'D',holdMs:180};choice.reaction='avoid';
+  t.mock.timers.tick(2200);
+  read(171,{obstacles:[threat],move:{intent:'step_right',avoiding:true}}, {trackingNavigationHeld:true});
+  assert.deepEqual(room.commands.filter(c=>c.key),[{key:'D',ms:180,encounter:'cart',reaction:'avoid',toward:'right',observed:171}]);
+  read(150,{move:{intent:'walk'}});
+  assert.equal(round.observed,171);
+  assert.equal(room.commands.filter(c=>c.key).length,1);
+  room.live.onMessage({moveHeld:{observed:171,key:'D',source:'native',reason:'Observation is over four seconds behind the native view'}});
+  const {observations}=await import('../apps/world/rehearsal/host-debug.mjs');
+  assert.match(observations(round,'cart',Date.now()).instruction,/Frame 171 · held D · Observation is over four seconds/);
 });

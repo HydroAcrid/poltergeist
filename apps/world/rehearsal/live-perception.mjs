@@ -4,7 +4,7 @@ import playerMoves from '../../brain/server/perception/player-moves.json' with {
 const previousFrames = new WeakMap();
 
 // This call receives only pixels and the navigation task. Audience submissions stay in World.
-export async function inspectRoom(ai, image, signal, playerReference) {
+export async function inspectRoom(ai, image, signal, playerReference, assessingEncounter = false) {
   const point = {
     type: 'array',
     items: { type: 'integer' },
@@ -32,6 +32,7 @@ export async function inspectRoom(ai, image, signal, playerReference) {
           { text: [
             'You control the single player. Reach the signed exit. Compare the current view to the previous observation when supplied.',
             playerMoves.guidance,
+            ...(assessingEncounter ? ['With the explorer stopped, compare the next footsteps to the previous picture. Choose how to respond to what is visibly in its way, whether to wait for motion, look, back away, sidestep onto clear floor, or deliberately cross a harmless effect. Mark avoiding true when this choice responds to what you see.'] : []),
             'For each floor obstacle judge whether it is solid enough to block a step. Give your chosen intent, target floor point, a short reason, whether you are avoiding something, and the visible change since the previous frame.',
           ].join(' ') },
           {

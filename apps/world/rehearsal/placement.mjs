@@ -187,20 +187,33 @@ export function inspectPlacement(
 export function createPlacementController(round, send, report, { cueLeadMs = 0 } = {}) {
   let latest,
     lastMove = 0,
-    pauseUntil = 0,
-    inspectUntil = 0;
+    resumeAfter = -1;
   const jobs = new Map();
   let holdNewPlacements = false;
   const now = () => Date.now();
 
-  function pauseForAssessment(time) {
-    pauseUntil = time + 850;
-    inspectUntil = time + 2700;
-    round.action = 'Assessing the path';
-    send({ pause: true });
+  // Allow an already running 14s vision request and a second read of the settled view.
+  const readWindowMs = 30_000;
+  function active() {
+    return [...jobs.values()].find(job => !job.closed && job.prop.cueAt != null);
+  }
+  function closeJob(job, status) {
+    if (job.closed) return;
+    job.closed = true;
+    if (status) job.prop.placement = status;
+    if (job.prop.cueAt != null) {
+      resumeAfter = Math.max(resumeAfter, latest?.frame ?? -1);
+      send({ releaseEncounter: job.prop.id });
+    }
+    if (!job.prop.acked) report(job.prop, false);
+  }
+  function expire(time) {
+    const job = active();
+    if (job && time >= job.expiresAt)
+      closeJob(job, job.prop.inPath ? 'in-path' : job.prop.seen ? 'off-path' : job.prop.acked ? 'unverified' : 'failed');
   }
   function trySend(job, time) {
-    if (latest?.placementReady === false) return false;
+    if (latest?.placementReady === false || latest?.at < job.prop.cueAt) return false;
     if (job.deferredFrame != null && latest?.frame <= job.deferredFrame) return false;
     if (time < Math.max(job.prop.cueAt + cueLeadMs, job.retryAfter || 0) || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
@@ -221,7 +234,6 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     job.previousPose = latest.scene.pose;
     job.sentObservation = latest.frame;
     job.lastChecked = null;
-    pauseForAssessment(time);
     const body = latest.scene.bodyBox;
     const bodyHint = box(body)
       ? `In this shot the robot is ${Math.round((body[2] - body[0]) / 10)} percent of the picture height. Stage this beside its feet at that same depth and perspective scale. Keep the foreground between the camera and robot open.`
@@ -243,6 +255,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     return true;
   }
   function pump(time) {
+    expire(time);
     for (const job of jobs.values()) {
       if (job.closed) continue;
       if (holdNewPlacements && job.prop.attempt===0) break;
@@ -250,10 +263,9 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         const reaction = round.lastReaction;
         if (cueLeadMs && reaction && time - (reaction.presentedAt ?? reaction.at) < 3000) break;
         job.prop.cueAt = time;
-        if (cueLeadMs > 0) {
-          pauseUntil = time + cueLeadMs;
-          send({ pause: true, settleCamera: true });
-        }
+        job.expiresAt = time + readWindowMs;
+        round.action = 'Assessing the path';
+        send({ pause: true, settleCamera: true, encounter: job.prop.id });
       }
       if (
         job.prop.placement === 'waiting' ||
@@ -290,8 +302,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     resumeChapter() {
       latest=null;
       lastMove=0;
-      pauseUntil=0;
-      inspectUntil=0;
+      resumeAfter=-1;
       holdNewPlacements=false;
       for (const job of jobs.values()) {
         if (job.closed) continue;
@@ -303,8 +314,29 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       }
     },
     tick(time = now()) { pump(time); },
+    holdReason(time = now()) {
+      const job = active();
+      if (!job) return 'Waiting for the first frame after the encounter';
+      const prop = job.prop;
+      if (prop.placement === 'waiting') return 'Waiting for a stationary visible footstep';
+      if (prop.placement === 'correcting') return 'Relocating the obstacle into the path';
+      if (prop.placement === 'sent') return 'Waiting for provider receipt';
+      if (!prop.inPath) return 'Obstacle has not been seen in the walking path';
+      if (job.lastReactionFrame === latest.frame) return 'The player is reacting in place';
+      if (!freshObservation(latest, time, lastMove) || !latest.placementReady)
+        return 'Waiting for a fresh stationary view of the obstacle';
+      return 'Forward travel would ignore the visible obstacle';
+    },
     navigationPaused(time = now()) {
-      return time < Math.max(pauseUntil, inspectUntil);
+      const job = active();
+      if (!job) return latest != null && latest.frame <= resumeAfter;
+      return !job.prop.inPath || job.prop.confirmedFrame !== latest?.frame ||
+        !freshObservation(latest, time, lastMove) || latest.placementReady === false ||
+        job.lastReactionFrame === latest.frame;
+    },
+    canRespond(frame) {
+      const job = active();
+      return Boolean(job?.prop.inPath && job.prop.confirmedFrame === frame && latest?.placementReady);
     },
     moved(time = now()) {
       lastMove = time;
@@ -314,13 +346,16 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       if (
         !job ||
         job.closed ||
-        attempt !== job.prop.attempt ||
+        attempt !== job.prop.attempt || job.prop.placement !== 'sent' ||
+        !Number.isFinite(at) || at < job.prop.sentAt ||
+        (frame != null && (!Number.isInteger(frame) || frame < job.sentObservation)) ||
         job.ackTime != null
       )
         return;
       const p = job.prop;
       job.ackTime = at;
       job.ackFrame = frame;
+      job.expiresAt = at + readWindowMs;
       p.placement = 'acknowledged';
       if (!p.acked) {
         p.acked = true;
@@ -336,18 +371,15 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       job.prop.attempt--;
       job.prop.placement = job.prop.attempt ? 'correcting' : 'waiting';
       if (!job.prop.attempt) job.baseline = null;
-      inspectUntil = 0;
     },
     failed(id, attempt) {
       const job = jobs.get(id);
       if (!job || job.closed || job.prop.attempt !== attempt) return;
-      job.closed = true;
-      inspectUntil = 0;
-      job.prop.placement = job.prop.acked ? 'unverified' : 'failed';
-      if (!job.prop.acked) report(job.prop, false);
+      closeJob(job, job.prop.acked ? 'unverified' : 'failed');
     },
     observe(scene, frame, at, time = now(), placementReady = true) {
-      if (!Number.isFinite(at) || (latest && frame <= latest.frame)) return;
+      if (!Number.isInteger(frame) || !Number.isFinite(at) || at > time || (latest && (frame <= latest.frame || at < latest.at))) return;
+      expire(time);
       latest = { scene, frame, at, received: time, placementReady };
       const job = [...jobs.values()].find((j) => !j.closed);
       if (
@@ -361,7 +393,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         // pre-send frame cannot verify a send, even if it arrives afterward.
         const p = job.prop;
         const result = inspectPlacement(scene, job.effect, job.baseline);
-        if (result && freshObservation(latest, time)) {
+        if (result && placementReady && freshObservation(latest, time, lastMove)) {
           job.lastChecked = frame;
           if (result.visible && !p.seen) {
             p.seenAt = at;
@@ -373,13 +405,13 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
           if (result.inPath) {
             p.placement = 'in-path';
             p.confirmedFrame = frame;
-            inspectUntil = 0;
+            if (!job.wasInPath) job.expiresAt = time + readWindowMs;
             p.assessment = ['ordinary', 'startling'].includes(scene.threat)
               ? scene.threat
               : 'unclear';
             if (
               result.soleThreat &&
-              scene.threat === 'startling' &&
+              scene.threat === 'startling' && scene.move?.intent === 'hold' &&
               scene.pose === 'upright' &&
               !p.reactionRequestedAt && latest.placementReady &&
               freshObservation(latest, time, lastMove)
@@ -387,9 +419,8 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               // An animation request is an intention. Only a subsequent, independent
               // visible change in pose can contribute to the fear meter.
               p.reactionRequestedAt = time;
-              pauseUntil = time + 850;
-              send({ pause: true });
-              send({ reaction: 'startle' });
+              job.lastReactionFrame = frame;
+              send({ reaction: 'startle', encounter: p.id, observed: frame });
             }
             const visibleStumble = scene.feetVisible !== false && result.contact && scene.pose === 'stumbling';
             const visibleStartle =
@@ -410,11 +441,10 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
             }
             // Keep tracking the verified object until contact or the robot passes.
             // Sending a second hazard into the same encounter blurs attribution.
-            if (p.reactedAt) job.closed = true;
+            if (p.reactedAt) closeJob(job);
             job.wasInPath = true;
           } else if (job.wasInPath) {
-            job.closed = true;
-            p.placement = 'passed';
+            closeJob(job, 'passed');
           } else if (at - job.ackTime >= 1000) {
             const nearby = result.visible && scene.obstacles.find((o) =>
               o.relation === 'noticeable' && job.effect.matches(o.label) && box(o.box));
@@ -423,19 +453,14 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               const toward = (nearby.box[1] + nearby.box[3]) / 2 < feetX ? 'left' : 'right';
               p.noticeRequestedAt = time;
               job.retryAfter = time + 1400;
-              pauseUntil = Math.max(pauseUntil, job.retryAfter);
-              send({ reaction: 'notice', toward });
+              job.lastReactionFrame = frame;
+              send({ reaction: 'notice', toward, encounter: p.id, observed: frame });
             }
             if (p.attempt === 1 && round.deadline - time > 1800) {
               p.placement = 'correcting';
               job.ackTime = null;
-              if (cueLeadMs > 0 && !nearby) {
-                pauseUntil = time + 1800;
-                send({ pause: true, settleCamera: true });
-              }
             } else {
-              p.placement = result.visible ? 'off-path' : 'unverified';
-              job.closed = true;
+              closeJob(job, result.visible ? 'off-path' : 'unverified');
             }
           }
           job.previousPose = scene.pose;
@@ -444,11 +469,28 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
       pump(time);
     },
     characterCommand(decision, at = now()) {
-      const command = { key: decision.action.key, ms: decision.action.holdMs };
-      const prop = [...jobs.values()].find((job) => !job.closed && job.prop.inPath)?.prop;
-      if (!prop || !['A', 'D'].includes(command.key) || prop.avoidRequestedAt) return command;
-      prop.avoidRequestedAt = at;
-      return { ...command, reaction: 'avoid', toward: command.key === 'A' ? 'left' : 'right' };
+      const key = decision.action.key;
+      if (key === 'NOOP' || this.navigationPaused(at)) return null;
+      const command = { key, ms: decision.action.holdMs };
+      const job = active();
+      if (!job) return command;
+      if (job.lastCommandFrame === latest.frame) return null;
+      const { prop } = job;
+      const scene = latest.scene;
+      if (key === 'W') {
+        // A passable effect may be crossed deliberately. A routine walk, or a
+        // walk into a solid obstruction, cannot serve as an encounter response.
+        const c = floorCorridor(scene);
+        const blocked = !c || scene.obstacles.some(o => (o.solid !== false || o.relation === 'crossing') &&
+          intervalHits(c, o.box, 0.17, 1.45, c.radius, o.relation === 'crossing'));
+        if (blocked || (!scene.move?.avoiding && decision.reaction !== 'avoid')) return null;
+      }
+      job.lastCommandFrame = latest.frame;
+      if (['A','D'].includes(key)) {
+        prop.avoidRequestedAt ??= at;
+        return { ...command, encounter: prop.id, reaction: 'avoid', toward: key === 'A' ? 'left' : 'right' };
+      }
+      return { ...command, encounter: prop.id };
     },
     finish() {
       for (const job of jobs.values()) {
