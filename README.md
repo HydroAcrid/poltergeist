@@ -4,6 +4,8 @@
 
 A game for the Gemini 4 NYC Hackathon. A player changes the room, Gemini investigates through its character’s camera, and the audience watches it choose an exit.
 
+Start with the [team assignments and first deliverables](KICKOFF.md#team-assignments).
+
 ## First playable round
 
 1. Start in a hallway with one working door. Let the host add a painted door with a flickering EXIT sign.

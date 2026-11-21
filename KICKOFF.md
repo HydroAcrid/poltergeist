@@ -12,11 +12,23 @@ Drop the **contents** of this folder into the root of an empty repo at H+0:00. I
 | `.env.example` | Every env var. Copy it to `.env` and never commit `.env`. |
 | `.claude/settings.json` | Optional permission allowlist, to cut down on prompts. Review it before use. |
 
+## Team assignments
+
+| Lead | Lane | First deliverable |
+|---|---|---|
+| Kevin | [World](apps/world/TODO.md) | Start a hallway session, add a painted exit, and move sideways. Record the door head-on and from the side so the team can see whether the illusion holds. Close the session and verify the ledger shows zero active sessions. |
+| Sri | [Brain](apps/brain/TODO.md) | Give the player a hallway frame and show its chosen move. Try the decoy and record whether the player changes its viewing angle or walks up to the painting. |
+| Courtney | [Crowd](apps/crowd/TODO.md) | Put a “Paint a fake door” preset on the phone page. Show when the request is queued and when World sends it to the scene. Check the stage view to see when the door actually appears. |
+
+Sri and Courtney can swap lanes if they prefer. Confirm your lane in the [laptop check-in](https://github.com/HydroAcrid/poltergeist/issues/1).
+
+For the first shared round, Courtney triggers the trick from a phone, Sri shows the player's move, and Kevin replays the choice. Score the round by which exit the player chose. Reaching the painting counts as a win for the ghost.
+
 ## Before hacking starts (H−0:15)
 
 - [ ] One person creates an empty private GitHub repo and adds everyone.
 - [ ] On every laptop: install Node 20+, pnpm 9+, ffmpeg, and Claude Code (signed in), then clone the repo.
-- [ ] On every laptop: `cp .env.example .env`, then set `PG_LANE` (`world` / `brain` / `crowd`) and `GEMINI_API_KEY`. **Only the world laptop** sets `PG_ALLOW_GENIE=1`.
+- [ ] If your checkout has no `.env`, copy `.env.example` to `.env`. Set `PG_LANE` to your lane. Kevin's workshop key is already configured locally on the World laptop. Brain and Crowd can start with the default fake adapters. **Only the World laptop** sets `PG_ALLOW_GENIE=1` for a live session.
 - [ ] Host account ready, using whichever host you practiced on. It needs WebSockets, a single instance, a persistent disk and auto-deploy from a branch. You'll create two services: **staging** (from `main`) and **prod** (from `demo`).
 - [ ] Generate random tokens for `PG_TOKEN_*`, `PG_OPERATOR_TOKEN` and `PG_MCP_TOKEN`, share them through a password manager, and put them in the host secrets too.
 - [ ] Agree on roles: the world, brain and crowd lane leads, plus the operator and MC (a 4th person, or the crowd lead).
