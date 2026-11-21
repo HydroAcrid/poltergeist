@@ -4,7 +4,10 @@
 // phones on the same Wi-Fi can open /haunt.
 //   pnpm dev            (PORT defaults to 8788)
 import Fastify from "fastify";
+import { existsSync, readFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
+import { dirname, extname, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FakeWorld } from "./fake-world.js";
 import { MemoryBus } from "./memory-bus.js";
 import { createCrowdModule } from "../server/index.js";
@@ -41,6 +44,18 @@ app.get("/dev", async (_req, reply) =>
 <button onclick="fetch('/dev/round/end',{method:'POST'}).then(()=>out.textContent='ended')">End round</button>
 <p id=out></p><p><a href="/haunt">Open /haunt</a></p></body>`),
 );
+
+// Design mocks (apps/crowd/docs) and World's shared art (apps/world/robot-v1), read-only.
+const here = dirname(fileURLToPath(import.meta.url));
+const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png" };
+const serveFrom = (root: string) => async (req: { params: unknown }, reply: { code: (n: number) => { send: (b: string) => unknown }; type: (t: string) => { send: (b: Buffer) => unknown } }) => {
+  const rel = normalize(String((req.params as Record<string, string>)["*"] ?? "")).replace(/^(\.\.(\/|$))+/, "");
+  const file = resolve(root, rel);
+  if (!file.startsWith(root) || !existsSync(file)) return reply.code(404).send("not found");
+  return reply.type(TYPES[extname(file)] ?? "application/octet-stream").send(readFileSync(file));
+};
+app.get("/dev/docs/*", serveFrom(resolve(here, "../docs")));
+app.get("/world/robot-v1/*", serveFrom(resolve(here, "../../world/robot-v1")));
 
 await app.listen({ port, host: "0.0.0.0" });
 const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;
