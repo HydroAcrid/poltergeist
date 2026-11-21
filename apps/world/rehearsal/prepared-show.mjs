@@ -6,10 +6,21 @@ const presetsFile = new URL('../../../fixtures/haunt/presets.json', import.meta.
 const {clips} = JSON.parse(readFileSync(catalogFile));
 const presets = JSON.parse(readFileSync(presetsFile));
 const byRole = role => clips.find(clip => clip.role === role);
-const effectOptions = clips.filter(clip => clip.role === 'effect').map(clip => {
+// Screening plays both halves of a filmed encounter at native speed. A visible
+// prop or a movement instruction alone cannot qualify an audience choice.
+export function hasFilmedResponse(clip) {
+  const e = clip.reactionEvidence;
+  if (clip.role !== 'effect' || !e || e.clipSha256 !== clip.sha256 ||
+      !/^[0-9a-f]{64}$/.test(clip.sha256 ?? '') || !clip.source?.episodeId || e.episodeId !== clip.source.episodeId) return false;
+  const inClip = n => Number.isSafeInteger(n) && n >= 1 && n <= clip.frames;
+  return e.verifiedInPixels === true && ['duck','shield','recoil','retreat','sidestep','stop'].includes(e.action) &&
+    inClip(e.obstacleFrame) && inClip(e.responseFrame) && e.obstacleFrame < e.responseFrame;
+}
+const effectOptions = clips.filter(hasFilmedResponse).map(clip => {
   const preset = presets.find(item => item.id === clip.presetId);
   return {id:preset.id, text:preset.text, title:clip.title, label:clip.buttonLabel, tags:preset.tags};
 });
+export const preparedEncountersAvailable = effectOptions.length > 0;
 const byText = new Map(effectOptions.map(option => [option.text, clips.find(c => c.presetId === option.id)]));
 const brief = clip => ({clipUrl:'/rehearsal/clips/' + clip.file, title:clip.title});
 const blackoutMs = 1250;
