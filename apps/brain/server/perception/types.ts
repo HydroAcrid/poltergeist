@@ -1,5 +1,5 @@
 import type { Box, Point } from "@poltergeist/contracts/common.js";
-import type { Perception } from "@poltergeist/contracts/tick-response.js";
+import type { Intent, Perception } from "@poltergeist/contracts/tick-response.js";
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
 
 /**
@@ -11,6 +11,20 @@ export interface PlayerInput {
   frame: TickRequest["frame"];
   targetLabel: string;
   instruction: string;
+  /** The frame Brain itself received on the previous tick (pixels only), so the model can see what changed. */
+  previousFrame?: TickRequest["frame"];
+}
+
+/** The player model's own choice for this tick (decision mode "model"). */
+export interface ModelDecision {
+  intent: Intent;
+  target?: Point;
+  /** What visibly changed since the previous frame, in the model's words ("nothing" if nothing). */
+  observed: string;
+  /** Why, ≤ 60 chars. */
+  reason: string;
+  /** True when the move responds to something in or near the way. */
+  avoiding: boolean;
 }
 
 /** A target-shaped thing the perceiver saw. It never says which one is real. */
@@ -30,7 +44,8 @@ export interface Scene {
   feet: { left: Point; right: Point };
   /** True when the boots were out of frame and `feet` is the camera rig's estimated ground anchor. */
   feetEstimated?: boolean;
-  obstacles: { point: Point; box?: Box }[];
+  /** `solid: false` = the perceiver judged it walkable (flat, soft, harmless); geometry ignores it. */
+  obstacles: { point: Point; box?: Box; solid?: boolean }[];
   goal?: Point;
   /** Floor point about two strides straight ahead of the boots (the robot's facing). */
   forward?: Point;
@@ -38,11 +53,13 @@ export interface Scene {
 }
 
 /** Contract `Perception`, plus brain-internal candidates or a third-person scene. */
-export type PerceptionResult = Perception & { candidates?: Candidate[]; scene?: Scene };
+export type PerceptionResult = Perception & { candidates?: Candidate[]; scene?: Scene; decision?: ModelDecision };
 
 export interface PerceiveOptions {
   timeoutMs: number;
   promptAddenda: string[];
+  /** Ask the model to choose the move too (policy decision mode "model"). */
+  decide?: boolean;
   /** Model thinking effort from the policy; "low" means no thinking budget. */
   thinking?: "low" | "medium" | "high";
   signal?: AbortSignal;

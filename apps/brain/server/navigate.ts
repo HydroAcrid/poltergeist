@@ -76,6 +76,14 @@ export function facingPoint(feet: Point, forward: Point | undefined, goal: Point
   return [goal[0], Math.round(clamp(feet[1] + (ahead[1] - feet[1]) * k, 0, 1000))];
 }
 
+/** The robot's facing point for this scene under the policy's rig (undefined without an exit). */
+export function facingFor(scene: Scene, policy: Policy): Point | undefined {
+  const n = policy.navigation;
+  if (!scene.goal) return undefined;
+  const headingX = n.rig === "shoulder" ? n.shoulder.headingX : n.headingX;
+  return facingPoint(feetMidpoint(scene), n.useForwardPoint ? scene.forward : undefined, scene.goal, headingX);
+}
+
 /**
  * Signed image-space angle from the robot's facing to the exit, as seen from
  * the boots: −1 = 90° left … 0 = straight ahead … 1 = 90° right.
@@ -191,5 +199,6 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
     return out({ key: left ? "A" : "D", holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${left ? "left" : "right"}`);
   }
 
-  return out({ key: "W", holdMs: n.walkMs }, "track", `path clear, walking (gap ${gap})`);
+  // The gap means nothing when the boots are an estimate (shoulder rig).
+  return out({ key: "W", holdMs: n.walkMs }, "track", n.rig === "shoulder" ? "path clear, walking" : `path clear, walking (gap ${gap})`);
 }
