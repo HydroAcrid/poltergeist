@@ -76,9 +76,11 @@
               ><button id="upload">Choose photo</button>
             </div>
             <button id="prepare" hidden>Prepare photo for Genie</button>
-            <button id="go-live" class="primary" disabled>
-              Start Genie round</button
-            ><button id="start" disabled>Rehearse offline</button>
+            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start 10-minute game</button>
+            <small id="show-cost" hidden>Up to 10 minutes of play · about $6 per generated minute.</small>
+            <button id="go-live" disabled>Start short Genie round</button>
+            <button id="stop-show" hidden>End game</button>
+            <button id="start" disabled>Rehearse offline</button>
             <button id="default" class="quiet" hidden>Use venue hallway</button>
             <p id="message" role="status"></p>
             <details id="obstacle-test" class="obstacle-test">

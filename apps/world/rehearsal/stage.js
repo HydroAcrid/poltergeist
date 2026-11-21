@@ -5,8 +5,8 @@ const el = (id) => document.getElementById(id);
 const debugPage = location.pathname === '/debug';
 const host = debugPage || location.pathname === '/team';
 const diagnostics = host ? await import('./host-debug.mjs') : null;
-const canvas = el('scene'),
-  liveImage = el('live');
+const canvas = el('scene');
+let liveImage = el('live');
 const hud = document.querySelector('.hud');
 function positionCue() {
   document.documentElement.style.setProperty('--cue-top', Math.ceil(hud.getBoundingClientRect().bottom + 12) + 'px');
@@ -86,6 +86,7 @@ function controls() {
   for (const id of [
     'start',
     'go-live',
+    'go-show',
     'capture',
     'upload',
     'default',
@@ -101,7 +102,12 @@ function controls() {
   el('go-live').hidden = !state?.canLive;
   el('go-live').disabled ||=
     !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
-  set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start Genie round');
+  set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start short Genie round');
+  el('go-show').hidden = !state?.canLive;
+  el('go-show').disabled ||= el('go-live').disabled;
+  el('show-cost').hidden = !state?.canLive || busy;
+  el('stop-show').hidden = !busy || !state?.round?.live;
+  el('stop-show').disabled = loading || !connected;
   el('default').hidden = !custom;
   if (host) {
     set('host-readiness', diagnostics.readiness(state));
@@ -217,12 +223,20 @@ async function updateState() {
 
   const r = s.round;
   canvas.classList.toggle('native-frame', !!r?.live);
-  if (r?.live && r.phase === 'playing' && liveId !== r.id && running && !document.hidden) {
-    liveId = r.id;
-    liveImage.src = '/rehearsal/video?round=' + encodeURIComponent(r.id);
-  } else if (liveId && (r?.id !== liveId || r.phase === 'ended')) {
+  const stream = r?.live && r.phase === 'playing' ? streamKey(r) : '';
+  if (stream !== liveId) {
     liveImage.removeAttribute('src');
     liveId = '';
+    if (stream && running && !document.hidden) {
+      // A new element cannot retain the browser's decoded JPEG from a prior chapter.
+      const fresh = liveImage.cloneNode(false);
+      liveImage.replaceWith(fresh);
+      liveImage = fresh;
+      liveId = stream;
+      fresh.onerror = () => { if (fresh === liveImage) liveId=''; };
+      fresh.src = '/rehearsal/video?round=' + encodeURIComponent(r.id) +
+        (r.chapters ? '&chapter=' + encodeURIComponent(r.chapter) : '');
+    }
   }
   if (s.plateError || s.publicStatus) set('message', s.plateError || s.publicStatus);
   el('host').hidden = !host;
@@ -249,6 +263,7 @@ async function refresh() {
     }
   }
 }
+function streamKey(round) { return round.id + '/' + (round.chapter || 1); }
 function schedulePaint() {
   if (!paintId && running && !document.hidden) paintId = requestAnimationFrame(paint);
 }
@@ -261,7 +276,7 @@ function paint() {
     let worldVisible = false;
     if (active) {
       paintedStill = '';
-      if (r.live) worldVisible = scene.presentLive(liveId === r.id ? liveImage : null, r, now);
+      if (r.live) worldVisible = scene.presentLive(liveId === streamKey(r) ? liveImage : null, r, now);
       else scene.paint(state, now);
     } else {
       const still = [state.revision, r?.id || 'lobby'].join('/');
@@ -296,6 +311,10 @@ function paint() {
         phase = 'Opening the hallway';
         clock = '···';
         label = 'Opening';
+      } else if (r.phase === 'handoff') {
+        phase = 'The hallway shifts';
+        clock = time(Math.max(0,Math.ceil(r.remainingMs/1000)));
+        label = 'Time left';
       } else if (r.phase === 'playing') {
         phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
         clock = time(sec);
@@ -305,7 +324,7 @@ function paint() {
           cue = card.label;
           caption = card.text;
           by = [card.by, card.intent].filter(Boolean).join(' · ');
-        } else if (r.live && !worldVisible && now-r.startedAt > 4500) {
+        } else if (r.live && !worldVisible && (r.chapter || 1)===1 && now-r.startedAt > 4500) {
           caption = 'Opening the hallway…';
         }
       } else {
@@ -400,14 +419,19 @@ document.addEventListener('keydown', (e) => {
 });
 el('start').onclick = () =>
   run(() => request('/rehearsal/start', { mode: 'offline' }));
-el('go-live').onclick = () =>
-  run(() =>
+function startWorld(chapters) {
+  return run(() =>
     request('/rehearsal/start', {
       mode: 'genie',
+      ...(chapters ? {chapters:true} : {}),
       plateKey: state.plateKey,
       seed: scene.seed(state),
     }),
   );
+}
+el('go-live').onclick = () => startWorld(false);
+el('go-show').onclick = () => startWorld(true);
+el('stop-show').onclick = () => run(() => request('/rehearsal/stop', {round:state.round.id}));
 el('prepare').onclick = () =>
   run(() => request('/rehearsal/prepare-photo', { revision: state.revision }));
 el('default').onclick = () => run(() => request('/rehearsal/reset-photo'));

@@ -538,3 +538,5 @@ body:not(.projector) main {
 #test-observations { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin-bottom: 0; }
 #test-observations dt { color: var(--muted); }
 #test-observations dd { margin: 0; overflow-wrap: anywhere; }
+
+#show-cost { display:block; margin:.3em 0 .7em; color:var(--muted); font-size:13px; }

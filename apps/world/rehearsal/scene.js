@@ -23,6 +23,9 @@ export async function createScene(canvas) {
   const seedGrade = createHallwayLighting(seedContext, W, H);
   const veil = createGhostVeil(W,H), motion = createMotionGate();
   let presentingId, fullyCovered = false, revealedAt = null, hasShownWorld = false;
+  const outgoing = document.createElement('canvas');
+  outgoing.width=W; outgoing.height=H;
+  let chapter=1, seam=null;
   const grade = createHallwayLighting(ctx, W, H);
   const [robot, peel] = await Promise.all(['/explorer.webp', '/peel.webp'].map(image));
   let preparedHall=null, cameraDepth=0, cameraPan=0, cameraZoom=1, tickTime=0;
@@ -87,7 +90,41 @@ export async function createScene(canvas) {
   function presentLive(img, round, now) {
     if (presentingId !== round.id) {
       presentingId=round.id;fullyCovered=false;revealedAt=null;hasShownWorld=false;
+      chapter=round.chapter || 1; seam=null;
       motion.reset();
+      if (chapter>1 || round.phase==='handoff') {
+        // A spectator joining midway has no usable outgoing view to display.
+        seam={closedAt:now-1500, from:round.phase==='handoff'?chapter:chapter-1, reveal:null};
+      }
+    }
+    const incoming=round.chapter || 1;
+    if (round.chapters && !seam && (round.phase==='handoff' || incoming>chapter)) {
+      outgoing.getContext('2d').drawImage(canvas,0,0);
+      seam={closedAt:now,from:chapter,reveal:null};
+      motion.reset();
+    }
+    chapter=incoming;
+    if (seam) {
+      const still=reduced.matches, closeMs=still?320:950, openMs=still?350:1100;
+      const elapsed=Math.max(0,now-seam.closedAt);
+      if (elapsed<closeMs) {
+        screen.drawImage(outgoing,0,0);
+        hallwayBlackout(screen,W,H,elapsed/closeMs,'close',still);
+        return false;
+      }
+      if (seam.reveal===null && round.phase==='playing' && chapter>seam.from &&
+          img?.naturalWidth && motion.ready(img,round.trackedBody,now)) seam.reveal=now;
+      if (seam.reveal===null || !img?.naturalWidth) {
+        hallwayBlackout(screen,W,H,1,'hold',still);
+        return false;
+      }
+      followLive(img,round,now);
+      const progress=clamp((now-seam.reveal)/openMs);
+      hallwayBlackout(screen,W,H,1-progress,'open',still);
+      if (progress===1) {
+        fullyCovered=true; revealedAt=now-2000; hasShownWorld=true; seam=null;
+      }
+      return progress>0;
     }
     const elapsed=Math.max(0,now-round.openedAt), still=reduced.matches;
     if (round.phase === 'ended') {

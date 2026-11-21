@@ -344,3 +344,34 @@ export function createGhostVeil(width, height) {
     }
   };
 }
+
+
+// Only the hallway loses power. The projector's DOM remains legible above the canvas.
+export function hallwayBlackout(ctx, width, height, progress, phase, still) {
+  const p=limit(progress);
+  if (p===0) return;
+  ctx.save();
+  if (p===1) {
+    ctx.fillStyle='#020405';ctx.fillRect(0,0,width,height);
+    ctx.restore();return;
+  }
+  const dark=ease(p);
+  if (!still) {
+    // The dim pools under the overhead lamps briefly sag, well below a flash.
+    const sag=phase==='close' ? .12*Math.exp(-Math.pow((p-.23)/.12,2)) : 0;
+    const lamps=ctx.createLinearGradient(0,0,width,height*.25);
+    lamps.addColorStop(0,'rgba(2,4,6,0)');
+    lamps.addColorStop(.44,'rgba(2,4,6,'+(.17*Math.sin(Math.PI*p))+')');
+    lamps.addColorStop(.72,'rgba(2,4,6,'+(.26*Math.sin(Math.PI*p)+sag)+')');
+    lamps.addColorStop(1,'rgba(2,4,6,0)');
+    ctx.fillStyle=lamps;ctx.fillRect(0,0,width,height);
+  }
+  ctx.globalAlpha=dark;ctx.fillStyle='#020405';ctx.fillRect(0,0,width,height);
+  if (!still && phase==='open') {
+    ctx.globalAlpha=.12*Math.sin(Math.PI*p);
+    const warmth=ctx.createRadialGradient(width*.63,height*.36,0,width*.63,height*.36,width*.58);
+    warmth.addColorStop(0,'#d8a961');warmth.addColorStop(1,'#ab814300');
+    ctx.fillStyle=warmth;ctx.fillRect(0,0,width,height);
+  }
+  ctx.restore();
+}
