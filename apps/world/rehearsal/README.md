@@ -48,6 +48,14 @@ The short live rehearsal starts its game clock on the first native frame. The ho
 
 After setup, run `node scripts/rehearse-room-span.cjs` to exercise ten minutes of virtual game time on the real offline World, Brain and Crowd routes. The check follows one guest through a scare win, a dodge, an escape and a timeout. It verifies the scoreboard and the guest's receipt after the ten-minute mark.
 
+## Ten-minute game
+
+The host can choose **Start 10-minute game** once the photo is ready. The match has up to ten minutes of active play. A doorway crossing, the third observed scare or time running out ends it sooner. Each phone keeps its name, submission history and place in the queue during a blackout. The game clock pauses while World changes provider interactions. New submissions can still enter the queue.
+
+The hallway lights falter before the projector goes dark. World uses a recent single-player frame on clear floor to open the next view. It waits for the current interaction to close and the projector waits for movement in the incoming frames before bringing the lights back. An unavailable checkpoint or unclear provider closure interrupts the match. Ask the host to start a new game after an interruption.
+
+The short live option still starts one interaction. Google publishes a 120-second limit per interaction and estimates about $6.05 per generated minute. Ten full minutes of generated video would cost about $60.50 at that rate, plus other model usage. [Genie limits](https://aistudio.google.com/docs/genie#limitations) · [Google pricing](https://aistudio.google.com/docs/pricing#genie-4)
+
 ## What failed in the wind-up penguin rehearsal
 
 On November 21, thirty virtual guests joined the same photo-seeded Genie round. Their phones delivered 37 private receipts, including seven revisions. Four ideas were selected. One reached Genie. The audience won on time with zero observed scares.
