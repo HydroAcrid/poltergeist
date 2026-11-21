@@ -389,3 +389,45 @@ test('the recorded approaching boots release the camera before they leave the bo
     assert.equal(shoulderStride({...still,clearLane:true,approachingEdge:tracker.status().approachingEdge}),null);
   }
 });
+
+test('a continuation acquires the actual filmed subject in two grounded reads and keeps player travel held while wide',()=>{
+  const seed=fs.readFileSync(new URL('../rehearsal/venue-prologue/encounter-final.jpg',import.meta.url));
+  const first=fs.readFileSync(new URL('../rehearsal/calibration/continuation-1.jpg',import.meta.url));
+  const second=fs.readFileSync(new URL('../rehearsal/calibration/continuation-65.jpg',import.meta.url));
+  const scene=(body,upper)=>({...sighting(body),upperBodyBox:upper,feetVisible:true,rightFloorVisible:true,
+    aisleHeading:'diagonal-right',pose:'upright',threat:'ordinary',ahead:[568,514],obstacles:[]});
+  const a=scene([242,270,825,471],[242,270,601,470]);
+  const b=scene([248,272,810,473],[248,272,593,408]);
+  function observe(f,picture,number,s) { f.push(picture,number);f.observe(s,number); }
+  const opening=createNativeFollow();
+  observe(opening,first,1,a);observe(opening,second,65,b);
+  assert.equal(opening.verified(65),false,'a new world still requires its designed opening composition');
+  const native=createNativeFollow({continuationSeed:seed});
+  observe(native,first,1,a);
+  assert.equal(native.verified(1),false);
+  observe(native,second,65,b);
+  assert.equal(native.verified(65),true);
+  assert.equal(native.permitsPlacement(65),true);
+  assert.equal(native.permits('W'),false);
+  assert.equal(native.correction(0).reason,'recover shoulder distance');
+  observe(native,second,125,{...b,playerCount:2});
+  assert.equal(native.permitsPlacement(125),false);
+  assert.equal(native.correction(5000),null);
+  const stranger=scene([248,68,810,268],[248,68,593,204]);
+  observe(native,second,150,stranger);
+  assert.equal(native.verified(150),false,'the nominal position cannot select a different figure after ambiguity');
+  observe(native,second,155,b);
+  assert.equal(native.verified(155),false,'returning to the filmed subject requires confirmation');
+  observe(native,second,190,b);
+  assert.equal(native.verified(190),true);
+
+  const changed=jpeg.decode(first);
+  // Preserve the room and change just the independently measured backpack region.
+  for(let y=Math.floor(.24*changed.height);y<.62*changed.height;y++) for(let x=Math.floor(.27*changed.width);x<.48*changed.width;x++) {
+    const i=4*(y*changed.width+x);changed.data.set([235,235,235,255],i);
+  }
+  const mismatch=jpeg.encode(changed,90).data;
+  const replaced=createNativeFollow({continuationSeed:seed});
+  observe(replaced,mismatch,1,a);observe(replaced,mismatch,65,b);
+  assert.equal(replaced.verified(65),false,'a stationary background cannot authenticate a replaced player');
+});

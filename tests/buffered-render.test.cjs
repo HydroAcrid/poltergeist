@@ -47,6 +47,7 @@ test('one closed take encodes the complete native archive and timestamps only co
     feet:{left:[800,440],right:[800,460]}, ahead:[580,450], obstacles});
   const launchLive = native => {
     assert.equal(native.chapterMs,opts.durationMs);
+    assert.equal(native.continuation,false);
     assert.equal(native.reactionTailMs,800);
     assert.deepEqual(native.seed,opts.seed);
     setImmediate(async () => {
@@ -146,6 +147,7 @@ test('the reveal begins on the preceding image, then keeps every new native fram
   const opts=await fixture(t), first=picture(4), last=picture(12);
   const sequence=Array.from({length:25},(_,i)=>i===24?last:first);
   const launchLive=native=>{
+    assert.equal(native.continuation,true);
     setImmediate(async()=>{
       const run=join(opts.captureDir,'runs','photo-round-next');
       await mkdir(run,{recursive:true});

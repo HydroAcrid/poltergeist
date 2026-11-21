@@ -18,3 +18,7 @@ These three native frames come from one photo-seeded world. The background gener
 | [1 · opening](shoulder-double.jpg) | Two sage robots with orange backpacks are visible. A single-player box is ambiguous. |
 | [123 · papers](windup-papers.jpg) | Loose white sheets are visible. Papers alone do not verify the wind-up penguin proposal. |
 | [151 · penguins](windup-penguins.jpg) | Small penguins appear farther along the hall. A single frame cannot establish a sidestep, collision or startle. |
+
+## Continuation after the filmed bat encounter
+
+[Frame 1](continuation-1.jpg) and [frame 65](continuation-65.jpg) are 320 × 180 reductions from chapter 3 of episode `ep_01M8013ST06Z2HY44JRRDJBGYQ`. The native world used the [last filmed bat frame](../venue-prologue/encounter-final.jpg) as its exact opening image. In the first two observations the same rear-right explorer occupied about 20% of the image width, centered 37% from the left. The frames exercise reacquisition from its recorded position.

@@ -76,7 +76,7 @@ async function takeArchive(captureDir, previous, episodeId, chapter) {
   throw Error('The native recording for this segment was not found.');
 }
 
-function performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, pilot, initialFear, signal, onStart}) {
+function performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, continuation, pilot, initialFear, signal, onStart}) {
   return new Promise((resolve, reject) => {
     let live, started = false, selected = false, lastObserved = 0, lastObservedAt = 0, closed = false, failure, closeTimer;
     let reactionTail = false, comparisonFrame = null;
@@ -200,7 +200,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
     try {
       signal?.throwIfAborted();
       live = launchLive({dir:captureDir, seed, episodeId, playMode:'buffered-show', plannedDurationMs:durationMs,
-        chapter, chapterMs:durationMs, reactionTailMs,
+        chapter, continuation, chapterMs:durationMs, reactionTailMs,
         onMessage(message) {try { handle(message); } catch(error) { stop(error); }},
         onClose:finish,
       });
@@ -235,7 +235,7 @@ export async function renderSegment({
     const pilot = makePilot();
     if (typeof pilot !== 'function') throw Error('The World pilot is unavailable.');
     const previous = new Set(await captureRuns(captureDir));
-    const evidence = await performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, pilot, initialFear, signal, onStart});
+    const evidence = await performTake({launchLive, captureDir, seed, picks, durationMs, reactionTailMs, episodeId, chapter, continuation, pilot, initialFear, signal, onStart});
     signal?.throwIfAborted();
     const {path, session} = await takeArchive(captureDir, previous, episodeId, chapter);
     const {frames:frameCount, fps} = session;

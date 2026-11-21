@@ -462,6 +462,7 @@ export async function registerStage(
             plannedDurationMs: r.plannedDurationMs,
             dir: captureDir,
             seed:resuming ? continuation.bytes : seed,
+            continuation:Boolean(resuming),
             ...(r.chapters ? {chapter:ticket.chapter,chapterMs:chapterTiming.limitMs} : {}),
             onMessage: protectLiveCallback(r, (m) => {
               if (closing || ticket!==activeTicket || r.phase==='ended' || r!==round) return;

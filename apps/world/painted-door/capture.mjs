@@ -126,7 +126,9 @@ async function capture() {
   process.once('SIGINT', stop);
   if (values.drive || values.round) process.once('disconnect', stop);
   let gameClock, looking=false, nextLook=0;
-  const follow = stagePilot ? createNativeFollow() : null;
+  const continuationSeed=stagePilot && process.env.PG_WORLD_CONTINUATION==='1' && setup.reference_image
+    ? Buffer.from(setup.reference_image.data,'base64') : null;
+  const follow = stagePilot ? createNativeFollow({continuationSeed}) : null;
   const moveWindow = createMoveWindow(log.fps);
   const placementView = createPlacementView();
   const encounter = createEncounterControls();

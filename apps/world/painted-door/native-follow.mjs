@@ -1,5 +1,6 @@
 // Measure displacement in native frames. All corrections go to Genie's camera controls.
 import jpeg from "jpeg-js";
+import {compareOpening} from "./scene-continuity.mjs";
 import { shoulderFrame,validBodyBox } from "./framing-report.mjs";
 export { shoulderFrame };
 import { placementTarget } from "../rehearsal/placement.mjs";
@@ -25,6 +26,27 @@ function sampleFrame(bytes, number) {
     }
   return { number, pixels };
 }
+// Verify that the coat and backpack visible in the current read occupy the
+// same place in the actual previous native image. Static hallway similarity
+// alone cannot establish which figure should receive the first command.
+function sameSeedPatch(seed, frame, box) {
+  const [top,left,bottom,right]=box;
+  let sumA=0,sumB=0,sqA=0,sqB=0,product=0,colorError=0,count=0;
+  for (let y=Math.ceil(top*height/1000);y<Math.floor(bottom*height/1000);y+=2) {
+    for (let x=Math.ceil(left*width/1000);x<Math.floor(right*width/1000);x+=2) {
+      const i=3*(y*width+x),a=seed.pixels,b=frame.pixels;
+      const u=(a[i]+2*a[i+1]+a[i+2])/4,v=(b[i]+2*b[i+1]+b[i+2])/4;
+      sumA+=u;sumB+=v;sqA+=u*u;sqB+=v*v;product+=u*v;
+      colorError+=(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]))/3;
+      count++;
+    }
+  }
+  if (count<30) return false;
+  const varA=sqA/count-(sumA/count)**2,varB=sqB/count-(sumB/count)**2;
+  const covariance=product/count-(sumA/count)*(sumB/count);
+  return Math.min(varA,varB)>125 && (2*covariance+58.5)/(varA+varB+58.5)>=.8 && colorError/count<=18;
+}
+
 // Compare the coat/backpack texture in consecutive frames, keeping both color and edges.
 function locate(previous, current, anchor) {
   const x = Math.round(anchor.x * width),
@@ -283,7 +305,9 @@ export function cameraStep(subject) {
   return null;
 }
 
-export function createNativeFollow() {
+export function createNativeFollow({continuationSeed} = {}) {
+  const seedSample=continuationSeed ? sampleFrame(continuationSeed,0) : null;
+  let openingMatches=false, originalBody=null, lastContinuationBody=null;
   const history = [];
   const neutral = {
     x: shoulderFrame.x,
@@ -352,6 +376,7 @@ export function createNativeFollow() {
     }
   }
   function push(bytes, number) {
+    if (seedSample && !history.length) openingMatches=compareOpening(continuationSeed,[{bytes,frame:number}]).matches;
     const frame = sampleFrame(bytes, number),
       prev = history.at(-1);
     if (prev && number <= prev.number) return;
@@ -403,7 +428,29 @@ export function createNativeFollow() {
       bodyWidth>=shoulderFrame.width*.63 && bodyWidth<=shoulderFrame.width*1.48 &&
       top/1000<=shoulderFrame.top+.25 && bottom/1000>=shoulderFrame.top+shoulderFrame.height-.18;
     if (prior && !continuous) { lose('discontinuous subject'); return; }
-    if (!prior && !nearSeed) { lose('outside seed shoulder position'); return; }
+    if (!prior && seedSample) {
+      const matchesRecent=lastContinuationBody && number-lastContinuationBody.number<=96 &&
+        Math.abs(bodyX-lastContinuationBody.bodyX)<=.08 && Math.abs(bottom-lastContinuationBody.bottom)<=90 &&
+        bodyWidth/lastContinuationBody.bodyWidth>=.78 && bodyWidth/lastContinuationBody.bodyWidth<=1.28;
+      const fullView=floorVisible && scene.feetVisible===true && scene.aisleHeading==='diagonal-right' &&
+        bodyX>=.09 && bodyX<=.50 && bodyWidth>=shoulderFrame.width*.60 && bodyWidth<=shoulderFrame.width*1.48 &&
+        top/1000<=shoulderFrame.top+.25 && bottom/1000>=shoulderFrame.top+shoulderFrame.height-.23;
+      const atOriginal=!originalBody || Math.abs(bodyX-originalBody.x)<=.07 &&
+        Math.abs(bottom-originalBody.bottom)<=90 && bodyWidth/originalBody.width>=.78 && bodyWidth/originalBody.width<=1.28;
+      // After an ambiguity, a new lone figure at the nominal left-fifth mark
+      // must still match the last trusted body or the original filmed seed.
+      if (!openingMatches || !fullView || (!matchesRecent && !(atOriginal && sameSeedPatch(seedSample,history[index],b)))) {
+        lose('continuation subject unconfirmed');return;
+      }
+      originalBody ??= {x:bodyX,bottom,width:bodyWidth};
+      reacquiring=true;
+    } else if (!prior && !nearSeed) { lose('outside seed shoulder position'); return; }
+    if (seedSample && prior && reacquiring &&
+        (Math.abs(bodyX-prior.bodyX)>.08 || Math.abs(bottom-prior.bottom)>90 ||
+        bodyWidth/prior.bodyWidth<.78 || bodyWidth/prior.bodyWidth>1.28 ||
+        scene.feetVisible!==true || !floorVisible || scene.aisleHeading!=='diagonal-right')) {
+      lose('discontinuous continuation subject');return;
+    }
     const h=(b[2]-b[0])/1000;
     const x=(b[1]+b[3])/2000;
     const scale=(b[3]-b[1])/1000/(upper?shoulderFrame.packWidth:shoulderFrame.width);
@@ -438,6 +485,7 @@ export function createNativeFollow() {
     orbitClear=floorVisible && scene.pose==='upright' && scene.threat==='ordinary' &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) && o.box[2]>810 && o.box[3]>550);
     lastBox={upper,number,scale,x,bodyX,bodyWidth,bottom,aisleHeading:scene.aisleHeading};
+    if (seedSample && continuous) lastContinuationBody=lastBox;
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,grounding:number,opticalWidth:bodyWidth,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     semanticAnchor = { ...anchor, clearLane };
     history[index].track = { ...anchor };
@@ -495,7 +543,8 @@ export function createNativeFollow() {
     return lock.observed===observed && lock.grounded && lock.known && !lock.lost;
   }
   function permitsPlacement(observed) {
-    return verified(observed) && floorVisible;
+    return verified(observed) && floorVisible &&
+      (!seedSample || lastBox.bodyWidth>=shoulderFrame.width*.60);
   }
   return { push, observe, correction, permits, status, verified, permitsPlacement };
 }
