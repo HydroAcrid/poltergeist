@@ -65,8 +65,8 @@ describe("pickCard keeps the four World stages distinct", () => {
     expect(M.pickCard(crowd("injected"), world(p))).toMatchObject({ stage, text: "A banana peel lands in the aisle", who: "Cosmic Echo" });
   });
 
-  it("delivery alone never claims more than 'Sent to the hallway'", () => {
-    expect(M.pickCard(crowd("injected"), null)).toMatchObject({ stage: "sent", label: "Sent to the hallway" });
+  it("delivery alone never claims more than 'Taking effect'", () => {
+    expect(M.pickCard(crowd("injected"), null)).toMatchObject({ stage: "sent", label: "Taking effect" });
     expect(M.pickCard(crowd("dispatched"), null)).toMatchObject({ stage: "sending" });
   });
 
@@ -121,12 +121,12 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
     expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "upnext", text: "A gust blows loose papers across the aisle", who: "Inky Fern" });
   });
 
-  it("playing: reactedAt 0 is 'not yet', so a placed prop is only 'Sent to the hallway'", () => {
+  it("playing: reactedAt 0 is 'not yet', so a placed prop is only 'Taking effect'", () => {
     const body = load("rehearsal-playing.json");
     const w = M.normalizeRehearsal(body);
     expect(M.phaseOf(null, w)).toBe("live");
     expect(w.props[0]).toMatchObject({ hauntId: "ht_01M7ZQ0D7XEXJ2KFTXE5KEMT0C", acked: 1795286944237, seen: undefined, inPath: undefined, reactedAt: undefined, reaction: undefined, text: "Paper storm", by: "Inky Fern" });
-    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "sent", label: "Sent to the hallway", text: "Paper storm", who: "Inky Fern" });
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "sent", label: "Taking effect", text: "Paper storm", who: "Inky Fern" });
     expect(M.cardSide(w, body.now)).toBeNull(); // no tracked feet in the fixture renderer → top-margin status
   });
 
@@ -159,6 +159,14 @@ describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)"
     const w = M.normalizeRehearsal(body);
     expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "reacted", reaction: "Robot dodges it" });
     expect(w.fear).toBe(0);
+  });
+
+  it("a World prop the conductor selected but hasn't sent yet shows as Up next on the same card", () => {
+    const body = load("rehearsal-playing.json");
+    Object.assign(body.round.props[0], { placedAt: 0, selectedAt: body.now - 300 });
+    expect(M.pickCard({ hallway: [], queue: [] }, M.normalizeRehearsal(body))).toMatchObject({ stage: "upnext", label: "Up next", text: "Paper storm" });
+    Object.assign(body.round.props[0], { sentAt: body.now - 100 });
+    expect(M.pickCard({ hallway: [], queue: [] }, M.normalizeRehearsal(body))).toMatchObject({ stage: "sent", label: "Taking effect" });
   });
 
   it("result headlines", () => {

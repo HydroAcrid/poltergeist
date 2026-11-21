@@ -14,8 +14,8 @@ export const STAGES = ["upnext", "sending", "sent", "seen", "inPath", "reacted"]
 
 export const STAGE_LABEL = {
   upnext: "Up next",
-  sending: "Sending to the hallway",
-  sent: "Sent to the hallway",
+  sending: "Taking effect",
+  sent: "Taking effect", // Kevin (#2): "Taking effect" once World sends it; sightings/reactions update the same card
   seen: "Seen in the hallway",
   inPath: "In the robot's path",
   reacted: "Robot reacted",
@@ -73,7 +73,8 @@ export function normalizeRehearsal(json) {
         const response = typeof p?.response === "string" ? p.response : undefined;
         return {
           hauntId: typeof p?.hauntId === "string" ? p.hauntId : typeof p?.id === "string" ? p.id : undefined,
-          acked: reached(p?.acked) ?? reached(p?.placedAt) ?? reached(p?.sentAt),
+          selectedAt: reached(p?.selectedAt), // conductor committed (World, #2)
+          acked: reached(p?.acked) ?? reached(p?.sentAt) ?? reached(p?.placedAt),
           seen: reached(p?.seen),
           inPath: p?.inPath === true || p?.placement === "in-path" ? 0 : reached(p?.inPath === false ? undefined : p?.inPath),
           reactedAt,
@@ -108,6 +109,7 @@ export function cardSide(world, now) {
 export function stageOf(crowdItem, worldProp) {
   let stage = crowdItem?.status === "dispatched" ? "sending" : crowdItem?.status === "injected" ? "sent" : null;
   if (worldProp) {
+    if (!stage && worldProp.selectedAt !== undefined) stage = "upnext";
     if (worldProp.acked !== undefined && (!stage || STAGES.indexOf(stage) < STAGES.indexOf("sent"))) stage = "sent";
     if (worldProp.seen !== undefined) stage = "seen";
     if (worldProp.inPath !== undefined) stage = "inPath";
