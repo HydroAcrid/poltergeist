@@ -252,3 +252,13 @@ test('only a filmed third scare can end the match on fear',async()=>{
   evidence.winnerFrame=280;assert.equal(reviewSegment(clip,[p],2,false).ok,false);
   evidence.winner=null;assert.equal(reviewSegment(clip,[p],2,false).ok,false);
 });
+
+test('an unavailable film reviewer closes the opening truthfully without retrying a paid world',async()=>{
+  const {show,step,requests,ended}=await room();await step(8000);
+  const message='Gemini Decisions could not review the recorded frames.';
+  requests[0].reject(Object.assign(Error(message),{code:'VISUAL_REVIEW_UNAVAILABLE'}));
+  await settle();await step();await step(10000);
+  assert.equal(requests.length,1);assert.equal(show.file(1),undefined);
+  assert.deepEqual(ended,[['interrupted',null]]);assert.equal(show.error,message);
+  await show.dispose();
+});

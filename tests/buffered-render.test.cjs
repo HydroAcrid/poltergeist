@@ -22,7 +22,9 @@ async function fixture(t) {
   t.after(() => rm(captureDir,{recursive:true,force:true}));
   const outputDir = join(captureDir,'private-output');
   await mkdir(outputDir);
-  return {captureDir, outputDir, episodeId:'episode-fixture', chapter:1, durationMs:1800, seed:picture(1), makePilot:pilot};
+  const visualReviewer=async({plan})=>({models:['fixture-argon','fixture-decisions'],frames:plan.frames,final:plan.final,
+    camera:{argon:true,decisions:.9},events:plan.pairs.map(p=>({...p,argon:'none',decisions:'none',confidence:.9}))});
+  return {captureDir, outputDir, visualReviewer, episodeId:'episode-fixture', chapter:1, durationMs:1800, seed:picture(1), makePilot:pilot};
 }
 
 test('encoder preflight fails before opening a paid session and pre-canceled renders never open', async t => {
@@ -166,4 +168,32 @@ test('the reveal begins on the preceding image, then keeps every new native fram
   assert.ok(Math.abs(decoded[(sequence.length+15)*stride]-jpeg.decode(last).data[0])<=3);
   assert.deepEqual(result.finalFrame,last);
   await result.dispose();
+});
+
+test('a visual veto on actual archived frames prevents a playable file from being published',async t=>{
+  const {renderSegment,bufferedEncoderReady}=await implementation;
+  if (!bufferedEncoderReady()) return t.skip('FFmpeg required for integration test');
+  const opts=await fixture(t),run=join(opts.captureDir,'runs','photo-round-veto');
+  const image=picture(5);
+  const launchLive=live=>{
+    setImmediate(async()=>{
+      await mkdir(run,{recursive:true});
+      await Promise.all(['00001.frame','00002.frame'].map(f=>writeFile(join(run,f),image)));
+      live.onMessage({frame:image.toString('base64')});
+      await writeFile(join(run,'session.json'),JSON.stringify({episodeId:opts.episodeId,chapter:1,
+        terminal:'completed',fps:24,frames:2,playMode:live.playMode}));
+      live.onClose('completed');
+    });
+    return {send(){},stop(){}};
+  };
+  let reviewed=0;
+  const visualReviewer=async input=>{
+    reviewed++;assert.equal(input.path,run);
+    assert.deepEqual(await readFile(join(input.path,'00001.frame')),image);
+    const r=await opts.visualReviewer(input);r.camera.decisions=.12;return r;
+  };
+  await assert.rejects(renderSegment({...opts,launchLive,visualReviewer}),{code:'VISUAL_REJECTION'});
+  assert.equal(reviewed,1);
+  assert.deepEqual(await readdir(opts.outputDir),[]);
+  assert.equal(JSON.parse(await readFile(join(run,'visual-review.json'),'utf8')).camera.decisions,.12);
 });

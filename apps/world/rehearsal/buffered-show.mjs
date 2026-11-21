@@ -133,7 +133,7 @@ export function createBufferedShow({id, seed, start, deadline, render, onReceipt
           return;
         }
       }
-      error = visual ? cause.message : 'The next hallway scene could not be generated.';
+      error = visual || cause?.code === 'VISUAL_REVIEW_UNAVAILABLE' ? cause.message : 'The next hallway scene could not be generated.';
       for (const pick of batch) onReceipt(pick,false,error);
     }).finally(() => { worker = null; });
   }

@@ -1,3 +1,4 @@
+import {selectReviewFrames, reviewFilmedFrames, filmedVeto} from './filmed-review.mjs';
 import { execFile, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -212,7 +213,7 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
 
 export async function renderSegment({
   seed, picks = [], durationMs, episodeId, chapter = 1, continuation = chapter > 1, makePilot, captureDir,
-  outputDir = tmpdir(), initialFear = 0, reactionTailMs = 0, signal, onStart, launchLive = openLive, ffmpegPath,
+  outputDir = tmpdir(), initialFear = 0, reactionTailMs = 0, signal, onStart, launchLive = openLive, ffmpegPath, visualReviewer = reviewFilmedFrames,
 }) {
   signal?.throwIfAborted();
   if (!isJPEG(seed) || !Number.isSafeInteger(durationMs) || durationMs <= 0 || !episodeId ||
@@ -252,6 +253,13 @@ export async function renderSegment({
     }
     const finalFrame = await readFile(join(path, String(frameCount).padStart(5,'0') + '.frame'));
     if (!isJPEG(finalFrame)) throw Error('The final native frame was not a complete JPEG.');
+    const plan=selectReviewFrames(evidence,frameCount,fps);
+    evidence.visualReview=await visualReviewer({plan,path,captureDir,signal});
+    signal?.throwIfAborted();
+    const veto=filmedVeto(evidence,evidence.visualReview);
+    // This sidecar contains frame numbers, classifications and probabilities only.
+    await writeFile(join(path,'visual-review.json'),JSON.stringify(evidence.visualReview),{mode:0o600});
+    if (veto) throw Object.assign(Error(veto),{code:'VISUAL_REJECTION'});
     const partial = join(work,'encoding.mp4'), filePath = join(work,'segment.mp4');
     const openingHold = continuation ? Math.round(fps*2/3) : 0;
     const outputFrames = frameCount + openingHold;
