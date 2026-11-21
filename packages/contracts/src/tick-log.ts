@@ -3,7 +3,15 @@ import { z } from "zod";
 import { Driver, Id, Ms } from "./common.js";
 import { Action, Perception, TickMode } from "./tick-response.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0"; // 1.1.0: optional `reaction`
+
+/**
+ * What Brain observed the robot do on this tick, set only on the tick it was
+ * observed. `unclear` flags a reaction Brain cannot tell apart (for example a
+ * stall while pushing forward); consumers should not score it.
+ */
+export const Reaction = z.enum(["avoid", "stumble", "recover", "unclear"]);
+export type Reaction = z.infer<typeof Reaction>;
 
 export const TickLog = z.object({
   episodeId: Id,
@@ -18,5 +26,6 @@ export const TickLog = z.object({
   rationale: z.string().max(60),
   successClaim: z.boolean(),
   policyVersion: z.string().min(1),
+  reaction: Reaction.optional(),
 });
 export type TickLog = z.infer<typeof TickLog>;

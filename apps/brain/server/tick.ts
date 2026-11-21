@@ -1,4 +1,5 @@
 // Core of POST /api/brain/tick, without HTTP: validate → perceive → control → respond.
+import type { Reaction } from "@poltergeist/contracts/tick-log.js";
 import { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import { initialState, step, type ControllerState } from "./controller.js";
@@ -27,6 +28,11 @@ export class TickHandler {
 
   /** Decide on an already-validated request. */
   async run(req: TickRequest): Promise<TickResponse> {
+    return (await this.decide(req)).response;
+  }
+
+  /** Decide, and also return what only the TickLog carries (the observed reaction). */
+  async decide(req: TickRequest): Promise<{ response: TickResponse; reaction?: Reaction }> {
     const now = this.deps.now ?? (() => performance.now());
     const started = now();
     const task = this.deps.taskFor(req.episodeId);
@@ -51,7 +57,7 @@ export class TickHandler {
     const ctl = seen.scene ? stepNav(prev, seen.scene, req, policy) : step(prev, seen, req, policy);
     this.states.set(req.episodeId, ctl.state);
 
-    return TickResponse.parse({
+    const response = TickResponse.parse({
       episodeId: req.episodeId,
       seq: req.seq,
       t: req.t,
@@ -63,6 +69,7 @@ export class TickHandler {
       policyVersion: policy.version,
       brainLatencyMs: Math.round(now() - started),
     });
+    return ctl.reaction ? { response, reaction: ctl.reaction } : { response };
   }
 
   reset(episodeId: string): void {

@@ -1,6 +1,7 @@
 // The player's hands: a pure function (state, seen, req, policy) → next step.
 import type { Point } from "@poltergeist/contracts/common.js";
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
+import type { Reaction } from "@poltergeist/contracts/tick-log.js";
 import type { Action, TickMode } from "@poltergeist/contracts/tick-response.js";
 import type { Resolved } from "./perception/resolve.js";
 import type { Policy } from "./policy.js";
@@ -15,6 +16,8 @@ export interface ControllerState {
   /** Second half of a two-tick unstick. */
   pending?: Action;
   lastTrack?: { action: Action; t: number };
+  /** Whether the previous third-person tick saw the robot stumbling. */
+  stumbling?: boolean;
 }
 
 export interface ControllerOutput {
@@ -23,6 +26,8 @@ export interface ControllerOutput {
   mode: TickMode;
   rationale: string;
   successClaim: boolean;
+  /** TickLog 1.1.0 `reaction`, only on the tick it was observed. */
+  reaction?: Reaction;
 }
 
 export const initialState = (): ControllerState => ({ lost: 0, searchSteps: 0, stuckTicks: 0, successTicks: 0, verifySteps: 0 });
@@ -73,7 +78,8 @@ export function step(prev: ControllerState, seen: Resolved, req: TickRequest, po
     s.successTicks = 0;
     s.emaPoint = undefined;
     s.pending = hold("ArrowLeft", 300);
-    return out(hold("S", 400), "unstick", "stuck, backing up");
+    // A stall while pushing W could be a collision or a stumble: flag, don't score.
+    return { ...out(hold("S", 400), "unstick", "stuck, backing up"), reaction: "unclear" };
   }
 
   let perception = seen.perception;

@@ -3,7 +3,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
-import { TickLog } from "@poltergeist/contracts/tick-log.js";
+import { TickLog, type Reaction } from "@poltergeist/contracts/tick-log.js";
 import { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import type { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import type { TickHandler } from "./tick.js";
@@ -19,7 +19,7 @@ export interface BrainServerOptions {
 const error = (code: string, message: string) => ({ error: { code, message } });
 
 /** After responding (C17 step 5): write the frame and append the TickLog. */
-function recordTick(dataDir: string, req: TickRequest, res: TickResponse): void {
+function recordTick(dataDir: string, req: TickRequest, res: TickResponse, reaction?: Reaction): void {
   const dir = join(dataDir, "episodes", req.episodeId);
   const framePath = join("data", "episodes", req.episodeId, "frames", `${req.seq}.jpg`).replaceAll("\\", "/");
   mkdirSync(join(dir, "frames"), { recursive: true });
@@ -37,6 +37,7 @@ function recordTick(dataDir: string, req: TickRequest, res: TickResponse): void 
     rationale: res.rationale,
     successClaim: res.successClaim,
     policyVersion: res.policyVersion,
+    ...(reaction ? { reaction } : {}),
   });
   appendFileSync(join(dir, "ticks.jsonl"), JSON.stringify(log) + "\n");
 }
@@ -53,14 +54,15 @@ export function buildServer(opts: BrainServerOptions): FastifyInstance {
       return reply.code(400).send(error("INVALID", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ").slice(0, 500)));
     }
     let res: TickResponse;
+    let reaction: Reaction | undefined;
     try {
-      res = await opts.handler.run(parsed.data);
+      ({ response: res, reaction } = await opts.handler.decide(parsed.data));
     } catch (e) {
       return reply.code(400).send(error("INVALID", String((e as Error).message).slice(0, 200)));
     }
     reply.raw.once("finish", () => {
       try {
-        recordTick(opts.dataDir, parsed.data, res);
+        recordTick(opts.dataDir, parsed.data, res, reaction);
       } catch (e) {
         app.log.error({ err: e }, "failed to record tick");
       }

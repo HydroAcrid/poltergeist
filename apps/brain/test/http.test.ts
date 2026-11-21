@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TickLog } from "@poltergeist/contracts/tick-log.js";
 import { TickResponse } from "@poltergeist/contracts/tick-response.js";
 import { buildServer } from "../server/http.js";
-import { FixturePerception, WORLD_FLASHLIGHT } from "../server/perception/fixture.js";
+import { FixturePerception, WORLD_FLASHLIGHT, WORLD_HALLWAY } from "../server/perception/fixture.js";
 import { loadPolicy } from "../server/policy.js";
 import { TickHandler } from "../server/tick.js";
 import { EP, req } from "./helpers.js";
@@ -47,6 +47,16 @@ describe("POST /api/brain/tick", () => {
     const log = TickLog.parse(JSON.parse(lines[0]!));
     expect(log.framePath).toBe(`data/episodes/${EP}/frames/3.jpg`);
     expect(log.rationale).toBe("obstacle ahead, turning toward exit");
+  });
+
+  it("records the observed reaction in the TickLog (not in the TickResponse)", async () => {
+    const { app, dataDir } = setup();
+    const stumbling = readFileSync(join(WORLD_HALLWAY, "stumbling.jpg")).toString("base64");
+    const r = await app.inject({ method: "POST", url: "/api/brain/tick", payload: req(0, stumbling) });
+    expect(r.json().reaction).toBeUndefined();
+    await new Promise((res) => setTimeout(res, 20));
+    const log = TickLog.parse(JSON.parse(readFileSync(join(dataDir, "episodes", EP, "ticks.jsonl"), "utf8").trim()));
+    expect(log.reaction).toBe("stumble");
   });
 
   it("rejects an invalid request with 400 and the shared error shape", async () => {

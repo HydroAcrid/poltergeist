@@ -92,13 +92,18 @@ function clock(e: number): string {
 
 export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, policy: Policy): ControllerOutput {
   const n = policy.navigation;
-  const s: ControllerState = { ...prev, lost: 0, searchSteps: 0, pending: undefined };
+  const wasStumbling = prev.stumbling === true;
+  const s: ControllerState = { ...prev, lost: 0, searchSteps: 0, pending: undefined, stumbling: scene.pose === "stumbling" };
+  // TickLog `reaction`: a stumble on its first tick, recovery on the first upright tick after.
+  let reaction: ControllerOutput["reaction"] =
+    scene.pose === "stumbling" ? (wasStumbling ? undefined : "stumble") : wasStumbling ? "recover" : undefined;
   const out = (action: Action, mode: ControllerOutput["mode"], rationale: string, successClaim = false): ControllerOutput => ({
     state: s,
     action,
     mode,
     rationale: rationale.slice(0, 60),
     successClaim: successClaim && req.driver === "brain",
+    ...(reaction ? { reaction } : {}),
   });
 
   // Mid-stumble: don't stack a new move on top of the fall.
@@ -134,6 +139,7 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   if (Math.abs(e) > n.turnDeadband && !toGoal) {
     const key = e > 0 ? "ArrowRight" : "ArrowLeft";
     const why = forward ? "obstacle ahead, turning toward exit" : `exit ${clock(e)} → turning`;
+    if (forward) reaction ??= "avoid";
     return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, 600)) }, "track", why);
   }
 
@@ -142,6 +148,7 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   if (forward) {
     const centred = Math.abs(forward.offset) < forward.halfWidth / 2;
     const left = centred ? e < 0 : forward.offset > 0;
+    reaction ??= "avoid";
     return out({ key: left ? "A" : "D", holdMs: n.stepAsideMs }, "track", `obstacle ahead, stepping ${left ? "left" : "right"}`);
   }
 
