@@ -1,0 +1,2 @@
+The world lane's scaffold must create .gitignore with at least:
+  node_modules/  dist/  data/  .env  .env.*  !.env.example  *.log
