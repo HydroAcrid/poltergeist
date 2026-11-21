@@ -1,3 +1,6 @@
+// Fractions of the uncropped 16:9 image. The camera sits behind the right shoulder.
+export const shoulderFrame = Object.freeze({x:.245, width:.38, height:.71, top:.29, packWidth:.28});
+
 // Use the same lighting direction for the room reconstruction and the live world.
 export const hallwayLighting = [
   "It is after closing time in the photographed venue. The overhead lights are dim.",

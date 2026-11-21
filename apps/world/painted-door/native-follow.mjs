@@ -1,6 +1,6 @@
 // Measure displacement in native frames. All corrections go to Genie's camera controls.
 import jpeg from "jpeg-js";
-import { shoulderFrame } from "./framing-report.mjs";
+import { shoulderFrame,validBodyBox } from "./framing-report.mjs";
 export { shoulderFrame };
 import { placementTarget } from "../rehearsal/placement.mjs";
 
@@ -171,28 +171,28 @@ export function receding(subject) {
     !mustStopTravel(subject) &&
     subject.clearLane === true &&
     subject.rangeTrend === true &&
-    subject.h < 0.345 &&
+    subject.scale < .965 &&
     subject.localRatio !== null &&
     subject.localRatio < 0.965
   );
 }
 export function cameraStep(subject) {
   if (!subject.known || subject.lost || !subject.grounded) return null;
-  const { x, h, vx, vh, top, bottom } = subject;
-  if (top < 0.045 && bottom < 0.93)
+  const { x, scale, vx, vh, top } = subject;
+  if (top < 0.045)
     return { key: "arrow_up", ms: 70, reason: "headroom" };
-  if (bottom > 0.95 && top > 0.1)
-    return { key: "arrow_down", ms: 70, reason: "footroom" };
+  if (top > .49 && scale>.8)
+    return { key: "arrow_down", ms: 70, reason: "shoulder too low" };
   const error = x - shoulderFrame.x;
-  const near = h > shoulderFrame.height * 1.34 || (h > 0.45 && vh > 0.055);
+  const near = scale>1.18 || (scale>1.05 && vh>.05);
   const moving = Math.abs(vx) > 0.021;
   // When the robot is already moving back toward its mark, let it settle.
   const depth = receding(subject);
   const depthStep = depth
     ? {
         key: "key_w",
-        ms: clamp(Math.round(65 + (shoulderFrame.height - h) * 280), 75, 140),
-        reason: "diagonal range follow",
+        ms: clamp(Math.round(145 + (1-scale)*335 - vh*220), 145, 340),
+        reason: "right-shoulder follow",
       }
     : null;
   if (moving && error * vx < 0 && Math.abs(error) > 0.025) return depthStep;
@@ -292,49 +292,30 @@ export function createNativeFollow() {
       localRatio = null;
       return;
     }
-    const b = scene.bodyBox;
-    const valid =
-      Array.isArray(b) &&
-      b.length === 4 &&
-      b.every((v) => Number.isFinite(v) && v >= 0 && v <= 1000) &&
-      b[0] < b[2] &&
-      b[1] < b[3];
-    const footX = (scene.feet.left[1] + scene.feet.right[1]) / 2000;
-    const footY = (scene.feet.left[0] + scene.feet.right[0]) / 2000;
-    const h = valid ? (b[2] - b[0]) / 1000 : anchor.h;
-    const x = valid ? (b[1] + b[3]) / 2000 : footX;
-    const dt = lastBox ? Math.max(1 / 24, (number - lastBox.number) / 24) : 1;
-    const vh = valid && lastBox ? clamp((h - lastBox.h) / dt, -0.3, 0.3) : 0;
-    const vx = lastBox ? clamp((x - lastBox.x) / dt, -0.6, 0.6) : 0;
-    rangeTrend = Boolean(
-      valid &&
-        lastBox &&
-        number - lastBox.number <= 24 * 12 &&
-        h < lastBox.h - 0.009 &&
-        h < lastBox.h * 0.965 &&
-        vh < -0.002,
-    );
-    clearLane =
-      Boolean(placementTarget(scene)) &&
-      scene.threat !== "startling" &&
-      scene.pose !== "stumbling" &&
-      scene.pose !== "startled" &&
-      !scene.obstacles?.some((o) => o.relation === "crossing");
-    localRatio = null;
-    if (valid) lastBox = { number, h, x };
-    lost = false;
-    anchor = {
-      x,
-      y: valid
-        ? (b[0] * 0.45 + b[2] * 0.55) / 1000
-        : clamp(footY - h * 0.48, 0.04, 0.96),
-      h,
-      top: valid ? b[0] / 1000 : clamp(footY - h, 0, 1),
-      bottom: valid ? b[2] / 1000 : footY,
-      vx,
-      vh,
-      known: true,
-    };
+    // A cropped shoulder shot has no visible boots. Track the head, shoulders
+    // and backpack; an extended flashlight arm can widen the full silhouette.
+    const upper=validBodyBox(scene.upperBodyBox);
+    const b=upper ? scene.upperBodyBox : scene.bodyBox;
+    if(!validBodyBox(b)){
+      lost=true;anchor.known=false;lastBox=null;rangeTrend=false;localRatio=null;
+      return;
+    }
+    const h=(b[2]-b[0])/1000;
+    const x=(b[1]+b[3])/2000;
+    const scale=(b[3]-b[1])/1000/(upper?shoulderFrame.packWidth:shoulderFrame.width);
+    const prior=lastBox?.upper===upper ? lastBox : null;
+    const dt=prior?Math.max(1/24,(number-prior.number)/24):1;
+    const vh=prior?clamp((scale-prior.scale)/dt,-.8,.8):0;
+    const vx=prior?clamp((x-prior.x)/dt,-.6,.6):0;
+    rangeTrend=Boolean(prior && number-prior.number<=24*12 &&
+      scale<prior.scale-.02 && scale<prior.scale*.97 && vh<-.004);
+    clearLane=Boolean(placementTarget(scene)) && scene.threat!=='startling' &&
+      scene.pose!=='stumbling' && scene.pose!=='startled' &&
+      !scene.obstacles?.some(o=>o.relation==='crossing');
+    localRatio=null;
+    lastBox={upper,number,scale,x};
+    lost=false;
+    anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     history[index].track = { ...anchor };
     for (let i = index + 1; i < history.length && anchor.known; i++)
       advance(history[i - 1], history[i]);
@@ -356,7 +337,7 @@ export function createNativeFollow() {
     const translation = ["key_d", "key_a", "key_w"].includes(step.key);
     if (!translation && lastStaticCorrection === lastGrounding) return null;
     if (!translation) lastStaticCorrection = lastGrounding;
-    nextCamera = now + step.ms + (translation ? 300 : 520);
+    nextCamera = now + step.ms + (step.key==='key_w' ? 180 : translation ? 300 : 520);
     return { ...step, x: anchor.x, height: anchor.h, velocity: anchor.vx };
   }
   function permits(key) {
@@ -371,9 +352,9 @@ export function characterInstruction(command) {
     command.key
   ];
   if (command.key === "W")
-    return "The robot takes the next two small walking strides toward the signed exit along the visible floor, then waits for its next decision. Its backpack and flashlight stay in view.";
+    return "One continuous trailing shot: the robot takes two small walking strides along the visible floor toward the exit. The eye travels the same two strides behind its right shoulder as the floor passes underneath. The head and orange backpack stay large on the left. Robot and viewpoint pause together.";
   if (command.key === "S")
-    return "The robot takes one small step back along its own approach, then steadies its feet.";
+    return "The robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
   if (command.key === "A" || command.key === "D")
     return command.reaction === "avoid"
       ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, keeping both boots clear. It plants its foot and points its flashlight along the open route.`

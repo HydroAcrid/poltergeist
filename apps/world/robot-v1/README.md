@@ -12,9 +12,9 @@ The shell is scuffed sage enamel. The rounded box head has two warm ring eyes, b
 
 ![The robot exploring the venue hallway after dark](hallway.webp)
 
-Use the bundled [Genie seed](hallway-seed.jpg) at the start of a round. The seed is an adaptation of the venue photo with the character from the turnaround. Reuse this file for repeat hallway runs. For another room, compose a new seed from that room’s photo and this same turnaround. Keep the seed with its replay so the team can reproduce the opening.
+The [bundled seed](hallway-seed.jpg) provides a repeatable reference. The live host adapts the selected venue photo and composes the same robot into the opening frame.
 
-Place the camera above and behind the right shoulder. The robot occupies the lower-left part of the shot. Its right hand, flashlight, boots and the walkable strip stay visible together. Let the pendants fall dim and cool after closing time. The warm torch picks out hazards on the floor. Keep the doorway legible on a projector.
+Place the camera just above and behind the robot’s right shoulder, looking in its direction of travel. Its head, backpack and flashlight fill the left foreground. Its knees can meet the lower edge. Keep the next few steps and the route around a hazard visible in the center and right. Move the camera with the robot at walking pace. Let the pendants fall dim and cool after closing time. The warm torch picks out hazards on the floor. Keep the doorway legible on a projector.
 
 ## Give the audience time to read a haunting
 
@@ -24,6 +24,6 @@ Courtney’s audience view shows the goal and time remaining. When a haunting ha
 
 ## Play one continuous round
 
-The round owner creates one Genie interaction, stores its ID, and seeds it once. Moves, pauses, hauntings and camera updates all use that interaction. A spectator refresh reconnects to the current round. Recognize the robot’s win when its feet cross the signed exit threshold. If time expires first, the audience wins. An interrupted stream is an interrupted round and carries no winner.
+The round owner creates one Genie interaction, stores its ID, and seeds it once. Moves, pauses, hauntings and camera updates all use that interaction. A spectator refresh reconnects to the current round. Confirm the robot’s win from an observed near threshold, forward travel and a subsequent view through the signed doorway. If time expires first, the audience wins. An interrupted stream is an interrupted round and carries no winner.
 
 The two-move and chair recordings are short live experiments. A fresh seed fixes the initial design; review the flashlight hand, backpack and camera position for drift during play.

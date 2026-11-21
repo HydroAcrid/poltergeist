@@ -1,4 +1,4 @@
-import { createHallwayLighting } from './look.mjs';
+import { createHallwayLighting, shoulderFrame } from './look.mjs';
 import { createGhostVeil, createMotionGate } from './veil.mjs';
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const smooth = (v) => {
@@ -24,9 +24,7 @@ export async function createScene(canvas) {
   const veil = createGhostVeil(W,H), motion = createMotionGate();
   let presentingId, fullyCovered = false, revealedAt = null, hasShownWorld = false;
   const grade = createHallwayLighting(ctx, W, H);
-  const [hall, robot, peel] = await Promise.all(
-    ['/hall.webp', '/explorer.webp', '/peel.webp'].map(image),
-  );
+  const [robot, peel] = await Promise.all(['/explorer.webp', '/peel.webp'].map(image));
   let preparedHall=null, cameraDepth=0, cameraPan=0, cameraZoom=1, tickTime=0;
   function followLive(img, _round, now = Date.now()) {
     if (!img.naturalWidth || !img.naturalHeight) return false;
@@ -69,8 +67,7 @@ export async function createScene(canvas) {
     return best>0 ? point : expected;
   }
   let sourceAisle=aislePoint(source,{x:.52,y:.54});
-  const hallAisle=aislePoint(hall,{x:.88,y:.45});
-  let roomAisle=hallAisle;
+  let roomAisle={x:.59,y:.45};
   function openingPhoto(progress) {
     const fit=Math.min(W/source.width,H/source.height);
     const fill=Math.max(W/source.width,H/source.height);
@@ -133,18 +130,15 @@ export async function createScene(canvas) {
   function room(custom, amount = 1) {
     ctx.save();
     ctx.globalAlpha = amount;
-    if (custom && !preparedHall) {
-      ctx.filter = 'brightness(.72) saturate(.72)';
-      cover(source,1.05,.50,.66);ctx.filter='none';
-    } else {
-      cover(custom ? preparedHall : hall,cameraZoom,cameraZoom>1?cameraPan/(cameraZoom-1):0,.72);
-    }
+    const plate=custom && preparedHall ? preparedHall : source;
+    const cx=cameraZoom>1?clamp(.52+cameraPan):.52;
+    cover(plate,cameraZoom,cx,plate.height>plate.width?.58:.60);
     ctx.restore();
   }
   function floor(d, l, custom) {
     return {
-      x: ((.22+.69*d)*cameraZoom-cameraPan)*W,
-      y: ((.84-.19*d+.07*l)*cameraZoom-(cameraZoom-1)*.72)*H,
+      x: (.31 + .35*d + .12*l)*W,
+      y: (1.03 - .50*d + .04*l)*H,
     };
   }
   function adventurer(
@@ -156,9 +150,11 @@ export async function createScene(canvas) {
     flinch = 0,
     entry = 0,
   ) {
-    const p = floor(d, l, custom),
-      h = H * .435 * (1-.13*d+.045*l),
-      w = (h * robot.width) / robot.height;
+    // The opaque sprite is 377px wide inside its original 548px sheet; position
+    // the visible head, shoulders and pack. The knees extend below the screen.
+    const scale = W*shoulderFrame.width/377;
+    const w=robot.width*scale, h=robot.height*scale;
+    const p={x:(shoulderFrame.x+.045*l)*W,y:shoulderFrame.top*H+(robot.height-33)*scale};
     p.x -= entry * .055 * W; p.y += entry*.012*H;
     ctx.save();
     ctx.globalAlpha = opacity;
@@ -271,8 +267,8 @@ export async function createScene(canvas) {
     const depth=r?.depth||0, dt=Math.max(0,Math.min(.08,(now-tickTime)/1000));tickTime=now;
     const blendStep=1-Math.exp(-dt*4.5);
     cameraDepth=forceGame||!r||r.phase==='opening'?0:cameraDepth+(depth-cameraDepth)*blendStep;
-    cameraZoom=1+.58*smooth(cameraDepth/.18);
-    const targetPan=Math.max(0,Math.min(cameraZoom-1,(.22+.69*cameraDepth)*cameraZoom-.32));
+    cameraZoom=1+.22*smooth(cameraDepth);
+    const targetPan=.14*smooth(cameraDepth);
     cameraPan=forceGame||!r||r.phase==='opening'?0:cameraPan+(targetPan-cameraPan)*blendStep;
     const showPhoto=!forceGame && (!r || (opening && elapsed < 5.4));
     if (showPhoto) {
@@ -318,7 +314,7 @@ export async function createScene(canvas) {
     paint,drawLive:followLive,presentLive,
     async setPlate(key) {
       preparedHall=key && key!=='venue' ? await image('/rehearsal/plate?key='+encodeURIComponent(key)) : null;
-      roomAisle=preparedHall ? aislePoint(preparedHall,{x:.88,y:.45}) : hallAisle;
+      roomAisle=preparedHall ? aislePoint(preparedHall,{x:.59,y:.45}) : {x:.59,y:.45};
     },
     async setPhoto(rev) {
       source = await image('/rehearsal/source?v=' + rev);

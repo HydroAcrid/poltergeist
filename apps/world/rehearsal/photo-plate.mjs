@@ -6,11 +6,10 @@ import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
 const framing = [
-  'Create one wide 16:9 cinematic environment background plate for a third-person game with an oblique travelling camera.',
-  'The FIRST image is a new photo of the venue. Preserve its distinctive architecture, materials, doors, lamps, wall art and colors. Remove people, screens containing text, and personal possessions.',
-  'The SECOND image demonstrates CAMERA ANGLE AND COMPOSITION ONLY. Reconstruct the FIRST room from a diagonal travelling viewpoint from behind and to the RIGHT of a character moving toward screen-right, about 55 degrees off the travel direction. Do not copy the second room’s decor.',
-  'The hero travels left to right across the screen. Extend the photographed hallway through a long succession of connected bays. Keep the original materials and landmarks in the near bay, then add a sequence of booths, alcoves and pools of lamp light farther ahead. Leave many strides between landmarks. The single reachable exit is distant beyond the last bay. Show depth down the far side of the booths. The travel line projects from lower-left toward upper-right, with most of the travel horizontal and a little into depth.',
-  'Frame a broad walkable strip from 84 percent image height on the left to 64 percent on the right, an entry on the far left and one illuminated exit doorway on the far right. Keep this strip open and visible on a projector.',
+  'Create one wide 16:9 empty hallway background for a close right-shoulder adventure camera.',
+  'The FIRST photo is the actual venue. Preserve its architecture, materials, floor, doors, lamps and recognizable artwork. Clear the people, personal possessions and screens.',
+  'The SECOND image shows the trailing camera direction. Reconstruct the FIRST room looking down its aisle, from eye level directly behind and slightly right of a small traveler. The travel direction is within 15 degrees of the optical axis. Reserve the left foreground for a large visible head, shoulders and backpack that will be added later.',
+  'The floor recedes from the lower central foreground toward a vanishing point just right of center, about 60 percent across. Keep the next few steps, adjacent gaps and a reachable illuminated exit visible in the middle and right of the image. Extend the photographed hall through successive recognizable lamp-lit bays. Near furniture at the sides gives moving perspective while keeping the route open.',
   hallwayLighting,
   'Leave out people, robots, ghosts, obstacles, interface, labels and text.',
 ].join(' ');

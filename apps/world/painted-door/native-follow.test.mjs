@@ -14,8 +14,9 @@ const still = {
   grounded: true,
   known: true,
   lost: false,
-  x: 0.265,
-  h: 0.385,
+  x: 0.245,
+  h: 0.71,
+  scale:1,
   vx: 0,
   vh: 0,
   top: 0.435,
@@ -40,8 +41,8 @@ function uniform(value) {
 }
 
 test("keeps a steady native shot for stationary, small or enlarged on-mark subjects", () => {
-  for (const h of [0.12, 0.385, 0.76]) {
-    assert.equal(cameraStep({ ...still, h }), null);
+  for (const scale of [.45,1,1.25]) {
+    assert.equal(cameraStep({ ...still, scale }), null);
   }
 });
 
@@ -62,27 +63,27 @@ test("lateral truck keeps pace in both directions and never dollies toward the r
 
 test("a close subject never triggers a forward key; small pan covers an off-mark rest", () => {
   assert.equal(
-    cameraStep({ ...still, x: 0.54, h: 0.57, vx: 0.11 }).key,
+    cameraStep({ ...still, x: 0.54, scale:1.24, vx: 0.11 }).key,
     "arrow_right",
   );
   assert.equal(
-    cameraStep({ ...still, x: 0.1, h: 0.6, vx: -0.06 }).key,
+    cameraStep({ ...still, x: 0.1, scale:1.22, vx: -0.06 }).key,
     "arrow_left",
   );
-  assert.equal(cameraStep({ ...still, vx: 0.06, h: 0.51, vh: 0.09 }), null);
+  assert.equal(cameraStep({ ...still, vx:0.06,scale:1.12,vh:0.09 }), null);
   assert.equal(cameraStep({ ...still, x: 0.48, vx: 0 }).key, "arrow_right");
 });
 
-test("a clipped head or boots gets one brief tilt per fresh sighting, never during a hold", () => {
+test("accepts cropped boots; only a clipped head gets a brief tilt per sighting", () => {
   const tracker = createNativeFollow();
   for (const [frame, box, expected] of [
-    [1, [435, 205, 990, 325], "arrow_down"],
+    [1, [295, 65, 1000, 425], null],
     [6, [15, 205, 715, 325], "arrow_up"],
   ]) {
     tracker.push(image, frame);
     tracker.observe(sighting(box), frame);
     assert.equal(tracker.correction(1000 * frame, false), null);
-    assert.equal(tracker.correction(1000 * frame)?.key, expected);
+    assert.equal(tracker.correction(1000 * frame)?.key ?? null, expected);
     assert.equal(tracker.correction(1000 * frame + 1000), null);
   }
 });
@@ -158,7 +159,7 @@ test("navigation controls cue the avatar once; avoid and notice preserve the int
 test("bounded depth component needs both independently measured shrinkage and fresh local shrinkage", () => {
   const receding = {
     ...still,
-    h: 0.25,
+    scale:.65,
     vx: 0.11,
     x: 0.35,
     rangeTrend: true,
@@ -168,12 +169,12 @@ test("bounded depth component needs both independently measured shrinkage and fr
   const correction = cameraStep(receding);
   assert.equal(correction.key, "key_w");
   assert.equal(correction.lateralKey, "key_d");
-  assert.ok(correction.ms >= 75 && correction.ms <= 140);
+  assert.ok(correction.ms >=145 && correction.ms <=340);
   for (const override of [
     { known: false },
     { lost: true },
     { grounded: false },
-    { h: 0.38 },
+    { scale:1 },
     { rangeTrend: false },
     { localRatio: null },
     { localRatio: 1 },
@@ -182,5 +183,20 @@ test("bounded depth component needs both independently measured shrinkage and fr
   ]) {
     assert.notEqual(cameraStep({ ...receding, ...override })?.key, "key_w");
   }
-  assert.equal(cameraStep({ ...receding, h: 0.53, vx: 0, x: 0.265 }), null);
+  assert.equal(cameraStep({ ...receding, scale:1.30,vx:0,x:.245 }), null);
+});
+
+test('upper body remains a valid camera anchor when both boots fall below the frame',()=>{
+  const tracker=createNativeFollow();
+  tracker.push(image,1);
+  tracker.observe({visible:true,bodyBox:[290,55,1000,435],upperBodyBox:[290,75,840,355],feetVisible:false},1);
+  assert.equal(tracker.permits('W'),true);
+  assert.equal(tracker.status().scale,1);
+  assert.equal(tracker.correction(1000),null);
+  tracker.push(image,6);
+  tracker.observe({visible:true,bodyBox:[290,55,1000,540],upperBodyBox:[290,75,840,355],feetVisible:false},6);
+  assert.equal(tracker.status().rangeTrend,false,'turning the flashlight alone must not change chase distance');
+  tracker.push(image,11);
+  tracker.observe({visible:true,feetVisible:false},11);
+  assert.equal(tracker.permits('W'),false);
 });

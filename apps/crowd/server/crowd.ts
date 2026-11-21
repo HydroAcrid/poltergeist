@@ -232,19 +232,36 @@ export class CrowdService {
     return [...this.haunts.values()].filter((h) => h.status === "queued").sort(fifo);
   }
 
-  state(deviceId: string): CrowdState {
+  state(deviceId: string, requestedPage?: number): CrowdState & {
+    waiting?: { page: number; size: number; total: number; myPositions: Record<string, number> }
+  } {
     this.expireStaleRound();
     const mine = [...this.haunts.values()]
       .filter((h) => h.deviceId === deviceId)
       .sort((a, b) => fifo(b, a))
       .map((h) => toPublic(h, true));
+    let queue = this.eligible();
+    let waiting;
+    if (requestedPage !== undefined) {
+      const size = 15;
+      const total = Math.max(0, queue.length - 1); // the head is featured on every page
+      const page = Math.min(requestedPage, Math.max(0, Math.ceil(total / size) - 1));
+      const start = 1 + page * size;
+      const myPositions: Record<string, number> = {};
+      for (const [index, h] of queue.entries()) {
+        if (h.deviceId === deviceId) myPositions[h.hauntId] = index + 1;
+      }
+      waiting = { page, size, total, myPositions };
+      queue = [...queue.slice(0, 1), ...queue.slice(start, start + size)];
+    }
     return {
+      ...(waiting ? { waiting } : {}),
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
       ...(this.active ? { roundEndsAt: this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       you: { ghostName: this.ghostName(deviceId) },
       mine,
-      queue: this.eligible().map((h) => toPublic(h)),
+      queue: queue.map((h) => toPublic(h)),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
     };
   }

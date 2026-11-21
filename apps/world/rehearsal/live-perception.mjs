@@ -15,7 +15,7 @@ export async function inspectRoom(ai, image, signal) {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: image } },
           {
-            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return each boot touching the floor and a tight head-to-boots bodyBox [top,left,bottom,right]. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. The robot is filmed from a trailing diagonal chase camera. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
+            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return the tight VISIBLE silhouette bodyBox [top,left,bottom,right], and upperBodyBox around head, shoulders and backpack only. Indicate feetVisible only when both boots visibly touch the floor; when cropped use [0,0] placeholders for left and right. The camera trails close over its right shoulder; the knees and boots often fall below frame. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. For doorwayProgress use at-threshold only when the passable signed doorway or its sill is visibly close at the bottom edge under the player. Use through only when the near jamb/sill visibly passes beside or behind the camera and the space beyond the doorway is now occupied. Otherwise use approaching or unclear. A distant exit sign is insufficient. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
           },
         ],
       },
@@ -33,6 +33,9 @@ export async function inspectRoom(ai, image, signal) {
           robotVisible: { type: 'boolean' },
           goalVisible: { type: 'boolean' },
           rightFloorVisible: {type:'boolean'},
+          feetVisible: {type:'boolean'},
+          doorwayProgress: {type:'string',enum:['approaching','at-threshold','through','unclear']},
+          upperBodyBox: {type:'array',items:{type:'integer'},minItems:4,maxItems:4},
           bodyBox: {type:'array',items:{type:'integer'},minItems:4,maxItems:4},
           threat: { type: 'string', enum: ['startling', 'ordinary', 'unclear'] },
           left: point,
@@ -63,7 +66,7 @@ export async function inspectRoom(ai, image, signal) {
           'robotVisible',
           'goalVisible',
           'rightFloorVisible',
-          'bodyBox',
+          'bodyBox', 'upperBodyBox', 'feetVisible', 'doorwayProgress',
           'threat',
           'left',
           'right',
@@ -82,14 +85,23 @@ export async function inspectRoom(ai, image, signal) {
       Array.isArray(p) &&
       p.length === n &&
       p.every((c) => Number.isInteger(c) && c >= 0 && c <= 1000);
-  if (!v.robotVisible || !valid(v.left, 2) || !valid(v.right, 2))
+  const validBox = (b) => valid(b,4) && b[0]<b[2] && b[1]<b[3];
+  const feetVisible = v.feetVisible && valid(v.left,2) && valid(v.right,2);
+  if (!v.robotVisible || (!feetVisible && !validBox(v.bodyBox)))
     return { visible: false, obstacles: [] };
+  const centre = validBox(v.bodyBox) ? Math.round((v.bodyBox[1]+v.bodyBox[3])/2) : 0;
+  // Ground-plane projection only. Never publish these estimates as observed boot positions.
+  const feet = feetVisible ? {left:v.left, right:v.right} : {
+    left:[1000,Math.max(0,centre-20)], right:[1000,Math.min(1000,centre+20)],
+  };
   return {
-    visible: true,
-    ...(valid(v.bodyBox,4) && v.bodyBox[0]<v.bodyBox[2] && v.bodyBox[1]<v.bodyBox[3] ? {bodyBox:v.bodyBox} : {}),
+    visible: true, feetVisible: Boolean(feetVisible), feet,
+    doorwayProgress: v.doorwayProgress,
+    ...(validBox(v.bodyBox) ? {bodyBox:v.bodyBox} : {}),
+    ...(validBox(v.upperBodyBox) ? {upperBodyBox:v.upperBodyBox} : {}),
     threat: ['startling','ordinary'].includes(v.threat) ? v.threat : 'unclear',
     rightFloorVisible: v.rightFloorVisible===true,
-    feet: { left: v.left, right: v.right },
+
     ...(valid(v.ahead,2)?{ahead:v.ahead}:{}),
     ...(v.goalVisible && valid(v.goal, 2) ? { goal: v.goal } : {}),
     pose: v.pose,

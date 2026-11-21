@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
+import { canCrossThreshold, observedCrossing } from './crossing.mjs';
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
 import { createPlacementController } from './placement.mjs';
@@ -30,6 +31,8 @@ export async function registerStage(
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
+  let lobbyOpenedAt = null;
+  let crossing = {};
   let round = null,
     tickPending = false,
     number = 0,
@@ -43,7 +46,7 @@ export async function registerStage(
   const stockPlate = readFileSync(resolve(root, 'long-hall.webp'));
   const plates = createPlateCache({
     captureDir,
-    reference: stockPlate,
+    reference: readFileSync(resolve(root, '../robot-v1/hallway.webp')),
     generate: generatePlate,
   });
   let sourceKey = 'venue';
@@ -253,6 +256,7 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
+              if (m.navigationMoved && m.key === 'W') crossing.forwardAt = Date.now();
               if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') placement?.moved();
               if (m.injected && r.phase === 'playing')
                 placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
@@ -263,7 +267,7 @@ export async function registerStage(
                 Date.now() < r.deadline &&
                 !pendingWinner
               ) {
-                r.trackedFeet = m.scene.visible
+                r.trackedFeet = m.scene.visible && m.scene.feetVisible !== false
                   ? [0, 1].map((i) => Math.round((m.scene.feet.left[i] + m.scene.feet.right[i]) / 2))
                   : null;
                 r.trackedAt = m.observedAt;
@@ -274,11 +278,15 @@ export async function registerStage(
                 r.action = decision.rationale;
                 r.observed = m.observed;
                 placement?.observe(m.scene, m.observed, m.observedAt);
-                if (decision.successClaim || r.fear >= 3) {
-                  pendingWinner = decision.successClaim ? 'robot' : 'audience';
+                const crossed = observedCrossing(crossing, m.scene, m.observedAt);
+                if (crossed || r.fear >= 3) {
+                  pendingWinner = crossed ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
                 } else if (placement?.navigationPaused()) {
                   r.action = 'Assessing the path';
+                } else if (canCrossThreshold(crossing, m.scene, decision)) {
+                  r.action = 'Stepping through the exit';
+                  live.send({ key: 'W', ms: 260 });
                 } else if (decision.action.key !== 'NOOP') {
                   live.send(placement.characterCommand(decision));
                 }
@@ -410,8 +418,24 @@ export async function registerStage(
     live?.stop();
     for (const stream of viewers) stream.end();
   });
+  function lobbyState() {
+    const plate = plateStatus();
+    const phase = round?.phase === 'ended' ? 'ended'
+      : round?.phase === 'playing' ? 'playing'
+      : round ? 'starting' : lobbyOpenedAt == null ? 'before-photo' : 'lobby';
+    return {
+      phase, openedAt: lobbyOpenedAt,
+      ready: lobbyOpenedAt != null && (!captureDir || plate.plateReady),
+      preparing: plate.platePreparing, error: plate.plateError,
+    };
+  }
+  app.get('/rehearsal/lobby', async (_req, reply) => {
+    reply.header('cache-control', 'no-store');
+    return lobbyState();
+  });
   app.get('/rehearsal/state', async () => ({
     round,
+    lobby: lobbyState(),
     number,
     queue: [...queue.values()],
     canLive: !!captureDir,
@@ -449,9 +473,14 @@ export async function registerStage(
     number++;
     liveFrame = null;
     pendingWinner = null;
+    crossing = {};
     placement = null;
     publicStatus = '';
     round = newRound(newId('ep'), Date.now());
+    if (lobbyOpenedAt != null) {
+      round.openedAt = lobbyOpenedAt;
+      round.deadline = Date.now();
+    }
     round.live = paid;
     pilot = paid ? makePilot() : null;
     if (paid) {
@@ -463,7 +492,7 @@ export async function registerStage(
         },r.id);
       }, { cueLeadMs: 1800 });
     }
-    return { id: round.id, openingMs };
+    return { id: round.id, openingMs: lobbyOpenedAt == null ? openingMs : 0 };
   });
   app.addContentTypeParser(
     'image/jpeg',
@@ -484,6 +513,8 @@ export async function registerStage(
       return reply.code(400).send({ error: 'Choose a readable photo.' });
     photo = b;
     sourceKey = photoKey(b);
+    lobbyOpenedAt = Date.now();
+    if (captureDir) plates.prepare(sourceKey, photo);
     custom = true;
     revision++;
     round = null;
@@ -495,6 +526,7 @@ export async function registerStage(
       return reply.code(409).send({ error: 'Change photos between rounds.' });
     photo = basePhoto;
     sourceKey = 'venue';
+    lobbyOpenedAt = Date.now();
     custom = false;
     revision++;
     round = null;

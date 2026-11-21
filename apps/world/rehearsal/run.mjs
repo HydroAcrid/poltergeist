@@ -18,7 +18,7 @@ process.env.PG_ALLOW_GENIE = paidHost ? '1' : '0';
 if (paidHost) {
   const capture =
     process.env.PG_CAPTURE_DIR || resolve(root, 'apps/world/painted-door');
-  const envFile = resolve(capture, '../../../.env');
+  const envFile = process.env.PG_WORLD_ENV_FILE || resolve(capture, '../../../.env');
   if (
     !existsSync(resolve(capture, 'node_modules/@google/genai/package.json')) ||
     !existsSync(envFile)

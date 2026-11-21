@@ -61,76 +61,56 @@ async function openStage(t, generatePlate) {
   };
 }
 
-test('only an explicit host request can prepare a photo and the live room must use that photo’s ready plate', async (t) => {
-  let calls = 0,
-    finish;
-  const req = await openStage(t, async ({ photo, reference }) => {
-    calls++;
-    assert.deepEqual(photo, venue);
-    assert.deepEqual(reference, stock);
-    await new Promise((done) => (finish = done));
-    return { bytes: photo, mime: 'image/jpeg' };
+test('a host photo opens the lobby and prepares one matching plate while guests wait for Start', async (t) => {
+  const jobs = [];
+  const shoulder = readFileSync(resolve(root, '../robot-v1/hallway.webp'));
+  const req = await openStage(t, ({ photo, reference }) => {
+    assert.deepEqual(reference, shoulder);
+    return new Promise((resolve) => jobs.push({
+      photo,
+      finish: () => resolve({ bytes: photo, mime: 'image/jpeg' }),
+    }));
   });
+  const lobby = async () => (await req('GET', 'lobby')).data;
+  assert.equal((await lobby()).phase, 'before-photo');
   assert.deepEqual((await req('GET', 'plate')).data, stock);
+  assert.equal((await req('POST', 'photo', venue, false)).status, 403);
+  assert.equal(jobs.length, 0);
+
   const { data: upload } = await req('POST', 'photo', venue);
-  assert.equal((await req('GET', 'state')).data.plateReady, false);
+  const waiting = await lobby();
+  assert.equal(waiting.phase, 'lobby');
+  assert.equal(waiting.preparing, true);
+  assert.equal(waiting.ready, false);
   assert.equal((await req('GET', 'plate')).status, 409);
-  assert.equal(
-    (await req('POST', 'prepare-photo', { revision: upload.revision }, false))
-      .status,
-    403,
-  );
-  assert.equal(
-    (
-      await req('POST', 'start', {
-        mode: 'genie',
-        seed: venue.toString('base64'),
-      })
-    ).status,
-    409,
-  );
-  assert.equal(
-    calls,
-    0,
-    'Upload and blocked start must make zero generation calls',
-  );
-  assert.equal(
-    (await req('POST', 'prepare-photo', { revision: upload.revision })).status,
-    202,
-  );
-  assert.equal(
-    (await req('POST', 'prepare-photo', { revision: upload.revision })).data
-      .platePreparing,
-    true,
-  );
-  assert.equal(calls, 1);
+  assert.equal((await req('POST', 'prepare-photo', { revision: upload.revision }, false)).status, 403);
+  assert.equal((await req('POST', 'start', {mode: 'genie', seed: venue.toString('base64')})).status, 409);
+  assert.equal((await req('POST', 'prepare-photo', { revision: upload.revision })).status, 202);
+  assert.equal(jobs.length, 1);
+  assert.deepEqual(jobs[0].photo, venue);
+
   await req('POST', 'photo', second);
-  finish();
+  assert.equal(jobs.length, 2);
+  jobs[0].finish();
   await turn();
-  assert.equal(
-    (await req('GET', 'state')).data.plateReady,
-    false,
-    'Late completion must not replace the newer room',
-  );
-  assert.equal(
-    (await req('POST', 'prepare-photo', { revision: upload.revision })).status,
-    409,
-  );
+  assert.equal((await lobby()).ready, false, 'Late completion must not replace the newer room');
+  assert.equal((await req('POST', 'prepare-photo', { revision: upload.revision })).status, 409);
   await req('POST', 'photo', venue);
   const ready = (await req('GET', 'state')).data;
   assert.equal(ready.plateReady, true);
+  assert.equal(ready.lobby.phase, 'lobby');
+  assert.equal(ready.round, null, 'The crowd can wait after preparation completes');
   assert.deepEqual((await req('GET', 'plate')).data, venue);
   assert.equal((await req('POST', 'prepare-photo', {})).status, 200);
-  assert.equal(calls, 1, 'Exact reuploads must reuse the existing plate');
+  assert.equal(jobs.length, 2, 'An exact reupload reuses its prepared plate');
+  jobs[1].finish();
+  await turn();
   const body = { mode: 'genie', seed: second.toString('base64') };
-  assert.equal(
-    (await req('POST', 'start', { ...body, plateKey: 'stale' })).status,
-    409,
-  );
-  assert.equal(
-    (await req('POST', 'start', { ...body, plateKey: ready.plateKey })).status,
-    200,
-  );
+  assert.equal((await req('POST', 'start', { ...body, plateKey: 'stale' })).status, 409);
+  const started = await req('POST', 'start', { ...body, plateKey: ready.plateKey });
+  assert.equal(started.status, 200);
+  assert.equal(started.data.openingMs, 0);
+  assert.equal((await lobby()).phase, 'starting');
 });
 
 test('generation failure exposes a retryable public error without revealing provider details', async (t) => {
@@ -140,7 +120,6 @@ test('generation failure exposes a retryable public error without revealing prov
     return { bytes: second, mime: 'image/jpeg' };
   });
   await req('POST', 'photo', second);
-  await req('POST', 'prepare-photo', {});
   await turn();
   const failed = (await req('GET', 'state')).data;
   assert.equal(failed.plateReady, false);

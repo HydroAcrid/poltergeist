@@ -51,6 +51,7 @@ textarea::placeholder{color:#8f857c}
 .msg.bad{color:var(--bad)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{min-height:44px;padding:0 14px;border-radius:30px;background:transparent;border:1px solid var(--line);color:var(--paper);font-size:15px}
+#queue-pages{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .chip:active{background:var(--raised)}
 .chip.more{display:inline-flex;align-items:center;gap:6px;border-style:dashed;color:var(--amber);text-decoration:none;font-weight:600}
 .send-row{justify-content:space-between;gap:10px}
@@ -171,7 +172,7 @@ ol,ul{list-style:none;margin:0;padding:0}
 
   <section class="screen" id="screen-next" aria-labelledby="h-next" hidden>
     <h1 id="h-next" tabindex="-1">Up next</h1>
-    <p class="lede">Approved ideas, in the order they go into the hallway.</p>
+    <p class="lede">Ideas that don’t fit this round stay in the queue for the next one.</p>
     <div class="card spot" id="upnext"></div>
     <h2>Waiting</h2>
     <div class="switch" role="group" aria-label="Filter ideas">
@@ -179,6 +180,11 @@ ol,ul{list-style:none;margin:0;padding:0}
       <button type="button" id="f-mine" aria-pressed="false">Mine</button>
     </div>
     <ol class="list" id="queue"></ol>
+    <nav id="queue-pages" hidden aria-label="Waiting list pages">
+      <button type="button" class="chip" id="queue-prev">Previous</button>
+      <span id="queue-range" aria-live="polite"></span>
+      <button type="button" class="chip" id="queue-next">Next</button>
+    </nav>
     <a class="next" href="#hallway">Watch the hallway</a>
   </section>
 
@@ -221,6 +227,7 @@ ol,ul{list-style:none;margin:0;padding:0}
   let lastSent = store.get("pg_last_sent", "");
   let state = { episodeActive: false, mine: [], queue: [], hallway: [] };
   let filter = "all";
+  let waitingPage = 0, loadedPage = -1, stateTag = "";
   let pendingMine = [];
   let sending = false;
   let editingRevision = "";
@@ -293,16 +300,26 @@ ol,ul{list-style:none;margin:0;padding:0}
   async function refresh() {
     if (inflight) return;
     inflight = true;
+    const requested = waitingPage;
     try {
-      const { ok, body } = await api("/api/crowd/state");
-      if (ok) {
-        $("offline").hidden = true;
-        if (JSON.stringify(body) !== JSON.stringify(state)) { state = body; markSeen(); render(); }
+      const headers = stateTag && loadedPage === requested ? { "if-none-match": stateTag } : {};
+      const res = await fetch("/api/crowd/state?waitingPage=" + requested, { credentials: "same-origin", headers });
+      if (res.status !== 304 && !res.ok) throw Error("Queue unavailable");
+      $("offline").hidden = true;
+      if (res.status !== 304 && requested === waitingPage) {
+        const body = await res.json();
+        if (requested !== waitingPage) return;
+        waitingPage = loadedPage = body.waiting.page;
+        stateTag = res.headers.get("etag") || "";
+        state = body;
+        markSeen();
+        render();
       }
     } catch {
       $("offline").hidden = false;
     } finally {
       inflight = false;
+      if (requested !== waitingPage && loadedPage !== waitingPage) refresh();
     }
   }
 
@@ -461,7 +478,15 @@ ol,ul{list-style:none;margin:0;padding:0}
     }
     const q = $("queue");
     q.textContent = "";
-    const rest = state.queue.slice(1).map((h, i) => ({ h, i: i + 2 })).filter(({ h }) => filter === "all" || mineIds.has(h.hauntId));
+    const waiting = state.waiting || { page: 0, size: 15, total: 0, myPositions: {} };
+    const offset = waiting.page * waiting.size;
+    const rest = filter === "mine"
+      ? state.mine.map(h => ({ h, i: waiting.myPositions[h.hauntId] })).filter(({ i }) => i > 1).sort((a, b) => a.i - b.i)
+      : state.queue.slice(1).map((h, i) => ({ h, i: offset + i + 2 }));
+    $("queue-pages").hidden = filter !== "all" || waiting.total <= waiting.size;
+    $("queue-prev").disabled = waiting.page === 0;
+    $("queue-next").disabled = offset + waiting.size >= waiting.total;
+    $("queue-range").textContent = (offset + 1) + "–" + Math.min(offset + waiting.size, waiting.total) + " of " + waiting.total;
     if (!rest.length) q.append(el("li", "empty", filter === "all" ? "No other ideas waiting." : "None of your ideas are waiting right now."));
     for (const { h, i } of rest) {
       const li = el("li");
@@ -618,6 +643,13 @@ ol,ul{list-style:none;margin:0;padding:0}
       $("f-mine").setAttribute("aria-pressed", String(f === "mine"));
       render();
     });
+  }
+  for (const [id, direction] of [["queue-prev", -1], ["queue-next", 1]]) {
+    $(id).onclick = () => {
+      if (!state.waiting) return;
+      waitingPage = Math.max(0, Math.min(Math.ceil(state.waiting.total / state.waiting.size) - 1, waitingPage + direction));
+      refresh();
+    };
   }
   addEventListener("online", refresh);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

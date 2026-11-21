@@ -1,6 +1,7 @@
 // The two-phone flow (TODO Tier 0): private receipts, private rejections, a shared FIFO queue
 // with "Up next", All/Mine, rate limits, and the scheduler sending each idea to World once.
 // Runs the real crowd module against an in-memory bus and a fake World; no model calls.
+import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CrowdState, Haunt, HauntDispatch, HauntPublic, HauntSubmitResponse } from "@poltergeist/contracts/haunt.js";
 import { buildTestHub, type TestHub } from "./hub.js";
@@ -408,7 +409,10 @@ describe("operator and page", () => {
     const page = await hub.app.inject({ method: "GET", url: "/haunt" });
     expect(page.statusCode).toBe(200);
     expect(page.headers["content-type"]).toMatch(/text\/html/);
-    expect(page.body.length).toBeLessThan(30_000);
+    const phone = await hub.app.inject({ method: "GET", url: "/haunt", headers: { "accept-encoding": "gzip, deflate, br" } });
+    expect(phone.headers["content-encoding"]).toBe("gzip");
+    expect(phone.rawPayload.byteLength).toBeLessThan(30_000);
+    expect(gunzipSync(phone.rawPayload).toString("utf8")).toBe(page.body);
     expect(page.body).not.toMatch(/<script[^>]+src=|<link[^>]+stylesheet/);
     expect(page.body).toContain("Approved hauntings may appear on the big screen with your ghost name.");
     expect(page.body).not.toMatch(/id="nick"|payload\.displayName/); // names are assigned, never typed or sent

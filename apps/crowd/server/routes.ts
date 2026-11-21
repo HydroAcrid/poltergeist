@@ -1,5 +1,7 @@
 // Crowd HTTP surface (CONTRACTS C17) and the /haunt page.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import QRCode from "qrcode";
 import { CrowdState, HauntSubmitRequest, type ErrorCode } from "@poltergeist/contracts/haunt.js";
@@ -44,6 +46,7 @@ export interface RouteOptions {
 
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
+  let compressedPage: Buffer | undefined;
   const loadPage = () => (page ??= readFileSync(opts.hauntPagePath, "utf8"));
 
   app.post("/api/crowd/haunt", { bodyLimit: 2048 }, async (req, reply) => {
@@ -57,10 +60,26 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
 
   app.get("/api/crowd/presets", async () => crowd.presets);
 
-  app.get("/api/crowd/state", async (req, reply) => {
-    const state = crowd.state(deviceOf(req, reply));
-    reply.header("cache-control", "no-store");
-    return opts.validateResponses ? CrowdState.parse(state) : state;
+  app.get<{ Querystring: { waitingPage?: string } }>("/api/crowd/state", async (req, reply) => {
+    const page = req.query.waitingPage;
+    if (page !== undefined && (typeof page !== "string" || !/^\d{1,8}$/.test(page))) {
+      return fail(reply, 400, "INVALID", "Choose a valid waiting page.");
+    }
+    const state = crowd.state(deviceOf(req, reply), page === undefined ? undefined : Number(page));
+    const { waiting, ...core } = state;
+    const checked = opts.validateResponses ? CrowdState.parse(core) : core;
+    if (!waiting) {
+      reply.header("cache-control", "no-store");
+      return checked;
+    }
+    reply.header("cache-control", "private, no-store");
+    // The validator includes the author's own receipts, page, round and current
+    // order. Two phones must never reuse one another's cached representation.
+    const body = JSON.stringify({ ...checked, waiting });
+    const tag = '"' + createHash("sha256").update(body).digest("base64url") + '"';
+    reply.header("vary", "Cookie").header("etag", tag);
+    if (req.headers["if-none-match"] === tag) return reply.code(304).send();
+    return reply.type("application/json").send(body);
   });
 
   app.get("/api/crowd/scoreboard", async (_req, reply) => {
@@ -114,8 +133,13 @@ export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdServ
     return svg;
   });
 
-  app.get("/haunt", async (_req, reply) => {
-    reply.header("cache-control", "no-cache").type("text/html; charset=utf-8");
+  app.get("/haunt", async (req, reply) => {
+    reply.header("cache-control", "no-cache").header("vary", "Accept-Encoding").type("text/html; charset=utf-8");
+    const encodings = String(req.headers["accept-encoding"] ?? "").split(",").map((e) => e.trim().toLowerCase());
+    if (encodings.includes("gzip")) {
+      reply.header("content-encoding", "gzip");
+      return compressedPage ??= gzipSync(loadPage());
+    }
     return loadPage();
   });
 }

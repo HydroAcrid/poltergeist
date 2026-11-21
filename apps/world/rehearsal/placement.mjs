@@ -354,7 +354,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               send({ pause: true });
               send({ reaction: 'startle' });
             }
-            const visibleStumble = result.contact && scene.pose === 'stumbling';
+            const visibleStumble = scene.feetVisible !== false && result.contact && scene.pose === 'stumbling';
             const visibleStartle =
               result.soleThreat &&
               scene.pose === 'startled' &&
