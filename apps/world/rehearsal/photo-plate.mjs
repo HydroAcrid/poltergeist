@@ -42,7 +42,7 @@ function generatedImage(response) {
 
 class RoomContainsFigure extends Error {}
 
-export async function generatePhotoPlate({ photo, captureDir }) {
+export function venueVisionModels(captureDir) {
   const sdk = createRequire(resolve(captureDir, 'package.json'))(
     '@google/genai',
   );
@@ -51,8 +51,11 @@ export async function generatePhotoPlate({ photo, captureDir }) {
     parseEnv(readFileSync(process.env.PG_WORLD_ENV_FILE || resolve(captureDir, '../../../.env'), 'utf8'))
       .GEMINI_API_KEY;
   if (!key) throw Error('The room generator is unavailable.');
-  const ai = new sdk.GoogleGenAI({ apiKey: key });
-  return generateVerifiedRoom(photo, ai.models);
+  return new sdk.GoogleGenAI({ apiKey: key }).models;
+}
+
+export async function generatePhotoPlate({photo, captureDir}) {
+  return generateVerifiedRoom(photo, venueVisionModels(captureDir));
 }
 
 export async function generateVerifiedRoom(photo, models) {

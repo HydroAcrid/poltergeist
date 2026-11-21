@@ -11,7 +11,7 @@ const second = readFileSync(
 const stock = readFileSync(resolve(root, 'long-hall.webp'));
 const turn = () => new Promise((done) => setImmediate(done));
 
-async function openStage(t, generatePlate) {
+async function openStage(t, generatePlate, reviewSeed = async () => ({passes: true})) {
   const routes = new Map(),
     close = [];
   const app = {
@@ -27,6 +27,7 @@ async function openStage(t, generatePlate) {
     root,
     captureDir: root,
     generatePlate,
+    reviewSeed,
     bus: { subscribe: () => () => {} },
     newId: () => 'test',
     makePilot: () => () => {},
@@ -127,4 +128,28 @@ test('generation failure exposes a retryable public error without revealing prov
   await req('POST', 'prepare-photo', {});
   await turn();
   assert.equal((await req('GET', 'state')).data.plateReady, true);
+});
+
+test('a duplicate or unconfirmed player never starts a paid world, even with a valid JPEG', async t => {
+  let approve;
+  let checks = 0;
+  const req = await openStage(t, undefined, async () => {
+    checks++;
+    return new Promise(done => { approve = done; });
+  });
+  const seed = second.toString('base64');
+  const opening = () => req('POST', 'start', { mode: 'genie', seed });
+  const first = opening();
+  assert.equal((await opening()).status, 409);
+  approve({passes: false});
+  assert.equal((await first).status, 422);
+  assert.equal((await req('GET', 'state')).data.round, null);
+  const outdated = opening();
+  await req('POST', 'reset-photo');
+  approve({passes: true});
+  assert.equal((await outdated).status, 409);
+  const valid = opening();
+  approve({passes: true});
+  assert.equal((await valid).status, 200);
+  assert.equal(checks, 3);
 });

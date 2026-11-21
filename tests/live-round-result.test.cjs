@@ -17,6 +17,7 @@ async function liveStage(t) {
   const root = resolve(__dirname, '../apps/world/rehearsal');
   await registerStage(app, {
     root, captureDir: root,
+    reviewSeed: async () => ({passes: true}),
     newId: () => 'ep_' + launches.length,
     makePilot: () => () => ({ action: { key: 'NOOP' } }),
     bus: {

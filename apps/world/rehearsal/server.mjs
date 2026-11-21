@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
+import { reviewPlayerSeed } from './seed-review.mjs';
 import { canCrossThreshold, observedCrossing } from './crossing.mjs';
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
@@ -27,6 +28,7 @@ export async function registerStage(
     captureDir,
     makePilot,
     generatePlate,
+    reviewSeed = reviewPlayerSeed,
     launchLive = openLive,
     crowdPhone = false,
     hosted = false,
@@ -52,6 +54,8 @@ export async function registerStage(
     generate: generatePlate,
   });
   let sourceKey = 'venue';
+  let checkingPlayer = false;
+  let verifiedSeedKey;
   function plateStatus() {
     const entry = custom ? plates.get(sourceKey) : null;
     const ready = !custom || !!entry?.image;
@@ -476,6 +480,7 @@ export async function registerStage(
   }));
   app.post('/rehearsal/start', async (req, reply) => {
     if (req.headers['x-show-control'] !== '1') return reply.code(403).send();
+    if (checkingPlayer) return reply.code(409).send({ error: 'The opening shot is being checked.' });
     if (round && round.phase !== 'ended')
       return reply.code(409).send({ error: 'A round is already open.' });
     const paid = req.body?.mode === 'genie';
@@ -485,17 +490,35 @@ export async function registerStage(
         return reply.code(409).send({
           error: 'Prepare this photo for Genie before starting a live round.',
         });
-      seed = Buffer.from(req.body?.seed || '', 'base64');
+      const candidate = Buffer.from(req.body?.seed || '', 'base64');
       if (
         !captureDir ||
         !makePilot ||
-        seed.length < 100 ||
-        seed.length > 48000 ||
-        seed.readUInt16BE(0) !== 0xffd8
+        candidate.length < 100 ||
+        candidate.length > 48000 ||
+        candidate.readUInt16BE(0) !== 0xffd8
       )
         return reply
           .code(400)
           .send({ error: 'The live hallway needs a valid camera seed.' });
+      const key = photoKey(candidate);
+      if (key !== verifiedSeedKey) {
+        const checkedRevision = revision;
+        checkingPlayer = true;
+        try {
+          const review = await reviewSeed(candidate, captureDir);
+          if (revision !== checkedRevision)
+            return reply.code(409).send({ error: 'The photo changed. Start with the current photo.' });
+          if (!review.passes)
+            return reply.code(422).send({ error: 'The opening needs one robot seen over its right shoulder. Choose a clear hallway photo and try again.' });
+          verifiedSeedKey = key;
+        } catch {
+          return reply.code(503).send({ error: 'The opening shot could not be checked. Try again.' });
+        } finally {
+          checkingPlayer = false;
+        }
+      }
+      seed = candidate;
     }
     number++;
     liveFrame = null;
