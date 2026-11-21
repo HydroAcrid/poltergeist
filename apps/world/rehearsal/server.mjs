@@ -253,6 +253,7 @@ export async function registerStage(
         r.phase = 'preparing';
         try {
           live = launchLive({
+            episodeId: r.id,
             dir: captureDir,
             seed,
             onMessage: (m) => {

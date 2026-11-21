@@ -87,7 +87,7 @@ async function capture() {
     throw error;
   }
   const out = mkdtempSync(values.photo ? 'runs/photo-round-' : 'runs/painted-door-');
-  const log = { seed: values.photo ? basename(values.photo) : seed, proposal: trick, fps: 24, frames: 0, events: [], terminal: null };
+  const log = { episodeId: process.env.PG_WORLD_EPISODE_ID, seed: values.photo ? basename(values.photo) : seed, proposal: trick, fps: 24, frames: 0, events: [], terminal: null };
   const save = () => writeFileSync(join(out, 'session.json'), JSON.stringify(log, null, 2));
   const record = (action, context = {}) => {
     if (values.round) publish({event: action, move: context.applied, observation: context.forwardObstacle});

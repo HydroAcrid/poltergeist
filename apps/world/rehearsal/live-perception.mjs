@@ -89,14 +89,14 @@ export async function inspectRoom(ai, image, signal) {
   const validBox = (b) => valid(b,4) && b[0]<b[2] && b[1]<b[3];
   const feetVisible = v.feetVisible && valid(v.left,2) && valid(v.right,2);
   if (v.playerCount !== 1 || !v.robotVisible || (!feetVisible && !validBox(v.bodyBox)))
-    return { visible: false, obstacles: [] };
+    return { visible: false, playerCount: v.playerCount, obstacles: [] };
   const centre = validBox(v.bodyBox) ? Math.round((v.bodyBox[1]+v.bodyBox[3])/2) : 0;
   // Ground-plane projection only. Never publish these estimates as observed boot positions.
   const feet = feetVisible ? {left:v.left, right:v.right} : {
     left:[1000,Math.max(0,centre-20)], right:[1000,Math.min(1000,centre+20)],
   };
   return {
-    visible: true, feetVisible: Boolean(feetVisible), feet,
+    visible: true, playerCount: v.playerCount, feetVisible: Boolean(feetVisible), feet,
     doorwayProgress: v.doorwayProgress,
     ...(validBox(v.bodyBox) ? {bodyBox:v.bodyBox} : {}),
     ...(validBox(v.upperBodyBox) ? {upperBodyBox:v.upperBodyBox} : {}),

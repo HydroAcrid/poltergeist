@@ -37,3 +37,23 @@ The projector shows the chosen haunting in a small **Up next** card before World
 Live World captures save a framing report in the run’s `session.json`. It measures robot size, horizontal position and clipping from observed frames. Check the uncut native recording for forward travel alongside the robot, especially during a pause or sidestep. The framing report measures composition and can flag drift even when the robot is still visible.
 
 The host serves on loopback. Any event deployment or audience gateway should expose Courtney’s audience route separately from the host controls.
+
+## What failed in the wind-up penguin rehearsal
+
+On November 21, thirty virtual guests joined the same photo-seeded Genie round. Their phones delivered 37 private receipts, including seven revisions. Four ideas were selected. One reached Genie. The audience won on time with zero observed scares.
+
+The uncut footage failed the gameplay check. A robot was already baked into the generated hallway before the stage added its player. Vision returned a plausible box even when two robots were visible. The visible silhouette narrowed from 36% to 27% of the image in the measured segment. Brain sent seven left sidesteps, one right sidestep and two left turns. It issued no forward or reverse movement. The native camera made two sideways corrections. The word “windup” also triggered the wind effect. Loose papers earned the first on-screen confirmation before the penguins appeared. A penguin later entering the picture gives no evidence of a dodge. [Native frames](calibration/README.md#two-actors-in-the-shoulder-rehearsal)
+
+Several decisions used frames only three to seven frames apart. When the 42-second timer expired the capture had received 261 of its eventual 1,016 frames. The provider finished closing about 27 seconds later, delaying the announced result. The live driver now associates each choice with its source frame, holds while media is too far behind, and pairs an eligible forward stride with native camera movement. The host ends gameplay on the winner signal and tracks connection cleanup separately.
+
+### How to call a live take ready
+
+Compare one continuous native recording with its projector capture. They must show the same single robot passing a fixed piece of hallway furniture at a steady shoulder distance, the actual requested obstacle entering its route, and a visible response before the next instruction. A dodge that leaves fear unchanged is a valid response. If the robot ignores the obstacle or the camera falls behind, record the take as failed. Check that the audience sees the verified cue at the corresponding moment.
+
+To check existing capture evidence without opening a provider session or rendering video, run:
+
+```sh
+npm run rehearsal:review -- /path/to/session.json /path/to/outcome.json
+```
+
+The command checks round identity, observed player count, forward input, sampled framing and the identities in the first and in-path encounter frames. A clean result qualifies the recording for visual review. The next live take still needs to demonstrate forward parallax and a response to an unfamiliar obstacle. Phone load and fixture results measure different parts of the app.

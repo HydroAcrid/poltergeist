@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "check": "node --test tests/*.test.cjs",
+    "rehearsal:review": "node scripts/review-rehearsal.mjs",
     "rehearsal:setup": "npx --yes pnpm@9.15.9 --dir apps/crowd install --frozen-lockfile --ignore-workspace && npx --yes pnpm@9.15.9 --dir apps/brain install --frozen-lockfile --ignore-workspace",
     "rehearsal": "node apps/world/rehearsal/run.mjs",
     "rehearsal:world": "node apps/world/rehearsal/run.mjs --genie"
