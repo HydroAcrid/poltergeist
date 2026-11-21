@@ -124,16 +124,16 @@ async function capture() {
   const follow = stagePilot ? createNativeFollow() : null;
   const moveWindow = createMoveWindow(log.fps);
   const placementView = createPlacementView();
-  let actorStopping=null, actionPending=false, lastRecoveryObservation=-1;
-  const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
   const encounter = createEncounterControls();
   let commands = Promise.resolve(), actorStepTimer;
-  const noteMotion = () => placementView.moved(motionBoundary());
+  let actorStopping=null, actionPending=false, lastRecoveryObservation=-1;
   function heldMove(command, reason) {
     const entry = { observed:command.observed, key:command.key, source:'native', reason };
     record('Move held', entry);
     publish({moveHeld:entry});
   }
+  const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
+  const noteMotion = () => placementView.moved(motionBoundary());
   const cameraAllowed = () => !ending && !encounter.held && Date.now()>=steadyUntil && !placementView.held(Date.now());
   const moving = () => Boolean(cameraPress || actorMoving || actorStopping || actionPending);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
@@ -180,9 +180,9 @@ async function capture() {
     return cameraPress.stride ? !shoulderStride(subject) : !receding(subject);
   }
   async function stopActor(force=false) {
+    clearTimeout(actorStepTimer);
     if(actorStopping) return actorStopping;
     if(!actorMoving && !force) return;
-    clearTimeout(actorStepTimer);
     actorMoving=false;
     noteMotion();
     actorStopping=session.send("Stop the existing explorer on its current floorboards now. Both boots stay planted on those boards while the flashlight and breathing move subtly. Hold camera position, angle and distance until a new movement instruction.");
@@ -193,12 +193,12 @@ async function capture() {
     const lock = follow.status();
     if (unsafeForwardPress(lock) || lock.distanceHeld && cameraPress && !cameraPress.recovery)
       await releaseCamera();
-    if (lock.cameraRecovery) {
-      await stopActor();
     if (encounter.held) {
       if (cameraPress) await releaseCamera();
       return !follow.permits('W');
     }
+    if (lock.cameraRecovery) {
+      await stopActor();
       if (cameraPress?.recovery && !cameraPress.release && cameraAllowed() &&
           lock.observed>cameraPress.observed && lock.observed>=cameraPress.minRenewFrame) {
         // Only post-command, independently verified pixels may extend a held key.
@@ -234,9 +234,9 @@ async function capture() {
       if (ending) return;
       ending = true;
       clearTimeout(gameClock);
+      clearTimeout(actorStepTimer);
       await releaseCamera(true);
       if (winner) {
-      clearTimeout(actorStepTimer);
         log.winner = winner;
         record(winner === 'robot' ? 'Robot reached the exit' : 'Audience wins on time');
         publish({winner});
@@ -264,24 +264,26 @@ async function capture() {
         if (ending) return;
         if (stagePilot && command?.haunt) {
           const haunt = command.haunt;
+          if (!encounter.canPlace(haunt.id, haunt.attempt)) return;
           const lock = follow.status();
           const targetValid=Array.isArray(haunt.target) && haunt.target.length===2 &&
-          if (!encounter.canPlace(haunt.id, haunt.attempt)) return;
             haunt.target.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
           if (!targetValid || !encounter.canPlace(haunt.id, haunt.attempt, haunt.observed) || !placementView.reserve(haunt.observed,follow.permitsPlacement(haunt.observed),moving())) {
             publish({injectionDeferred:haunt.id, attempt:haunt.attempt, observed:haunt.observed});
             record('Held placement for a current single-player view',{id:haunt.id,attempt:haunt.attempt,observed:haunt.observed,holdReason:lock.holdReason});
             return;
           }
+          encounter.placing(haunt.id, haunt.attempt);
           const [y, x] = haunt.target || [];
           const location = Number.isFinite(y) && Number.isFinite(x)
-          encounter.placing(haunt.id, haunt.attempt);
             ? `The robot's planned next footfall is at ${Math.round(x/10)} percent across and ${Math.round(y/10)} percent down this view.`
             : "Place it across the walking line joining the robot’s boots and the next stretch of walkable floor.";
           const instruction = ["Both boots of the one existing explorer stay planted on the same floorboards. It watches with its flashlight while the effect arrives. The observer stays in place at the same angle and distance.", haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
             "Keep the effect, its contact with the aisle, and the stationary explorer in the same shot. Wait here for the next player instruction."].filter(Boolean).join(" ");
           try {
-            moveWindow.settle(log.frames, Date.now(), .5);
+            // A placement leaves the actor and camera still. Its acknowledgement
+            // watermark and the newly visible obstacle qualify the first response
+            // frame. A travel cooldown here dropped that first Brain decision.
             await session.send(instruction);
             const injectedFrame = motionBoundary() - 1;
             encounter.acknowledge(haunt.id, haunt.attempt, injectedFrame);
@@ -347,20 +349,20 @@ async function capture() {
             reason = reasonHeld();
             if (reason) return heldMove(command, reason);
           }
-          actorMoving=['W','A','S','D'].includes(command.key);
-          noteMotion();
           clearTimeout(actorStepTimer);
           encounter.acted();
+          actorMoving=['W','A','S','D'].includes(command.key);
+          noteMotion();
           actionPending=true;
           try { await Promise.all([session.send(instruction), stride && aim(stride, log.frames)]); }
           finally { noteMotion(); actionPending=false; }
-          publish({navigationMoved:true,key:command.key,observed:command.observed});
-          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
           if (actorMoving && (!encounter.held || command.encounter)) {
             // Genie travel is a language action, not a key we can release.
             // Bound its single step before a new vision read can choose another.
             actorStepTimer = setTimeout(() => stopActor().catch(error => abort.abort(error)), 1050);
           }
+          publish({navigationMoved:true,key:command.key,observed:command.observed});
+          record('Player applied '+command.key,{observed:command.observed,holdMs:command.ms,reaction:command.reaction,transport:'world action',frame:log.frames});
         } else if (stagePilot && command?.winner) await finish(command.winner);
         else if (command === 'end') await finish();
         else if (command === 'chair' || command === 'peel') {
@@ -501,9 +503,9 @@ async function capture() {
     clearTimeout(gameClock);
     clearTimeout(releaseKey);
     clearTimeout(lookRelease);
+    clearTimeout(actorStepTimer);
     clearTimeout(watchdog);
     try {
-    clearTimeout(actorStepTimer);
       if (session && !log.terminal) {
         await session.cancel();
         log.terminal = 'cancel-requested';

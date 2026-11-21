@@ -410,12 +410,12 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
-              if (m.cameraMoved) r.lastCameraAt = Date.now();
-              if (m.navigationMoved && r.phase === 'playing' && m.observed === r.observed) {
               if (m.moveHeld && m.moveHeld.observed >= (r.lastMoveHeld?.observed ?? -1))
                 r.lastMoveHeld = m.moveHeld;
               if (m.navigationMoved && r.phase === 'playing' && m.observed >= (r.lastMoveApplied?.observed ?? -1))
                 r.lastMoveApplied = {observed:m.observed,key:m.key};
+              if (m.cameraMoved) r.lastCameraAt = Date.now();
+              if (m.navigationMoved && r.phase === 'playing' && m.observed === r.observed) {
                 const prop = r.props.find(p => (!r.chapters || p.chapter===r.chapter) && p.inPath && p.confirmedFrame === m.observed && !p.reactedAt);
                 if (prop) r.intent = { hauntId: prop.id, key: m.key, observed: m.observed, at: Date.now() };
               }
@@ -431,10 +431,10 @@ export async function registerStage(
                 Date.now() < r.deadline &&
                 !pendingWinner
               ) {
-                if (r.chapters) {
-                  const checkpoint=m.checkpoint && checkpointEligible(m.scene,m.trackingNavigationHeld) && Buffer.from(m.checkpoint,'base64');
                 if (!Number.isInteger(m.observed) || !Number.isFinite(m.observedAt) || m.observedAt > Date.now() ||
                     (r.observed != null && (m.observed <= r.observed || m.observedAt < r.trackedAt))) return;
+                if (r.chapters) {
+                  const checkpoint=m.checkpoint && checkpointEligible(m.scene,m.trackingNavigationHeld) && Buffer.from(m.checkpoint,'base64');
                   continuation=validCheckpoint(checkpoint) && Number.isFinite(m.observedAt) && m.observedAt<=Date.now()
                     ? {bytes:checkpoint,at:m.observedAt,steady:m.trackingPlacementReady===true} : null;
                 }
@@ -466,9 +466,9 @@ export async function registerStage(
                   pendingWinner = crossed ? 'robot' : 'audience';
                   live.send({ winner: pendingWinner });
                 } else if (ticket.settledFrom) {
+                  holdMove('Holding a chapter continuation frame');
                   r.action='Holding the hallway view';
                   r.intent=null;
-                  holdMove('Holding a chapter continuation frame');
                 } else if (encounterHeld) {
                   holdMove(placement.holdReason(now));
                   r.action = 'Assessing the path';
