@@ -1,0 +1,40 @@
+name: Issue intake
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  check:
+    if: github.event_name == 'issues' || (github.event.issue.number == 2 && !github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the issue or lane handoff
+        shell: python
+        run: |
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          issue = event["issue"]
+          comment = event.get("comment")
+          text = (comment or issue).get("body") or ""
+          if not comment:
+              text = issue["title"] + "\n" + text
+          lanes = [lane for lane in ("World", "Brain", "Crowd") if re.search(r"\b" + lane + r"\b", text, re.I)]
+          flagged = bool(re.search(r"\b(blocked|blocker)\b", text, re.I))
+          url = (comment or issue)["html_url"]
+          number = issue["number"]
+          kind = "Handoff" if comment else "New issue"
+          summary = [
+              f"### {kind} · [Issue #{number}]({url})",
+              f"Lanes mentioned: {', '.join(lanes) or 'unspecified'}",
+              f"Mentions a blocker: {'yes' if flagged else 'no'}",
+          ]
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n\n".join(summary) + "\n")

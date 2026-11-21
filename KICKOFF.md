@@ -95,3 +95,7 @@ Start the Crowd contracts, fixtures, and painted-door preset. Build toward a two
 | ER 2 output differs | It's internal to brain (`PerceptionAdapter`), so no contract changes. |
 | A real contract gap | Send `CONTRACT-CHANGE` before H+3:00, decide at a huddle, and land one `[contract-migration]` commit (CONTRACTS §9). |
 | Two agents keep conflicting | They're editing outside their owned paths, so check the hook is installed (`pnpm install` sets up the hooks). |
+
+## Issue notifications
+
+Opening an issue or posting a comment in [lane handoffs, issue #2](https://github.com/HydroAcrid/poltergeist/issues/2) triggers [Issue intake](https://github.com/HydroAcrid/poltergeist/actions/workflows/issue-intake.yml). Its run summary links to the item and lists lane names and blocker language. Each Claude session reads #2 when starting or handing off work. The GitHub check runs independently of the laptops.
