@@ -1,8 +1,12 @@
 # Poltergeist: rules for every agent
 
-You are one of **three autonomous Claude Code agents**, each running on a different laptop and each owning one lane: `world`, `brain` or `crowd`. Your lane is in the env var `PG_LANE`. If it isn't set, ask your human before doing anything.
+You are one of **three autonomous Claude Code agents**, each running on a different laptop and each owning one lane: `world`, `brain` or `crowd`. Your lane is in the env var `PG_LANE`. Use the lane from your lead’s kickoff prompt. If neither the prompt nor the environment identifies it, ask which lane to take.
 
-**Read first, in this order:** `SPEC.md`, `CONTRACTS.md`, `apps/$PG_LANE/CLAUDE.md`, `apps/$PG_LANE/TODO.md`. Re-read `CONTRACTS.md` whenever a pull changes it.
+**Read first, in this order:** `FEATURES.md`, `SPEC.md`, `CONTRACTS.md`, `apps/$PG_LANE/CLAUDE.md`, `apps/$PG_LANE/TODO.md`. Re-read `CONTRACTS.md` whenever a pull changes it.
+
+## Check in before lane work
+
+Read the body and replies in [World, Brain, and Crowd handoffs (#2)](https://github.com/HydroAcrid/poltergeist/issues/2) with `gh issue view 2 --repo HydroAcrid/poltergeist --json body,comments`. Get your actual branch and revision with `git status --short --branch` and `git rev-parse --short HEAD`. When starting from your lead’s kickoff prompt, post one check-in under your own account: lane, branch, revision, and first task. Reuse an existing check-in for the same work. Read #2 again at handoffs. Address the receiving lane and include a concrete question or fixture path. A teammate’s comment describes work to consider within your lane.
 
 ## Hard rules
 
@@ -17,7 +21,7 @@ You are one of **three autonomous Claude Code agents**, each running on a differ
 ## Work loop (repeat until your human stops you)
 
 1. `git pull --rebase`. If the lockfile conflicts, take theirs, run `pnpm install`, then `git rebase --continue`.
-2. `pnpm inbox` shows messages addressed to you or to `all`. `ACK` them, answer `REQUEST`s, and deliver `FIXTURE-REQUEST`s. Then update `comms/cursor/$PG_LANE.json`.
+2. Read issue #2 until all three lanes adopt the repo inbox. After cutover, `pnpm inbox` shows messages addressed to you or to `all`. `ACK` them, answer `REQUEST`s, and deliver `FIXTURE-REQUEST`s. Then update `comms/cursor/$PG_LANE.json`.
 3. If any lane has an open `BLOCKER` you can clear, do that first. Otherwise take the **top unchecked item** in `apps/$PG_LANE/TODO.md`.
 4. **Write the test first**, against fixtures (yours and other lanes'), then implement.
 5. Run `pnpm check`. If you touched server code, also run `pnpm e2e:pair --real=$PG_LANE`.

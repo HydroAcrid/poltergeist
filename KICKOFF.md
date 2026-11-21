@@ -1,6 +1,6 @@
 # Poltergeist: kickoff kit (read this first, humans)
 
-Drop the **contents** of this folder into the root of an empty repo at H+0:00. It contains **no project code**, only specs, agent instructions, an env template and empty comms files. Before relying on it, confirm with the organizers that bringing design docs is allowed.
+Clone this private repository on your hackathon laptop (or update your existing checkout without overwriting local work). Open Claude Code at the repository root. Paste the prompt for [Sri](#sri--brain) or [Courtney](#courtney--crowd). Use your own GitHub account for lane messages.
 
 | File | What it's for |
 |---|---|
@@ -30,8 +30,8 @@ Read the [feature map](FEATURES.md) together before starting lane work. Use the 
 
 ## Before hacking starts (H−0:15)
 
-- [ ] One person creates an empty private GitHub repo and adds everyone.
-- [ ] On every laptop: install Node 20+, pnpm 9+, ffmpeg, and Claude Code (signed in), then clone the repo.
+- [ ] Confirm you can read the private repo and [issue #2](https://github.com/HydroAcrid/poltergeist/issues/2) from your laptop.
+- [ ] On every laptop: have Git, GitHub CLI (signed in with your own account), Node 20+, pnpm 9+, ffmpeg, and Claude Code available.
 - [ ] If your checkout has no `.env`, copy `.env.example` to `.env`. Set `PG_LANE` to your lane. Kevin's workshop key is already configured locally on the World laptop. Brain and Crowd can start with the default fake adapters. **Only the World laptop** sets `PG_ALLOW_GENIE=1` for a live session.
 - [ ] Host account ready, using whichever host you practiced on. It needs WebSockets, a single instance, a persistent disk and auto-deploy from a branch. You'll create two services: **staging** (from `main`) and **prod** (from `demo`).
 - [ ] Generate random tokens for `PG_TOKEN_*`, `PG_OPERATOR_TOKEN` and `PG_MCP_TOKEN`, share them through a password manager, and put them in the host secrets too.
@@ -70,26 +70,20 @@ Never start a real Genie session yourself: build the broker with FakeGenieAdapte
 Give me a 3-line summary (done / next / blocked) at every :20 and :50.
 ```
 
-### Brain laptop
-```
-You are the BRAIN lane agent for our hackathon project, Poltergeist. PG_LANE=brain.
-Read CLAUDE.md, SPEC.md, CONTRACTS.md, apps/brain/CLAUDE.md and apps/brain/TODO.md in full before doing anything.
-Start with "Setup" in apps/brain/TODO.md: write the brain-owned contract schemas and fixtures exactly per CONTRACTS.md, and commit locally. Keep running `git pull --rebase` until the world lane's scaffold lands (server/hub exists), then rebase, get `pnpm test:contracts` green, and push.
-Next: the fake brain, then the six scenario bundles (the crowd referee depends on them; send FIXTURE-READY), then the controller as a pure, heavily unit-tested function, then the real /api/brain/tick.
-After that, follow the work loop in CLAUDE.md continuously, working down apps/brain/TODO.md.
-Paid model calls only happen in @live tests, and I run those. Never start Genie sessions.
-Give me a 3-line summary (done / next / blocked) at every :20 and :50.
+### Sri · Brain
+
+```text
+I'm Sri. Start my Brain lane (PG_LANE=brain). Read FEATURES.md, CLAUDE.md, SPEC.md, CONTRACTS.md, and the Brain lane guide and TODO. Read issue #2 and post my check-in with my lane, branch, short commit, and first task. Use #2 to acknowledge handoffs and share blockers or ready fixtures with World and Crowd.
+
+Start the Brain contracts and fixtures. Use the recorded head-on and sideways frames in apps/world/painted-door/replay/ to test the player's first movement choice with the fixture adapter. Keep the ghost's prompt and the real exit's identity out of the player's input. Share the fixture path and what you verified on #2. Use local fakes for this first pass.
 ```
 
-### Crowd laptop
-```
-You are the CROWD lane agent for our hackathon project, Poltergeist. PG_LANE=crowd.
-Read CLAUDE.md, SPEC.md, CONTRACTS.md, apps/crowd/CLAUDE.md and apps/crowd/TODO.md in full before doing anything.
-Start with "Setup" in apps/crowd/TODO.md: the crowd-owned contract schemas and fixtures, presets.json, seeded-pool.json and moderation-cases.json (placeholder tokens only, never real slurs or names). Commit locally, keep running `git pull --rebase` until the world lane's scaffold lands, then rebase, get `pnpm test:contracts` green, and push.
-Next: the fake crowd, then POST /api/crowd/haunt with rules-only moderation, the queue and scheduler, and the /haunt phone page. Write the referee rule test-first against brain's scenario bundles; if one is missing, send a FIXTURE-REQUEST and work on something else meanwhile.
-After that, follow the work loop in CLAUDE.md continuously, working down apps/crowd/TODO.md.
-Raw crowd text must never reach /stage or /overlay. Paid model calls only happen in @live tests, and I run those.
-Give me a 3-line summary (done / next / blocked) at every :20 and :50.
+### Courtney · Crowd
+
+```text
+I'm Courtney. Start my Crowd lane (PG_LANE=crowd). Read FEATURES.md, CLAUDE.md, SPEC.md, CONTRACTS.md, and the Crowd lane guide and TODO. Read issue #2 and post my check-in with my lane, branch, short commit, and first task. Use #2 to acknowledge handoffs and share blockers or ready fixtures with World and Brain.
+
+Start the Crowd contracts, fixtures, and painted-door preset. Build toward a two-phone test: the author immediately gets a private receipt, rejected text stays private, and approved ideas appear on both phones in FIFO order. Show “Up next” and let each player switch between “All ideas” and “Mine”. Use rules-only moderation and a fake World for this first pass. Share the fixture path and what you verified on #2.
 ```
 
 ## If something goes wrong in the first hour
