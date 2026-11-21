@@ -13,6 +13,46 @@ export function readiness(state) {
   return state.plateReady ? 'Ready for a live Genie 4 round' : 'Waiting for a prepared photo';
 }
 
+function plannedMode(round) {
+  return round.playMode || (!round.live ? 'offline-rehearsal' : !round.chapters ? 'camera-test' :
+    round.clockMode === 'wall' ? 'five-minute-demo' : 'ten-minute-game');
+}
+
+export function modeLabel(round) {
+  const mode = plannedMode(round);
+  if (mode === 'camera-test' && round.plannedDurationMs)
+    return Math.round(round.plannedDurationMs / 1000) + '-second camera test';
+  return ({'camera-test':'Camera test','five-minute-demo':'5-minute demo',
+    'ten-minute-game':'10 minutes of play','offline-rehearsal':'Offline rehearsal'})[mode] || 'Game';
+}
+
+export function endReason(round) {
+  return ({exit:'The robot reached the exit.', fear:'Three scares stopped the robot.',
+    time:'Time ran out.', interrupted:'The round was interrupted.'})[round.reason] || 'The round ended.';
+}
+
+export function roundStatus(round) {
+  if (round.phase === 'handoff') return 'The lights are out while the next hallway opens.';
+  if (round.phase === 'playing') return round.live ? 'The robot is in the hallway.' : 'Offline rehearsal in progress.';
+  return round.requestedAt ? 'Request received. Opening the hallway…' : 'Opening the hallway…';
+}
+
+export function runReport(round, now, hostname) {
+  const start = round.requestedAt || round.openedAt;
+  const elapsed = start && (round.finishedAt || now) >= start ? Math.round(((round.finishedAt || now)-start)/1000) : null;
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  const report = {
+    mode: plannedMode(round), plannedDurationMs: round.plannedDurationMs ?? round.durationMs ?? null,
+    host: local ? 'local' : 'hosted', roundId: round.id, chapter: round.chapter ?? null, elapsedSeconds: elapsed,
+    phase: round.phase, winner: round.winner ?? null, reason: round.reason ?? null,
+  };
+  for (const key of ['lastMoveProposed', 'lastMoveApplied', 'lastMoveHeld']) {
+    const move = round[key];
+    if (move) report[key] = {observed: move.observed, key: move.key, reason: move.reason};
+  }
+  return JSON.stringify(report, null, 2);
+}
+
 export function privateReceipt(receipt) {
   if (!receipt) return 'Waiting for your receipt…';
   if (receipt.status === 'rejected') return receipt.moderated?.reason || 'Please revise this idea.';

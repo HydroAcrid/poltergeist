@@ -4,6 +4,7 @@ import { readPhoto, toJpeg } from './photo.js';
 const el = (id) => document.getElementById(id);
 const debugPage = location.pathname === '/debug';
 const host = debugPage || location.pathname === '/team';
+document.body.classList.toggle('host-view', host);
 const diagnostics = host ? await import('./host-debug.mjs') : null;
 const canvas = el('scene');
 let liveImage = el('live');
@@ -31,7 +32,7 @@ let refreshTimer, hudTimer, syncing, refreshing = false, running = true, paintId
 let testId, receipt, revisionOf, testError = '', submitting = false, nextReceiptAt = 0;
 if (host) {
   try { testId = sessionStorage.getItem('pg_world_test_idea'); } catch {}
-  el('obstacle-test').open = debugPage;
+
 }
 const set = (id, text) => {
   if (el(id).textContent !== text) el(id).textContent = text;
@@ -97,26 +98,60 @@ function controls() {
   const custom = state?.custom,
     ready = state?.plateReady,
     preparing = state?.platePreparing;
-  el('prepare').hidden = !custom || !state?.canLive || ready;
+  const beforePhoto = !state?.round && state?.lobby?.phase === 'before-photo';
+  const waiting = !!state && !state.round;
+  const canLaunch = !beforePhoto && !busy && state?.canLive;
+  document.body.classList.toggle('waiting', waiting);
+  document.querySelector('.score').hidden = !state?.round;
+  el('lobby-intro').hidden = host || !waiting;
+  el('book').hidden = beforePhoto && !state?.queue?.length;
+  el('join-link').hidden = host && beforePhoto;
+  set('lobby-invite',beforePhoto
+    ? 'Join on your phone. When the hallway opens, send a haunting to stop the robot from reaching the exit.'
+    : 'Send a haunting from your phone to stop the robot from reaching the exit.');
+  const photoChoice = el('photo-choice');
+  photoChoice.hidden = busy;
+  photoChoice.querySelector('summary').hidden = beforePhoto;
+  if (photoChoice.dataset.first !== String(beforePhoto)) {
+    photoChoice.open = beforePhoto;
+    photoChoice.dataset.first = String(beforePhoto);
+  }
+  el('offline-primary').hidden = beforePhoto || busy || state?.canLive || !state;
+  el('offline-primary').disabled = loading || !connected;
+  el('upload').classList.toggle('primary', beforePhoto);
+  el('prepare').hidden = busy || !custom || !state?.canLive || ready || preparing;
   el('prepare').disabled ||= !!preparing;
-  set('prepare', preparing ? 'Preparing photo…' : 'Prepare photo for Genie');
-  el('go-live').hidden = !state?.canLive;
-  el('go-live').disabled ||=
-    !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
-  set('go-live', state?.providerClosing ? 'Closing live hallway…' : 'Start short Genie round');
-  el('go-show').hidden = !state?.canLive;
-  el('show-length').hidden = !state?.canLive || busy;
+  set('prepare', preparing ? 'Preparing photo…' : 'Prepare photo');
+  el('go-live').hidden = !state?.canLive || busy;
+  el('go-live').disabled ||= !!state?.providerClosing || (!!custom && (!ready || plateKey !== state.plateKey));
+  const seconds = Math.round((state?.cameraTestDurationMs || 45000) / 1000);
+  set('go-live', state?.providerClosing ? 'Closing camera test…' : 'Start ' + seconds + '-second camera test');
+  el('go-show').hidden = !canLaunch;
+  el('show-length').hidden = !canLaunch;
   const isDemo = el('show-minutes').value === '5';
   set('go-show',isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
-  set('show-cost',isDemo ? 'Ends five minutes after Start, including blackouts. About $6 per generated minute.' :
-    'Up to ten minutes of play. The clock pauses during blackouts. About $6 per generated minute.');
-  el('go-show').disabled ||= el('go-live').disabled;
-  el('show-cost').hidden = !state?.canLive || busy;
+  set('show-cost',isDemo ? 'Includes blackouts. About $6 per generated minute.' :
+    'The clock pauses during blackouts. About $6 per generated minute.');
+  el('go-show').disabled ||= !canLaunch || el('go-live').disabled;
+  el('show-cost').hidden = !canLaunch;
+  el('start').hidden = busy || (!beforePhoto && !state?.canLive);
   el('stop-show').hidden = !busy || !state?.round?.live;
   el('stop-show').disabled = loading || !connected;
-  el('default').hidden = !custom;
+  el('default').hidden = busy || (!custom && !beforePhoto);
   if (host) {
-    set('host-readiness', diagnostics.readiness(state));
+    const r = state?.round;
+    const mode = r ? diagnostics.modeLabel(r) : '';
+    const copyReady = !!r;
+    el('copy-report').hidden = !copyReady;
+    if (!copyReady) el('report-text').hidden = true;
+    if (!waiting || beforePhoto) el('host-guests').hidden = true;
+    set('setup-title', busy ? mode : r?.phase === 'ended' ? 'Round complete' : beforePhoto ? 'Choose the hallway' : 'Waiting room');
+    set('host-readiness', beforePhoto ? 'Take or choose a photo to open the waiting room.' :
+      r?.phase === 'ended' ? mode + ' · ' + diagnostics.endReason(r) : busy ? diagnostics.roundStatus(r) :
+      preparing ? 'Preparing your photo. Ghosts can join while it develops.' :
+      !state?.canLive ? diagnostics.readiness(state) :
+      ready && state?.lobby?.phase === 'lobby' ? 'The hallway is ready. Start when your ghosts are here.' :
+      diagnostics.readiness(state));
     el('test-send').disabled = submitting || !connected;
     el('test-observations').hidden = !state?.round;
     if (state?.round) {
@@ -125,7 +160,7 @@ function controls() {
     }
   }
   if (host && lastBusy !== busy) {
-    if (!debugPage || lastBusy === undefined) el('host').open = debugPage || !busy;
+    el('host').open = !busy;
     lastBusy = busy;
   }
 }
@@ -186,7 +221,7 @@ function sync() {
   return syncing;
 }
 async function refreshLobbyJoin(lobby) {
-  if (host) return;
+  if (host && lobby?.phase === 'before-photo') return;
   const show = lobby?.phase === 'before-photo' || lobby?.phase === 'lobby';
   const link = el('join-link'), qr = el('join-qr'), guests = el('guests');
   if (!show) {
@@ -203,11 +238,17 @@ async function refreshLobbyJoin(lobby) {
     if (!res.ok) return;
     const { here } = await res.json();
     if (!Number.isInteger(here) || here < 0) return;
+    const headcount = here + (here === 1 ? ' ghost here' : ' ghosts here');
+    if (host) {
+      set('host-guests', headcount);
+      el('host-guests').hidden = false;
+      return;
+    }
     link.classList.add('show-qr');
     if (!qr.hasAttribute('src')) qr.src = '/api/crowd/join.svg';
     qr.hidden = guests.hidden = false;
     set('join-label', 'Scan to join');
-    set('guests', here + (here === 1 ? ' ghost here' : ' ghosts here'));
+    set('guests', headcount);
   } catch { /* Keep the join link available if the room count is unavailable. */ }
 }
 async function updateState() {
@@ -321,6 +362,7 @@ function paint() {
         }
       } else if (r.phase === 'preparing') {
         phase = 'Opening the hallway';
+        caption = 'Opening the hallway…';
         clock = r.clockMode==='wall' ? time(Math.max(0,Math.ceil((r.showDeadline-now)/1000))) : '···';
         label = r.clockMode==='wall' ? 'Time left' : 'Opening';
       } else if (r.phase === 'handoff') {
@@ -434,16 +476,36 @@ document.addEventListener('keydown', (e) => {
 });
 el('start').onclick = () =>
   run(() => request('/rehearsal/start', { mode: 'offline' }));
+el('offline-primary').onclick = el('start').onclick;
 function startWorld(chapters) {
-  return run(() =>
-    request('/rehearsal/start', {
-      mode: 'genie',
-      ...(chapters ? {chapters:true, showMinutes:Number(el('show-minutes').value)} : {}),
+  const minutes = Number(el('show-minutes').value);
+  const expectedPlayMode = chapters ? (minutes === 10 ? 'ten-minute-game' : 'five-minute-demo') : 'camera-test';
+  return run(async () => {
+    const receipt = await request('/rehearsal/start', {
+      mode: 'genie', expectedPlayMode,
+      ...(chapters ? {chapters:true, showMinutes:minutes} : {}),
       plateKey: state.plateKey,
       seed: scene.seed(state),
-    }),
-  );
+    });
+    if (receipt.playMode && receipt.playMode !== expectedPlayMode)
+      throw Error('The host started a different game mode. Check the run report.');
+  });
 }
+el('copy-report').onclick = async () => {
+  if (!state?.round) return;
+  const report = diagnostics.runReport(state.round, state.now, location.hostname);
+  try {
+    await navigator.clipboard.writeText(report);
+    set('message', 'Run report copied.');
+  } catch {
+    const field = el('report-text');
+    field.value = report;
+    field.hidden = false;
+    field.focus();
+    field.select();
+    set('message', 'Copy the selected report.');
+  }
+};
 el('go-live').onclick = () => startWorld(false);
 el('show-minutes').onchange=controls;
 el('go-show').onclick = () => startWorld(true);
@@ -453,7 +515,7 @@ el('prepare').onclick = () =>
 el('default').onclick = () => run(() => request('/rehearsal/reset-photo'));
 async function upload(blob) {
   await request('/rehearsal/photo', blob, true);
-  set('message', 'Photo selected.');
+  set('message', '');
 }
 for (const id of ['file', 'camera-file'])
   el(id).onchange = () =>

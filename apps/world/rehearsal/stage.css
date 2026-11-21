@@ -499,6 +499,76 @@ body:not(.projector) main {
   .story.haunt-card { padding: 7px 10px; }
 }
 
+
+.host-signin {
+  min-height: 100dvh;
+  background: linear-gradient(90deg,#0a0f10ed,#11151075), url('/hall.webp') center / cover #101413;
+}
+body.host-signin main { width: min(100% - 40px, 1080px); margin:auto; padding: clamp(26px,5vh,65px) 0; }
+.signin-brand { color:#fff1d0; font:italic 36px/.95 Georgia,serif; text-decoration:none; letter-spacing:-.065em; }
+.host-signin section { width:min(100%,390px); margin-top:clamp(54px,19vh,185px); }
+.host-signin h1 { font:500 clamp(44px,5vw,70px)/1 Georgia,serif; color:#fff4d9; letter-spacing:-.055em; margin:0 0 24px; }
+.host-signin label { display:block; color:#efebdc; font-size:15px; margin-bottom:8px; }
+.host-signin input[type=password] { width:100%; padding:12px 14px; border:1px solid #777d70; border-radius:6px; color:var(--ink); background:#121916ee; }
+.host-signin button { width:100%; margin-top:14px; }
+.signin-join { display:inline-flex; align-items:center; min-height:44px; margin-top:8px; }
+.host-signin [role=alert] { color:#ffd4af; }
+
+/* The venue stays full-screen. Only the waiting room carries the instructions. */
+.waiting .world::after {
+  height: min(56vh, 520px);
+  background: linear-gradient(0deg, #080b0bef, #080b0b9c 38%, transparent);
+}
+.lobby-intro {
+  position: absolute;
+  left: max(env(safe-area-inset-left), clamp(24px, 4vw, 72px));
+  bottom: max(env(safe-area-inset-bottom), clamp(35px, 5.3vw, 88px));
+  width: min(56vw, 650px);
+  color: #fff5dc;
+  text-shadow: 0 2px 22px #080b0b;
+}
+.lobby-intro h2 {
+  font: italic 500 clamp(38px, 5.8vw, 88px)/.99 Georgia, serif;
+  letter-spacing: -.055em;
+  margin: 0;
+}
+.lobby-intro p { max-width: 39ch; margin: .65em 0 0; font-size: clamp(16px, 1.6vw, 24px); line-height: 1.35; }
+.host-panel { width: min(375px, calc(100vw - 32px)); padding: 19px 21px 12px; background:#151b19fa; }
+.host-panel header h2 { margin: 0; font-size: 28px; }
+.host-panel header { margin-bottom: 6px; }
+#host-guests { font-size:14px; color:var(--accent); margin: 0 0 6px; }
+.popover[open] .photo-choice > summary {
+  display:flex; justify-content:space-between; padding:0; min-height:40px;
+  border:0; border-radius:0; color:var(--muted); background:transparent;
+}
+.photo-choice > summary::after { content:'+'; }
+.photo-choice[open] > summary::after { content:'−'; }
+.host-panel .photo-actions { margin-bottom: 4px; }
+.host-panel #default { width: auto; text-align:left; padding-left: 0; color: var(--accent); }
+.host-panel .show-length { margin: 12px 0 7px; }
+.host-panel #go-show { min-height: 48px; }
+.host-tools { margin-top: 12px; border-top: 1px solid #f2e4c628; }
+.popover[open] .host-tools > summary {
+  display: flex; justify-content: space-between; padding: 0; min-height: 44px;
+  background: transparent; border: 0; border-radius: 0; color: var(--muted);
+}
+.host-tools > summary::after { content: '+'; }
+.host-tools[open] > summary::after { content: '−'; }
+.tool-actions { display: grid; gap: 6px; }
+#report-text { width:100%; min-height:6em; padding:8px; }
+@media (max-width: 660px) {
+  .lobby-intro { left:20px; bottom: max(15dvh, 136px); width:calc(100vw - 44px); }
+  .lobby-intro p { font-size:16px; max-width:36ch; }
+  .host-panel { max-height: min(54dvh, calc(100dvh - 80px)); }
+  .host-view.waiting .audience-dock { left: 16px; right:16px; justify-content:flex-end; }
+  .host-view.waiting .panel { right:0; left:auto; }
+}
+@media (max-height: 515px) and (min-aspect-ratio: 1/1) {
+  .host-panel { max-height: calc(100dvh - 68px); }
+  .lobby-intro h2 { font-size: 35px; }
+  .lobby-intro { bottom: 18px; }
+}
+
 .host-readiness, #test-status {
   margin: 0 0 10px;
   font-size: 14px;

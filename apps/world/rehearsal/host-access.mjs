@@ -31,8 +31,9 @@ function sameOrigin(req, publicOrigin) {
 function passphraseForm(next, rejected = false) {
   const page = next === '/debug' ? '/debug' : '/team';
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Poltergeist · Host sign-in</title><style>html{color-scheme:dark;font:17px/1.5 system-ui;background:#0c110f;color:#f8f5e8}main{max-width:25rem;margin:16vh auto;padding:1.5rem}h1{font:2.4rem Georgia}label,input,button{display:block}input,button{font:inherit;margin:.5rem 0 1rem;padding:.7rem;width:100%;box-sizing:border-box}button{cursor:pointer}a{color:#e9e9a8}</style>
-<main><h1>Host sign-in</h1><form action="/host/login" method="post"><input type="hidden" name="next" value="${page}"><label for="token">Host passphrase</label><input type="password" id="token" name="token" required autocomplete="current-password">${rejected ? '<p role="alert">That passphrase didn’t work. Try again.</p>' : ''}<button>Open host controls</button></form><a href="/haunt">Join the audience</a></main></html>`;
+<meta name="theme-color" content="#101413"><title>Poltergeist · Host sign-in</title><link rel="stylesheet" href="/stage.css">
+<body class="host-signin"><main><a class="signin-brand" href="/stage">Poltergeist</a><section>
+<h1>Host sign-in</h1><form action="/host/login" method="post"><input type="hidden" name="next" value="${page}"><label for="token">Host passphrase</label><input type="password" id="token" name="token" required autocomplete="current-password">${rejected ? '<p role="alert">That passphrase didn’t work. Try again.</p>' : ''}<button class="primary">Open host controls</button></form><a class="signin-join" href="/haunt">Join as a ghost ↗</a></section></main></body></html>`;
 }
 
 export function registerHostAccess(app, { token, publicOrigin }) {

@@ -22,7 +22,7 @@
       </figure>
       <header class="hud">
         <h1 id="title" class="brand">Poltergeist</h1>
-        <div class="score">
+        <div class="score" hidden>
           <div
             class="fear-readout"
             title="Three scares give the ghosts the win"
@@ -47,6 +47,10 @@
           </div>
         </div>
       </header>
+      <section id="lobby-intro" class="lobby-intro" aria-labelledby="lobby-title" hidden>
+        <h2 id="lobby-title">You are the ghosts.</h2>
+        <p id="lobby-invite">Join on your phone to haunt the hallway and keep the robot from reaching the exit.</p>
+      </section>
       <section id="story" class="story" hidden aria-label="Hallway action">
         <span id="cue"></span><strong id="caption"></strong><small id="ghost-by"></small>
       </section>
@@ -67,15 +71,20 @@
           <summary>Host</summary>
           <section class="panel host-panel" aria-label="Host controls">
             <header>
-              <h2>Set the stage</h2>
+              <h2 id="setup-title">Choose the hallway</h2>
               <a href="/stage" target="_blank" rel="noopener">Projector ↗</a>
             </header>
-            <p id="host-readiness" class="host-readiness" role="status">Connecting to the host…</p>
-            <div class="photo-actions">
-              <button id="capture">Take photo</button
-              ><button id="upload">Choose photo</button>
+            <p id="host-readiness" class="host-readiness" role="status">Connecting to the room…</p>
+            <p id="host-guests" hidden></p>
+            <details id="photo-choice" class="photo-choice" open>
+              <summary hidden>Change photo</summary>
+              <div id="photo-actions" class="photo-actions">
+              <button id="upload" class="primary">Choose photo</button>
+              <button id="capture">Take photo</button>
             </div>
-            <button id="prepare" hidden>Prepare photo for Genie</button>
+            <button id="default" class="quiet" hidden>Use the venue photo</button>
+            </details>
+            <button id="prepare" hidden>Prepare photo</button>
             <label id="show-length" class="show-length" hidden>Game length
               <select id="show-minutes">
                 <option value="5">5-minute demo</option>
@@ -83,12 +92,18 @@
               </select>
             </label>
             <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start 5-minute demo</button>
-            <small id="show-cost" hidden>Ends five minutes after Start, including blackouts. About $6 per generated minute.</small>
-            <button id="go-live" disabled>Start short Genie round</button>
+            <small id="show-cost" hidden></small>
+            <button id="offline-primary" class="primary" hidden>Start offline rehearsal</button>
             <button id="stop-show" hidden>End game</button>
-            <button id="start" disabled>Rehearse offline</button>
-            <button id="default" class="quiet" hidden>Use venue hallway</button>
             <p id="message" role="status"></p>
+            <details id="host-tools" class="host-tools">
+              <summary>Host tools</summary>
+              <div class="tool-actions">
+                <button id="go-live" hidden disabled>Start camera test</button>
+                <button id="start" disabled>Rehearse offline</button>
+                <button id="copy-report" hidden>Copy run report</button>
+              </div>
+              <textarea id="report-text" readonly aria-label="Run report to copy" hidden></textarea>
             <details id="obstacle-test" class="obstacle-test">
               <summary>Test an obstacle</summary>
               <form id="test-form">
@@ -105,6 +120,7 @@
                 <dt>Obstacle</dt><dd id="test-placement"></dd>
                 <dt>Response</dt><dd id="test-response"></dd>
               </dl>
+            </details>
             </details>
           </section>
         </details>
