@@ -159,6 +159,13 @@ describe("scheduler and fake World", () => {
     await hub.world.flush(); // fake World answers haunt.injected { ok: true, simulated: true }
     expect((await b.state()).mine[0]).toMatchObject({ status: "injected", episodeId, injectedT: 8000 });
 
+    // Everyone's "Hallway" screen shows what went into the world this round, display-safe.
+    for (const p of [a, b]) {
+      const hallway = (await p.state()).hallway ?? [];
+      expect(hallway.map((h) => [h.moderated?.text, h.status])).toEqual([["A banana peel lands in the aisle", "injected"]]);
+      expect(JSON.stringify(hallway)).not.toMatch(/raw|deviceId|reason/);
+    }
+
     hub.clock.advance(11_999);
     hub.crowd.tick();
     expect(hub.dispatched()).toHaveLength(1);
@@ -290,5 +297,11 @@ describe("operator and page", () => {
     expect(page.body).not.toMatch(/<script[^>]+src=|<link[^>]+stylesheet/);
     expect(page.body).toContain("Approved hauntings may appear on the big screen with your ghost name.");
     expect(page.body).not.toMatch(/id="nick"|payload\.displayName/); // names are assigned, never typed or sent
+    // Visible navigation: four screens in a bottom tab bar, each with a next-step link.
+    for (const screen of ["haunt", "next", "hallway", "mine"]) {
+      expect(page.body).toContain(`id="screen-${screen}"`);
+      expect(page.body).toContain(`class="tab" href="#${screen}"`);
+    }
+    expect(page.body.match(/class="next" href="#/g)?.length).toBe(4);
   });
 });

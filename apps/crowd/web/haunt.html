@@ -3,110 +3,174 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<title>Haunt the hallway</title>
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#171614">
+<title>Haunt the hallway · Poltergeist</title>
 <style>
-:root{--bg:#f6f4fb;--card:#fff;--ink:#1d1830;--muted:#6b6580;--line:#e3dff0;--accent:#6c3df4;--accent-ink:#fff;--ok:#127a4a;--ok-bg:#e3f6ec;--warn:#9a5b00;--warn-bg:#fff2dc;--bad:#b3261e;--bad-bg:#fde8e7;--chip:#efeafd}
-@media (prefers-color-scheme:dark){:root{--bg:#120f1d;--card:#1c1830;--ink:#efeaff;--muted:#a59fc0;--line:#2e2847;--accent:#9b7bff;--accent-ink:#120f1d;--ok:#5fd59a;--ok-bg:#12301f;--warn:#ffc46b;--warn-bg:#33240b;--bad:#ff8a80;--bad-bg:#3a1513;--chip:#2a2445}}
+/* Palette and type follow the repo's stage/prototype pages and the robot-v1 art direction:
+   warm dark hallway, paper text, flashlight amber, rust, sage robot. */
+:root{--bg:#171614;--panel:#211e1b;--raised:#2b2723;--line:#54483f;--paper:#fff6e8;--muted:#c1b7ae;--amber:#ffc08d;--rust:#a55e3c;--sage:#a9bfa2;--bad:#ff9f8f;--nav:64px}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:560px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
-header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:4px 0 14px}
-h1{font-size:22px;margin:0;letter-spacing:-.01em;white-space:nowrap}
-h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-.round{font-size:14px;color:var(--muted);white-space:nowrap}
-.round b{color:var(--ink);font-variant-numeric:tabular-nums}
-.live{color:var(--ok);font-weight:600}
-section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
-label{display:block;font-size:14px;color:var(--muted);margin:0 0 6px}
-.field{position:relative}
-textarea,input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
-textarea{resize:none;height:76px}
-textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
-.count{position:absolute;right:10px;bottom:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.row{display:flex;justify-content:flex-end;gap:10px;margin-top:10px}
-.you{background:var(--chip);border-radius:12px;padding:10px 12px;margin:-4px 0 14px;font-size:15px}
-.you b{color:var(--accent)}
-.happening{display:none;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px 14px;margin-bottom:14px;font-weight:600}
-.happening.on{display:block}
-.happening small{display:block;font-weight:400;opacity:.9;margin-top:2px}
-button{font:inherit;border:0;border-radius:12px;cursor:pointer}
-.send{background:var(--accent);color:var(--accent-ink);font-weight:600;padding:0 18px;min-height:46px}
-.send:disabled{opacity:.5;cursor:default}
-.msg{font-size:15px;margin:10px 0 0;min-height:1.4em;border-radius:10px}
-.msg.ok:not(:empty){background:var(--ok-bg);color:var(--ok);padding:8px 10px;font-weight:600}
+body{margin:0;background:var(--bg);color:var(--paper);font:16px/1.45 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+button{font:inherit;cursor:pointer;border:0;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{position:sticky;top:0;z-index:5;background:rgba(23,22,20,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.top-in{max-width:560px;margin:0 auto;padding:10px 16px}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{font:italic bold 1.3rem Georgia,serif;letter-spacing:-.02em}
+.phase{font-size:14px;color:var(--muted);text-align:right}
+.phase b{font:600 .95rem ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--amber)}
+.live{color:var(--sage);font-weight:600}
+.you{margin-top:6px;font-size:14px;color:var(--muted)}
+.you b{color:var(--paper)}
+
+main{max-width:560px;margin:0 auto;padding:14px 16px calc(var(--nav) + 32px + env(safe-area-inset-bottom))}
+.happening{display:block;text-decoration:none;background:var(--amber);color:#24180f;border-radius:14px;padding:12px 14px;margin:0 0 14px;font-weight:700}
+.happening small{display:block;font-weight:500;margin-top:2px}
+.offline{color:var(--amber);font-size:14px;margin:0 0 10px}
+
+h1{font:normal 2.1rem/1.05 Georgia,serif;letter-spacing:-.04em;margin:6px 0 6px}
+h1:focus{outline:none}
+h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px}
+.lede{color:var(--muted);margin:0 0 16px;max-width:38ch}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.field{position:relative;margin-top:6px}
+textarea{width:100%;height:92px;resize:none;font:inherit;color:var(--paper);background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:12px 12px 26px}
+textarea::placeholder{color:#8f857c}
+.count{position:absolute;right:12px;bottom:8px;font-size:12px;color:var(--muted)}
+.send-row{display:flex;justify-content:flex-end;margin-top:10px}
+.btn{min-height:46px;padding:0 22px;border-radius:30px;background:var(--paper);color:#201a18;font-weight:700}
+.btn:disabled{opacity:.5;cursor:default}
+.msg{margin:10px 0 0;font-size:15px}
+.msg:empty{display:none}
 .msg.bad{color:var(--bad)}
+.receipt{margin-top:12px;border-left:3px solid var(--sage);background:var(--raised);border-radius:0 12px 12px 0;padding:12px 14px}
+.receipt strong{color:var(--sage)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{background:var(--chip);color:var(--ink);padding:9px 12px;font-size:14px;min-height:40px}
-.chip:active{transform:scale(.97)}
-.tabs{display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:4px;margin-bottom:10px}
-.tab{flex:1;background:transparent;color:var(--muted);padding:8px;font-size:14px;font-weight:600}
-.tab[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.chip{min-height:44px;padding:0 14px;border-radius:30px;background:transparent;border:1px solid var(--line);color:var(--paper);font-size:15px}
+.chip:active{background:var(--raised)}
+
+.next{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;padding:14px 16px;border-radius:14px;border:1px solid var(--line);text-decoration:none;color:var(--amber);font-weight:600;min-height:48px}
+.next::after{content:"→";font-size:1.2rem}
+
+.spot{border-color:var(--amber);background:linear-gradient(160deg,#3a2a1f,var(--panel) 70%)}
+.label{font:600 12px ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--amber)}
+.spot .text{font:normal 1.35rem/1.25 Georgia,serif;margin:6px 0 4px}
+.empty{color:var(--muted);font-size:15px;padding:6px 0}
+.switch{display:flex;gap:6px;margin:0 0 10px}
+.switch button{min-height:40px;padding:0 16px;border-radius:30px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
+.switch [aria-pressed=true]{background:var(--paper);color:#201a18;border-color:var(--paper)}
+
 ol,ul{list-style:none;margin:0;padding:0}
-li{padding:10px 0;border-top:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
-li:first-child{border-top:0}
-.pos{flex:none;width:26px;height:26px;border-radius:50%;background:var(--chip);display:grid;place-items:center;font-size:13px;font-weight:600;color:var(--muted)}
+.list>li{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.list>li:first-child{border-top:0}
+.card.list{padding-top:4px;padding-bottom:4px}
+.pos{flex:none;width:28px;height:28px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font:600 13px ui-monospace,monospace;color:var(--muted)}
 .body{flex:1;min-width:0}
 .text{overflow-wrap:anywhere}
 .by{font-size:13px;color:var(--muted)}
-.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 8px;margin-top:4px}
-.p-wait{background:var(--chip);color:var(--muted)}
-.p-ok{background:var(--ok-bg);color:var(--ok)}
-.p-go{background:var(--warn-bg);color:var(--warn)}
-.p-bad{background:var(--bad-bg);color:var(--bad)}
-.next{background:var(--accent);color:var(--accent-ink)}
-.reason{font-size:14px;color:var(--bad);margin-top:4px}
-.edit{background:transparent;color:var(--accent);font-size:14px;font-weight:600;padding:6px 0 0}
-.empty{color:var(--muted);font-size:14px;padding:6px 0}
-.consent{font-size:13px;color:var(--muted);text-align:center;margin:4px 8px}
-.offline{display:none;font-size:13px;color:var(--warn);text-align:center;margin-bottom:10px}
-.offline.on{display:block}
+.me{color:var(--amber)}
+.pill{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;border-radius:30px;padding:3px 9px;background:var(--raised);color:var(--muted)}
+.p-ok{color:var(--sage)}
+.p-go{color:var(--amber)}
+.p-bad{color:var(--bad)}
+.reason{color:var(--bad);font-size:14px;margin-top:6px}
+.edit{min-height:44px;padding:0;background:none;color:var(--amber);font-weight:600}
+.steps{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:12px;color:#8f857c}
+.steps li{display:flex;align-items:center;gap:5px}
+.steps li::before{content:"";width:8px;height:8px;border-radius:50%;border:1px solid currentColor}
+.steps .done{color:var(--sage)}
+.steps .done::before{background:currentColor}
+.steps .now{color:var(--amber);font-weight:700}
+.steps .now::before{background:currentColor;box-shadow:0 0 0 3px rgba(255,192,141,.25)}
+
+.consent{font-size:13px;color:var(--muted);text-align:center;margin:28px 8px 0}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:rgba(23,22,20,.97);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tabs-in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:var(--nav);text-decoration:none;color:var(--muted);font-size:12px;font-weight:600}
+.tab svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab[aria-current=page]{color:var(--amber)}
+.tab[aria-current=page]::before{content:"";position:absolute;top:0;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--amber)}
+.tab:focus-visible{outline-offset:-3px}
+.badge{position:absolute;top:8px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rust);color:var(--paper);font-size:11px;line-height:18px;text-align:center}
+@media (prefers-reduced-motion:no-preference){.screen{animation:in .18s ease-out}@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>Haunt the hallway 👻</h1>
-    <div class="round" id="round" aria-live="polite">&nbsp;</div>
-  </header>
-  <div class="you" id="you" aria-live="polite">Joining…</div>
-  <div class="happening" id="happening" role="status" aria-live="assertive"></div>
-  <div class="offline" id="offline">Reconnecting…</div>
+<header class="top">
+  <div class="top-in">
+    <div class="mast"><span class="brand">Poltergeist</span><span class="phase" id="phase" aria-live="polite">&nbsp;</span></div>
+    <div class="you" id="you">Joining…</div>
+  </div>
+</header>
 
-  <section aria-labelledby="send-h">
-    <h2 id="send-h">Send a haunting</h2>
-    <form id="form" autocomplete="off">
-      <label for="text">What happens in the hallway?</label>
+<main>
+  <a class="happening" id="happening" href="#hallway" role="status" aria-live="assertive" hidden></a>
+  <p class="offline" id="offline" hidden>Reconnecting…</p>
+
+  <section class="screen" id="screen-haunt" aria-labelledby="h-haunt">
+    <h1 id="h-haunt" tabindex="-1">Haunt the hallway</h1>
+    <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
+    <form class="card" id="form" autocomplete="off">
+      <label for="text" class="by">What happens in the hallway?</label>
       <div class="field">
         <textarea id="text" maxlength="80" placeholder="A banana peel lands in the aisle" enterkeyhint="send"></textarea>
-        <span class="count" id="count">0/80</span>
+        <span class="count" id="count" aria-hidden="true">0/80</span>
       </div>
-      <div class="row">
-        <button class="send" id="send" type="submit">Send</button>
-      </div>
-      <p class="msg" id="msg" role="status"></p>
+      <div class="send-row"><button class="btn" id="send" type="submit">Send</button></div>
+      <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      <div class="receipt" id="receipt" hidden></div>
     </form>
-    <label>Or tap one to send it</label>
-    <div class="chips" id="chips"></div>
+    <h2 id="h-presets">Or tap one to send it</h2>
+    <div class="chips" id="chips" role="group" aria-labelledby="h-presets"></div>
+    <a class="next" href="#next">See what's up next</a>
   </section>
 
-  <section aria-labelledby="queue-h">
-    <h2 id="queue-h">Round queue</h2>
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tab-all" aria-selected="true">All ideas</button>
-      <button class="tab" role="tab" id="tab-mine" aria-selected="false">Mine</button>
+  <section class="screen" id="screen-next" aria-labelledby="h-next" hidden>
+    <h1 id="h-next" tabindex="-1">Up next</h1>
+    <p class="lede">Approved ideas, in the order they go into the hallway.</p>
+    <div class="card spot" id="upnext"></div>
+    <h2>Waiting</h2>
+    <div class="switch" role="group" aria-label="Filter ideas">
+      <button type="button" id="f-all" aria-pressed="true">All ideas</button>
+      <button type="button" id="f-mine" aria-pressed="false">Mine</button>
     </div>
-    <ol id="queue"></ol>
+    <ol class="list" id="queue"></ol>
+    <a class="next" href="#hallway">Watch the hallway</a>
   </section>
 
-  <section aria-labelledby="mine-h">
-    <h2 id="mine-h">My ideas</h2>
-    <ul id="mine"></ul>
+  <section class="screen" id="screen-hallway" aria-labelledby="h-hallway" hidden>
+    <h1 id="h-hallway" tabindex="-1">In the hallway</h1>
+    <p class="lede">What went into the world this round. Watch the big screen to see how the robot reacts.</p>
+    <ol class="list card" id="hallway"></ol>
+    <a class="next" href="#haunt">Send another idea</a>
+  </section>
+
+  <section class="screen" id="screen-mine" aria-labelledby="h-mine" hidden>
+    <h1 id="h-mine" tabindex="-1">My ideas</h1>
+    <p class="lede">Only you can see this list.</p>
+    <ul class="list card" id="mine"></ul>
+    <a class="next" href="#next">See what's up next</a>
   </section>
 
   <p class="consent">Approved hauntings may appear on the big screen with your ghost name.</p>
 </main>
+
+<nav class="tabs" aria-label="Screens">
+  <div class="tabs-in">
+    <a class="tab" href="#haunt" data-screen="haunt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20c0-8 3-15 7-15s7 7 7 15l-2.3-1.6L14.3 20 12 18.4 9.7 20l-2.4-1.6z"/><circle cx="10" cy="11" r=".6"/><circle cx="14" cy="11" r=".6"/></svg>Haunt</a>
+    <a class="tab" href="#next" data-screen="next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M4 12h10M4 18h6M18 9v10M15 16l3 3 3-3"/></svg>Up next<span class="badge" id="b-next" hidden></span></a>
+    <a class="tab" href="#hallway" data-screen="hallway"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h6l3-3v10l-3-3H3z"/><path d="M15 8l6-3M15 12h6M15 16l6 3"/></svg>Hallway<span class="badge" id="b-hallway" hidden></span></a>
+    <a class="tab" href="#mine" data-screen="mine"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Mine<span class="badge" id="b-mine" hidden></span></a>
+  </div>
+</nav>
+
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -115,11 +179,14 @@ li:first-child{border-top:0}
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const rawById = store.get("pg_raw", {}); // my own typed text, kept on this phone only
-  let state = { episodeActive: false, mine: [], queue: [] };
+  const SCREENS = ["haunt", "next", "hallway", "mine"];
+  let state = { episodeActive: false, mine: [], queue: [], hallway: [] };
   let filter = "all";
   let pendingMine = [];
   let sending = false;
-
+  let screen = "haunt";
+  // What each screen looked like when last viewed, for the "new" badges.
+  const seen = { mine: store.get("pg_seen_mine", {}), hallway: store.get("pg_seen_hallway", []), next: "" };
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -127,20 +194,68 @@ li:first-child{border-top:0}
     if (text != null) e.textContent = text;
     return e;
   }
+  const clock = (at) => {
+    const s = Math.max(0, Math.round((at - Date.now()) / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  };
 
+  // ---------- navigation ----------
+  function go(name, focus) {
+    screen = SCREENS.includes(name) ? name : "haunt";
+    for (const s of SCREENS) $("screen-" + s).hidden = s !== screen;
+    for (const a of document.querySelectorAll(".tab")) {
+      if (a.dataset.screen === screen) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    }
+    markSeen();
+    render();
+    if (focus) { $("h-" + screen).focus(); window.scrollTo(0, 0); }
+  }
+  addEventListener("hashchange", () => go(location.hash.slice(1), true));
+
+  function markSeen() {
+    if (screen === "mine") {
+      seen.mine = Object.fromEntries(state.mine.map((h) => [h.hauntId, h.status]));
+      store.set("pg_seen_mine", seen.mine);
+    } else if (screen === "hallway") {
+      seen.hallway = (state.hallway || []).map((h) => h.hauntId + ":" + h.status);
+      store.set("pg_seen_hallway", seen.hallway);
+    } else if (screen === "next") {
+      seen.next = state.queue[0]?.hauntId || "";
+    }
+  }
+
+  function badge(id, n) {
+    const b = $(id);
+    b.hidden = !n;
+    b.textContent = n > 9 ? "9+" : String(n || "");
+  }
+
+  // ---------- data ----------
   async function api(path, opts) {
     const res = await fetch(path, { credentials: "same-origin", headers: { "content-type": "application/json" }, ...opts });
     const body = await res.json().catch(() => ({}));
     return { ok: res.ok, body };
   }
 
-  let sayTimer = 0;
+  let inflight = false;
+  async function refresh() {
+    if (inflight) return;
+    inflight = true;
+    try {
+      const { ok, body } = await api("/api/crowd/state");
+      if (ok) { state = body; $("offline").hidden = true; markSeen(); render(); }
+    } catch {
+      $("offline").hidden = false;
+    } finally {
+      inflight = false;
+    }
+  }
+
   function say(text, bad) {
     const m = $("msg");
     m.textContent = text || "";
-    m.className = "msg" + (bad ? " bad" : " ok");
-    clearTimeout(sayTimer);
-    if (text) sayTimer = setTimeout(() => { m.textContent = ""; }, bad ? 8000 : 4000);
+    m.className = "msg" + (bad ? " bad" : "");
   }
 
   async function send(payload, rawText) {
@@ -150,11 +265,19 @@ li:first-child{border-top:0}
     try {
       const { ok, body } = await api("/api/crowd/haunt", { method: "POST", body: JSON.stringify(payload) });
       if (!ok) { say(body.error?.message || "That didn't send. Try again.", true); return; }
+      say("");
       rawById[body.hauntId] = rawText;
       store.set("pg_raw", rawById);
       pendingMine.push({ hauntId: body.hauntId, status: "submitted" });
       if (payload.text) { $("text").value = ""; updateCount(); }
-      say("✓ Got it" + (state.you ? ", " + state.you.ghostName : "") + "! Checking your idea… (only you can see this)");
+      const r = $("receipt");
+      r.textContent = "";
+      r.append(el("strong", "", "✓ Got it" + (state.you ? ", " + state.you.ghostName : "") + "!"), " We're checking “" + rawText + "”. Only you can see this.");
+      const track = el("a", "next", "Track your idea");
+      track.href = "#mine";
+      track.style.marginTop = "10px";
+      r.append(track);
+      r.hidden = false;
       render();
       refresh();
     } catch {
@@ -167,132 +290,141 @@ li:first-child{border-top:0}
 
   function updateCount() { $("count").textContent = $("text").value.length + "/80"; }
 
+  // ---------- rendering ----------
   const STATUS = {
-    submitted: ["Checking…", "p-wait"],
-    approved: ["Approved · waiting for the host", "p-ok"],
-    queued: ["In the queue", "p-ok"],
-    dispatched: ["Sending to the hallway…", "p-go"],
+    dispatched: ["Going into the hallway…", "p-go"],
     injected: ["Sent to world", "p-ok"],
     failed: ["Didn't make it in", "p-bad"],
     rejected: ["Not approved", "p-bad"],
   };
+  const STEPS = ["Checking", "Approved", "Up next", "Sent to world"];
+
+  // Index of the current step; STEPS.length means every step is done.
+  function stepIndex(h, isHead) {
+    if (h.status === "submitted") return 0;
+    if (h.status === "approved") return 1;
+    if (h.status === "queued") return isHead ? 2 : 1;
+    if (h.status === "dispatched") return 3;
+    return 4; // injected
+  }
+
+  function byLine(h, mineIds) {
+    const by = el("div", "by", h.displayName || "anon");
+    if (mineIds.has(h.hauntId)) by.append(" · ", el("span", "me", "you"));
+    return by;
+  }
 
   function render() {
-    // Round status
-    const r = $("round");
-    r.textContent = "";
-    const clock = (at) => {
-      const s = Math.max(0, Math.round((at - Date.now()) / 1000));
-      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
-    };
-    if (state.episodeActive) {
-      r.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
-      if (state.roundEndsAt) r.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
-    } else if (state.nextRoundAt) {
-      r.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
-    }
-
-    // Identity
-    if (state.you) {
-      const y = $("you");
-      y.textContent = "";
-      y.append("You are ", el("b", "", state.you.ghostName), " 👻");
-    }
-
-    // Your idea is happening (most recent of mine that is up next, sending or sent)
-    const hap = $("happening");
-    const myIds = new Set(state.mine.map((h) => h.hauntId));
+    const mineIds = new Set(state.mine.map((h) => h.hauntId));
     const head = state.queue[0];
-    const live = state.mine.find((h) => h.status === "dispatched" || h.status === "injected");
+    const hall = state.hallway || [];
+
+    // Top: identity and phase
+    if (state.you) { const y = $("you"); y.textContent = ""; y.append("You are ", el("b", "", state.you.ghostName), " 👻"); }
+    const ph = $("phase");
+    ph.textContent = "";
+    if (state.episodeActive) {
+      ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
+      if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
+    } else if (state.nextRoundAt) {
+      ph.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
+    }
+
+    // Your idea is happening: visible on every screen, tap to jump to it
+    const hap = $("happening");
+    const live = state.mine.find((h) => h.status === "dispatched" || (h.status === "injected" && hall.some((x) => x.hauntId === h.hauntId)));
     hap.textContent = "";
     if (live) {
-      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway!");
-      hap.append(el("small", "", live.moderated?.text || ""));
-    } else if (head && myIds.has(head.hauntId)) {
+      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea is in the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
+      hap.href = "#hallway";
+    } else if (head && mineIds.has(head.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
+      hap.href = "#next";
     }
-    hap.classList.toggle("on", hap.textContent.length > 0);
+    hap.hidden = hap.textContent.length === 0;
 
-    // Queue
-    const mineIds = new Set(state.mine.map((h) => h.hauntId));
+    // Up next
+    const up = $("upnext");
+    up.textContent = "";
+    if (head) {
+      up.append(el("div", "label", mineIds.has(head.hauntId) ? "Up next · that's yours" : "Up next"), el("div", "text", head.moderated?.text || ""), byLine(head, mineIds));
+    } else {
+      up.append(el("div", "label", "Up next"), el("div", "empty", "Nothing approved yet. Send an idea and it could be first."));
+    }
     const q = $("queue");
     q.textContent = "";
-    const items = state.queue
-      .map((h, i) => ({ h, i }))
-      .filter(({ h }) => filter === "all" || mineIds.has(h.hauntId));
-    if (!items.length) {
-      q.append(el("li", "empty", filter === "all" ? "No ideas in the queue yet. Send one!" : "None of your ideas are in the queue right now."));
-    }
-    for (const { h, i } of items) {
+    const rest = state.queue.slice(1).map((h, i) => ({ h, i: i + 2 })).filter(({ h }) => filter === "all" || mineIds.has(h.hauntId));
+    if (!rest.length) q.append(el("li", "empty", filter === "all" ? "No other ideas waiting." : "None of your ideas are waiting right now."));
+    for (const { h, i } of rest) {
       const li = el("li");
-      li.append(el("span", "pos", String(i + 1)));
       const b = el("div", "body");
-      b.append(el("div", "text", h.moderated?.text || ""));
-      b.append(el("div", "by", (h.displayName || "anon") + (mineIds.has(h.hauntId) ? " · you" : "")));
-      if (i === 0) b.append(el("span", "pill next", "Up next"));
-      li.append(b);
+      b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds));
+      li.append(el("span", "pos", String(i)), b);
       q.append(li);
     }
 
-    // My ideas (server list, plus anything just sent that the server hasn't returned yet)
+    // Hallway
+    const hw = $("hallway");
+    hw.textContent = "";
+    if (!hall.length) hw.append(el("li", "empty", state.episodeActive ? "Nothing has gone in yet. The first idea goes in a few seconds after the robot starts." : "Nothing has gone in yet. Ideas go in once the round starts."));
+    for (const h of hall) {
+      const li = el("li");
+      const b = el("div", "body");
+      const [label, cls] = STATUS[h.status] || [h.status, ""];
+      b.append(el("div", "text", h.moderated?.text || ""), byLine(h, mineIds), el("span", "pill " + cls, label));
+      li.append(b);
+      hw.append(li);
+    }
+
+    // Mine (server list plus anything just sent that the server hasn't returned yet)
     const serverIds = new Set(state.mine.map((h) => h.hauntId));
     pendingMine = pendingMine.filter((p) => !serverIds.has(p.hauntId));
     const mine = [...pendingMine, ...state.mine];
     const m = $("mine");
     m.textContent = "";
     if (!mine.length) m.append(el("li", "empty", "Your ideas show up here, privately, as soon as you send them."));
-    const queuePos = new Map(state.queue.map((h, i) => [h.hauntId, i]));
     for (const h of mine) {
       const li = el("li");
       const b = el("div", "body");
       const raw = rawById[h.hauntId];
-      const shown = h.status !== "rejected" && h.moderated?.text ? h.moderated.text : raw || "Your idea";
-      b.append(el("div", "text", shown));
-      let [label, cls] = STATUS[h.status] || [h.status, "p-wait"];
-      if (h.status === "queued" && queuePos.has(h.hauntId)) {
-        const p = queuePos.get(h.hauntId);
-        label = p === 0 ? "Up next" : "In the queue · #" + (p + 1);
-        if (p === 0) cls = "next";
-      }
-      b.append(el("span", "pill " + cls, label));
-      if (h.status === "rejected") {
+      b.append(el("div", "text", h.status !== "rejected" && h.moderated?.text ? h.moderated.text : raw || "Your idea"));
+      if (h.status === "rejected" || h.status === "failed") {
+        const [label, cls] = STATUS[h.status];
+        b.append(el("span", "pill " + cls, label));
         if (h.moderated?.reason) b.append(el("div", "reason", h.moderated.reason));
-        if (raw) {
+        if (h.status === "rejected" && raw) {
           const edit = el("button", "edit", "Edit & resubmit");
           edit.type = "button";
-          edit.onclick = () => { $("text").value = raw; updateCount(); $("text").focus(); say(""); };
+          edit.onclick = () => { $("text").value = raw; updateCount(); location.hash = "#haunt"; setTimeout(() => $("text").focus(), 0); };
           b.append(edit);
         }
+      } else {
+        const at = stepIndex(h, head?.hauntId === h.hauntId);
+        const steps = el("ol", "steps");
+        steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to world"));
+        STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
+        b.append(steps);
       }
       li.append(b);
       m.append(li);
     }
+
+    // Badges for screens you're not on
+    badge("b-mine", screen === "mine" ? 0 : state.mine.filter((h) => seen.mine[h.hauntId] && seen.mine[h.hauntId] !== h.status).length);
+    badge("b-hallway", screen === "hallway" ? 0 : hall.filter((h) => !seen.hallway.includes(h.hauntId + ":" + h.status)).length);
+    badge("b-next", screen === "next" || !head || head.hauntId === seen.next ? 0 : 1);
   }
 
-  let inflight = false;
-  async function refresh() {
-    if (inflight) return;
-    inflight = true;
-    try {
-      const { ok, body } = await api("/api/crowd/state");
-      if (ok) { state = body; $("offline").classList.remove("on"); render(); }
-    } catch {
-      $("offline").classList.add("on");
-    } finally {
-      inflight = false;
-    }
-  }
-
+  // ---------- events ----------
   async function loadPresets() {
     try {
       const { ok, body } = await api("/api/crowd/presets");
       if (!ok) return;
-      const box = $("chips");
       for (const p of body) {
         const c = el("button", "chip", p.label);
         c.type = "button";
         c.onclick = () => send({ preset: p.id }, p.label);
-        box.append(c);
+        $("chips").append(c);
       }
     } catch {}
   }
@@ -307,17 +439,18 @@ li:first-child{border-top:0}
   $("text").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
   });
-  for (const [id, f] of [["tab-all", "all"], ["tab-mine", "mine"]]) {
+  for (const [id, f] of [["f-all", "all"], ["f-mine", "mine"]]) {
     $(id).addEventListener("click", () => {
       filter = f;
-      $("tab-all").setAttribute("aria-selected", String(f === "all"));
-      $("tab-mine").setAttribute("aria-selected", String(f === "mine"));
+      $("f-all").setAttribute("aria-pressed", String(f === "all"));
+      $("f-mine").setAttribute("aria-pressed", String(f === "mine"));
       render();
     });
   }
   addEventListener("online", refresh);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 
+  go(location.hash.slice(1), false);
   loadPresets();
   refresh();
   setInterval(refresh, 2000);

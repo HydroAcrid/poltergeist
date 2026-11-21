@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.2.0"; // 1.1.0: optional CrowdState.roundEndsAt · 1.2.0: CrowdState.you; client displayName ignored
+export const VERSION = "1.3.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed"]);
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -118,6 +118,7 @@ export const CrowdState = z
     you: z.object({ ghostName: z.string().min(1).max(16) }).strict().optional(), // the caller's assigned ghost name
     mine: z.array(HauntPublic),
     queue: z.array(HauntPublic),
+    hallway: z.array(HauntPublic).max(8).optional(), // this round's sent ideas, newest first, display-safe
   })
   .strict();
 export type CrowdState = z.infer<typeof CrowdState>;

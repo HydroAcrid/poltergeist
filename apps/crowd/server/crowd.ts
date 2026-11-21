@@ -88,6 +88,7 @@ export class CrowdService {
 
   private haunts = new Map<Id, Haunt>();
   private names = new GhostNames();
+  private hallwayIds: Id[] = []; // dispatched this round, oldest first
   private operatorApproved = new Set<Id>();
   private submissions = new Map<string, number[]>(); // deviceId → submit times
   private seenEnvelopes = new Set<string>();
@@ -218,6 +219,7 @@ export class CrowdService {
       you: { ghostName: this.ghostName(deviceId) },
       mine,
       queue: this.eligible().map((h) => toPublic(h)),
+      hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
     };
   }
 
@@ -258,6 +260,7 @@ export class CrowdService {
 
     // Reserve before publishing, so a re-entrant tick can never send it twice.
     this.setStatus(pick, "dispatched", { episodeId: ep.episodeId });
+    this.hallwayIds.push(pick.hauntId);
     ep.dispatched++;
     ep.nextSlotT = Math.max(ep.nextSlotT, t) + this.config.intervalMs;
     const dispatch = HauntDispatch.parse({ hauntId: pick.hauntId, episodeId: ep.episodeId, text: pick.moderated!.text, tags: pick.moderated!.tags });
@@ -298,6 +301,7 @@ export class CrowdService {
           nextSlotT: this.config.firstDispatchMs,
         };
         if (ep.round !== undefined) this.lastRound = ep.round;
+        this.hallwayIds = []; // a new round starts with an empty hallway
         break;
       }
       case "episode.ended": {
