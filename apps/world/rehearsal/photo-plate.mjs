@@ -1,3 +1,4 @@
+import { hallwayLighting } from './look.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -10,7 +11,8 @@ const framing = [
   'The SECOND image demonstrates CAMERA ANGLE AND COMPOSITION ONLY. Reconstruct the FIRST room from a diagonal travelling viewpoint from behind and to the RIGHT of a character moving toward screen-right, about 55 degrees off the travel direction. Do not copy the second room’s decor.',
   'The hero travels left to right across the screen. Extend the photographed hallway through a long succession of connected bays. Keep the original materials and landmarks in the near bay, then add a sequence of booths, alcoves and pools of lamp light farther ahead. Leave many strides between landmarks. The single reachable exit is distant beyond the last bay. Show depth down the far side of the booths. The travel line projects from lower-left toward upper-right, with most of the travel horizontal and a little into depth.',
   'Frame a broad walkable strip from 84 percent image height on the left to 64 percent on the right, an entry on the far left and one illuminated exit doorway on the far right. Keep this strip open and visible on a projector.',
-  'Use gentle after-hours shadows, warm lamp pools and enough contrast to read the floor. Leave out people, robots, ghosts, obstacles, interface, labels and text.',
+  hallwayLighting,
+  'Leave out people, robots, ghosts, obstacles, interface, labels and text.',
 ].join(' ');
 
 export const photoKey = (bytes) =>

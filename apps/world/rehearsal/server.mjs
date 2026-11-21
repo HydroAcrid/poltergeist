@@ -524,6 +524,7 @@ export async function registerStage(
     ['/stage.css', 'stage.css', 'text/css'],
     ['/stage.js', 'stage.js', 'text/javascript'],
     ['/scene.js', 'scene.js', 'text/javascript'],
+    ['/look.mjs', 'look.mjs', 'text/javascript'],
     ['/photo.js', 'photo.mjs', 'text/javascript'],
     ['/phone.js', 'phone.js', 'text/javascript'],
     ['/hall.webp', 'long-hall.webp', 'image/webp'],

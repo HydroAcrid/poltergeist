@@ -1,3 +1,4 @@
+import { hallwayLighting } from '../rehearsal/look.mjs';
 import { GoogleGenAI } from '@google/genai';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -67,6 +68,7 @@ async function capture() {
   if (autonomous) setup.world_prompt = { text: cameraPrompt };
   if (values.round) setup.world_prompt.text += ' Keep the same small cautious robot, orange twin-strap backpack and lit brass-rim flashlight in its RIGHT hand. Preserve the dark room and warm beam from the seed. It walks toward the signed exit with both feet on the floor.';
   if (stagePilot) setup.world_prompt.text = [
+    hallwayLighting,
     "An explorer walks alongside a small sage robot carrying an orange backpack and a brass flashlight. Our eyes are the moving viewpoint, one stride behind its right shoulder. The original hall and the robot match the reference image.",
     "Rule: When we move, the robot walks beside us at exactly our pace, always one stride ahead on our left. When we stop, it waits beside us. The backpack stays about a third of the picture height, with boots visible. It never runs ahead alone.",
     "The exceptionally long path travels diagonally to the right through successive connected bays: the green arch, paired lamps, a row of booths, another long gallery, and only then the reachable exit. We pass each near doorway and plant while the distant exit stays in sight. The clear floor in front of the robot is visible. Objects landing across that path make the robot stop or step around them."
