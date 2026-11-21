@@ -307,7 +307,7 @@ export function cameraStep(subject) {
 
 export function createNativeFollow({continuationSeed} = {}) {
   const seedSample=continuationSeed ? sampleFrame(continuationSeed,0) : null;
-  let openingMatches=false, originalBody=null, lastContinuationBody=null;
+  let openingMatches=false, originalBody=null, lastContinuationBody=null, angleGap=null;
   const history = [];
   const neutral = {
     x: shoulderFrame.x,
@@ -398,6 +398,22 @@ export function createNativeFollow({continuationSeed} = {}) {
     while (history.length > 1 && history[0].number < number - 24 * 16)
       history.shift();
   }
+  function location(scene) {
+    if (!validBodyBox(scene.bodyBox) || scene.visible!==true || scene.playerCount!==1 ||
+        scene.playerMatch!==true || scene.feetVisible!==true || !scene.rightFloorVisible ||
+        scene.aisleHeading!=='diagonal-right') return null;
+    const [top,left,bottom,right]=scene.bodyBox;
+    return {bodyX:(left+right)/2000,bodyWidth:(right-left)/1000,bottom,bodyHeight:bottom-top};
+  }
+  function sameLocation(a,b) {
+    return Boolean(a && b && Math.abs(a.bodyX-b.bodyX)<=.065 && Math.abs(a.bottom-b.bottom)<=90 &&
+      b.bodyWidth/a.bodyWidth>=.80 && b.bodyWidth/a.bodyWidth<=1.25 &&
+      b.bodyHeight/a.bodyHeight>=.80 && b.bodyHeight/a.bodyHeight<=1.25);
+  }
+  function bridgesAngle(subject, number) {
+    return angleGap && number-angleGap.last.number<=96 && number-angleGap.start.number<=192 &&
+      sameLocation(angleGap.last,subject) && sameLocation(angleGap.start,subject);
+  }
   function observe(scene, number) {
     if (number <= lastGrounding) return;
     if (
@@ -411,12 +427,21 @@ export function createNativeFollow({continuationSeed} = {}) {
     lastGrounding = number;
     if (history.at(-1).number-number > 24*4) { semanticThrough=-1; suspend('stale observation'); return; }
     if (scene.playerCount !== 1 || !scene.visible || !scene.playerMatch || scene.shoulderView !== 'rear-right') {
+      // An angle-only rejection can preserve a *candidate location*. It never
+      // grants a command, placement, or an identity receipt on this view.
+      const subject=seedSample && openingMatches && ['other','unclear'].includes(scene.shoulderView) ? location(scene) : null;
+      const origin=lastBox?.angleOrigin ?? lastBox;
+      let start=null;
+      if (lastBox && number-lastBox.number<=96 && number-origin.number<=192 &&
+          sameLocation(lastBox,subject) && sameLocation(origin,subject)) start=origin;
+      else if (bridgesAngle(subject,number)) start=angleGap.start;
+      angleGap=start ? {start,last:{...subject,number}} : null;
       lose(scene.playerCount > 1 ? 'duplicate players' : !scene.visible || !scene.playerMatch ? 'identity unconfirmed' : 'shoulder view unconfirmed');
       return;
     }
     const upper=validBodyBox(scene.upperBodyBox);
     const b=upper ? scene.upperBodyBox : scene.bodyBox;
-    if (!validBodyBox(scene.bodyBox)) { lose('body unlocated'); return; }
+    if (!validBodyBox(scene.bodyBox)) { angleGap=null;lose('body unlocated');return; }
     const [top, left, bottom, right] = scene.bodyBox;
     floorVisible = scene.rightFloorVisible===true && Array.isArray(scene.ahead) && scene.ahead.length===2 &&
       scene.ahead.every(n=>Number.isFinite(n) && n>=0 && n<=1000);
@@ -428,6 +453,8 @@ export function createNativeFollow({continuationSeed} = {}) {
       bodyWidth>=shoulderFrame.width*.63 && bodyWidth<=shoulderFrame.width*1.48 &&
       top/1000<=shoulderFrame.top+.25 && bottom/1000>=shoulderFrame.top+shoulderFrame.height-.18;
     if (prior && !continuous) { lose('discontinuous subject'); return; }
+    const angleOrigin=bridgesAngle(location(scene),number) ? angleGap.start : null;
+    angleGap=null;
     if (!prior && seedSample) {
       const matchesRecent=lastContinuationBody && number-lastContinuationBody.number<=96 &&
         Math.abs(bodyX-lastContinuationBody.bodyX)<=.08 && Math.abs(bottom-lastContinuationBody.bottom)<=90 &&
@@ -439,7 +466,7 @@ export function createNativeFollow({continuationSeed} = {}) {
         Math.abs(bottom-originalBody.bottom)<=90 && bodyWidth/originalBody.width>=.78 && bodyWidth/originalBody.width<=1.28;
       // After an ambiguity, a new lone figure at the nominal left-fifth mark
       // must still match the last trusted body or the original filmed seed.
-      if (!openingMatches || !fullView || (!matchesRecent && !(atOriginal && sameSeedPatch(seedSample,history[index],b)))) {
+      if (!openingMatches || !fullView || (!matchesRecent && !angleOrigin && !(atOriginal && sameSeedPatch(seedSample,history[index],b)))) {
         lose('continuation subject unconfirmed');return;
       }
       originalBody ??= {x:bodyX,bottom,width:bodyWidth};
@@ -484,7 +511,7 @@ export function createNativeFollow({continuationSeed} = {}) {
     squareAisle=continuous && prior.aisleHeading==='head-on' && scene.aisleHeading==='head-on';
     orbitClear=floorVisible && scene.pose==='upright' && scene.threat==='ordinary' &&
       !scene.obstacles?.some(o=>o.relation==='crossing' || validBodyBox(o.box) && o.box[2]>810 && o.box[3]>550);
-    lastBox={upper,number,scale,x,bodyX,bodyWidth,bottom,aisleHeading:scene.aisleHeading};
+    lastBox={upper,number,scale,x,bodyX,bodyWidth,bottom,bodyHeight:bottom-top,angleOrigin,aisleHeading:scene.aisleHeading};
     if (seedSample && continuous) lastContinuationBody=lastBox;
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,grounding:number,opticalWidth:bodyWidth,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     semanticAnchor = { ...anchor, clearLane };

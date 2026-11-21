@@ -431,3 +431,40 @@ test('a continuation acquires the actual filmed subject in two grounded reads an
   observe(replaced,mismatch,1,a);observe(replaced,mismatch,65,b);
   assert.equal(replaced.verified(65),false,'a stationary background cannot authenticate a replaced player');
 });
+
+test('a brief shoulder-angle disagreement can retain location but needs two new right-shoulder reads before inputs',()=>{
+  const seed=fs.readFileSync(new URL('../rehearsal/venue-prologue/encounter-final.jpg',import.meta.url));
+  const first=fs.readFileSync(new URL('../rehearsal/calibration/continuation-1.jpg',import.meta.url));
+  // Change the pixels after the initial sighting. The original backpack cannot
+  // be rematched by appearance once the explorer turns or the beam moves.
+  const changed=uniform(75);
+  const see=(box,upper,angle='rear-right')=>({...sighting(box),upperBodyBox:upper,feetVisible:true,
+    shoulderView:angle,aisleHeading:'diagonal-right',rightFloorVisible:true,pose:'upright',threat:'ordinary',ahead:[570,520],obstacles:[]});
+  const start=see([242,270,823,472],[242,270,601,470]);
+  const side=see([251,273,812,476],[251,273,590,409],'other');
+  const back=see([251,273,795,458],[251,273,585,414]);
+  const again=see([255,263,788,443],[255,263,574,397]);
+  function attempt(intermediate,gap=145){
+    const f=createNativeFollow({continuationSeed:seed});
+    const observe=(n,s,img=changed)=>{f.push(img,n);f.observe(s,n)};
+    observe(1,start,first);observe(76,intermediate);
+    assert.equal(f.verified(76),false);
+    assert.equal(f.permitsPlacement(76),false);
+    assert.equal(f.permits('W'),false);
+    assert.equal(f.correction(2500),null);
+    observe(gap,back);
+    assert.equal(f.verified(gap),false);
+    assert.equal(f.permitsPlacement(gap),false);
+    observe(gap+65,again);
+    return f;
+  }
+  const restored=attempt(side);
+  assert.equal(restored.verified(210),true);
+  assert.equal(restored.status().cameraRecovery,true);
+  assert.equal(restored.permits('W'),false,'a recovered but wide frame still restricts forward travel');
+  assert.equal(attempt({...side,playerCount:2}).verified(210),false);
+  assert.equal(attempt({...side,playerMatch:false}).verified(210),false);
+  assert.equal(attempt({...side,feetVisible:false}).verified(210),false);
+  assert.equal(attempt({...side,bodyBox:[210,575,818,778]}).verified(210),false);
+  assert.equal(attempt(side,260).verified(325),false);
+});
