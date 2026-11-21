@@ -1,66 +1,33 @@
 {
   "version": 1,
   "openingSequence": [
-    "walk",
-    "idle"
-  ],
-  "continuousSequence": [
-    "walk",
-    "idle",
-    "paper-gust"
+    "venue-approach"
   ],
   "attribution": "Recorded from Google Genie 4 sessions for Poltergeist on November 21, 2026, using the team’s hallway photograph.",
   "timing": "Source frame numbers are one-based and inclusive. Each encoded frame corresponds to one source frame at the original 24 fps.",
   "clips": [
     {
-      "id": "walk",
+      "id": "venue-approach",
       "role": "walk",
       "presetId": null,
       "family": null,
-      "title": "Follow the flashlight",
+      "title": "Into the hallway",
       "buttonLabel": "Approach",
-      "file": "walk.mp4",
-      "durationMs": 6250,
+      "file": "venue-approach.mp4",
+      "durationMs": 17250,
       "fps": 24,
-      "frames": 150,
-      "outcome": "The robot approaches the counter with its flashlight raised.",
+      "frames": 414,
+      "outcome": "The flashlight explorer approaches the crossing bats in the dim venue hallway.",
       "source": {
-        "episodeId": "ep_01M7ZQ66BMGXCEVZ38SR1CQ5MQ",
-        "capture": "photo-round-0Ad7FU",
-        "captureFrames": 536,
-        "captureFps": 24,
-        "input": "native Genie JPEG frames",
-        "setting": "warm hallway",
-        "framesSha256": "09f6a0dd581d4e3c1d38a2481247aaa67c1be35e181a3f6e8532dffc9dbcd679",
+        "episodeId": "ep_01M8002QYW5PF9DAKZAFMWPM0V",
+        "capture": "photo-round-QjcgLY",
         "firstFrame": 1,
-        "lastFrame": 150
+        "lastFrame": 414,
+        "framesPerSecond": 24,
+        "finalNativeJpegSha256": "b5c4bf6ee0436be710d0c63fd684ca08093d9e5711ee048947bed0347efaa064"
       },
-      "sha256": "e55742d33a8f5000ac7f241c10e869c4bb9d9ae8ffcfde2211091a85d8fd9b55"
-    },
-    {
-      "id": "idle",
-      "role": "idle",
-      "presetId": null,
-      "family": null,
-      "title": "At the threshold",
-      "buttonLabel": "Wait",
-      "file": "idle.mp4",
-      "durationMs": 6000,
-      "fps": 24,
-      "frames": 144,
-      "outcome": "The robot waits beside the counter with its flashlight raised.",
-      "source": {
-        "episodeId": "ep_01M7ZQ66BMGXCEVZ38SR1CQ5MQ",
-        "capture": "photo-round-0Ad7FU",
-        "captureFrames": 536,
-        "captureFps": 24,
-        "input": "native Genie JPEG frames",
-        "setting": "warm hallway",
-        "framesSha256": "535c8ed7932d91f731efff8cae08ddd6fd42615332d4822dcfc5076fad6a61df",
-        "firstFrame": 151,
-        "lastFrame": 294
-      },
-      "sha256": "0665c8525b94f97ee8fc9c841f0614d92e8231ff889d565a8a03e5cfc9ccd7c1"
+      "sha256": "bee877b0c13d8615b63069150a85ea5f221156d2369313f22e6c021514692c96",
+      "asset": "../venue-prologue/approach.mp4"
     },
     {
       "id": "paper-gust",

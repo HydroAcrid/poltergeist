@@ -18,16 +18,23 @@ export function hasFilmedResponse(clip) {
 }
 export function buildPreparedLibrary(clips,mediaDirectory=new URL('./prepared-media/',import.meta.url)) {
   const effectOptions=[], byText=new Map();
+  const walk = clips.find(c => c.role === 'walk');
+  function verified(clip) {
+    if (!clip?.file || !clip.sha256) return false;
+    try {
+      const bytes = readFileSync(new URL(clip.asset ?? clip.file,mediaDirectory));
+      return createHash('sha256').update(bytes).digest('hex') === clip.sha256;
+    } catch { return false; }
+  }
+  if (!verified(walk)) return {clips:[],effectOptions,byText};
   for (const clip of clips.filter(hasFilmedResponse)) {
-    let bytes;
-    try { bytes=readFileSync(new URL(clip.file,mediaDirectory)); } catch { continue; }
-    if (createHash('sha256').update(bytes).digest('hex')!==clip.sha256) continue;
+    if (!verified(clip)) continue;
     const preset=presets.find(p=>p.id===clip.presetId);
     if (!preset || byText.has(preset.text)) continue;
     effectOptions.push({id:preset.id,text:preset.text,title:clip.title,label:clip.buttonLabel,tags:preset.tags});
     byText.set(preset.text,clip);
   }
-  return {clips,effectOptions,byText};
+  return {clips:[walk,...byText.values()],effectOptions,byText};
 }
 export const preparedLibrary=buildPreparedLibrary(clips);
 export const preparedEncountersAvailable=preparedLibrary.effectOptions.length>0;
@@ -51,7 +58,7 @@ export function serveMovie(path,req,reply) {
 
 export function registerPreparedMedia(app, root, library=preparedLibrary) {
   for (const clip of library.clips) {
-    const path = resolve(root, 'prepared-media', clip.file);
+    const path = resolve(root, 'prepared-media', clip.asset ?? clip.file);
     app.get(brief(clip).clipUrl, async (req, reply) => serveMovie(path,req,reply));
   }
 }
@@ -59,9 +66,8 @@ export function registerPreparedMedia(app, root, library=preparedLibrary) {
 export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000, onReaction=()=>{}, library=preparedLibrary) {
   const {clips,effectOptions,byText}=library;
   const walk = clips.find(c=>c.role==='walk');
-  const idle = clips.find(c=>c.role==='idle');
   const selected = new Set();
-  let fallback = walk, queued = null;
+  let opening = true, queued = null;
   let nextChange = start + collectMs;
   let pendingDisplay, pendingReaction;
   const state = {phase:'collecting', collectUntil:nextChange, upNext:brief(walk)};
@@ -74,7 +80,7 @@ export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000
     if (!clip || selected.has(h.hauntId) || !gate(now).canDispatch) return false;
     selected.add(h.hauntId);
     queued = {clip, id:h.hauntId, by};
-    state.upNext = brief(clip);
+    if (!opening) state.upNext = brief(clip);
     return true;
   }
   function advance(now) {
@@ -90,17 +96,23 @@ export function createPreparedShow(start, deadline, onDisplay, collectMs = 30000
       onReaction(guest,at);
     }
     if (now < nextChange) return;
+    if (!opening && !queued) {
+      state.phase = 'waiting';
+      state.upNext = null;
+      state.cue = null;
+      return;
+    }
     if (state.phase !== 'handoff') {
       state.phase = 'handoff';
       nextChange = now + blackoutMs;
       return;
     }
-    const clip = queued?.clip || fallback;
-    const guest = queued;
-    queued = null;
-    fallback = idle;
+    const guest = opening ? null : queued;
+    const clip = opening ? walk : guest.clip;
+    if (guest) queued = null;
+    opening = false;
     Object.assign(state,{phase:'playing', clipUrl:brief(clip).clipUrl, clipStartedAt:now,
-      clipDurationMs:clip.durationMs, sourceTitle:clip.title, upNext:brief(fallback),
+      clipDurationMs:clip.durationMs, sourceTitle:clip.title, upNext:queued ? brief(queued.clip) : null,
       cue:guest ? {label:'Audience pick',text:clip.title,by:guest.by} : null});
     nextChange = now + clip.durationMs;
     if (guest) {

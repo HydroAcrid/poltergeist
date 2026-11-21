@@ -86,9 +86,9 @@ export function createPreparedPlayer(surface) {
       visible?.pause();
       cover(visible ? 'open' : 'clear');
       darkAt = 0;
-      return {message:'Preparing the next scene…'};
+      return {message:fresh ? 'Preparing the next scene…' : 'Waiting for the next audience pick…'};
     };
-    if (fresh && part.phase === 'waiting') return holdPicture();
+    if (part.phase === 'waiting') return holdPicture();
     if (part.phase === 'handoff') {
       if (!segment && !visible) {
         source(part.upNext?.clipUrl);

@@ -18,7 +18,8 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function world(badId = false, library?: unknown) {
+type BufferedInput = {picks: {id:string,text:string,by:string}[], seed:Buffer, signal:AbortSignal, chapter:number, continuation:boolean};
+async function world(badId = false, library?: unknown, renderBuffered?: (input: BufferedInput) => Promise<unknown>) {
   vi.useFakeTimers({toFake:["Date","setInterval","clearInterval"]});
   const app = fastify(); hosts.push(app);
   const bus = new MemoryBus();
@@ -27,7 +28,7 @@ async function world(badId = false, library?: unknown) {
   const {registerStage} = await import(path);
   const root = resolve(__dirname,"../../world/rehearsal");
   const round = await registerStage(app,{
-    bus,root,library,captureDir:root,chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
+    bus,root,library,captureDir:root,...(renderBuffered && {renderBuffered,canEncode:()=>true}),chapterTiming:{matchMs:600_000,cutMs:3000,limitMs:90_000},reviewSeed:review,makePilot:()=>()=>({action:{key:"NOOP"}}),
     newId:()=>badId ? "invalid-episode" : newId("ep"),
     launchLive:(provider:Provider)=>{providers.push(provider);return {stop,send:vi.fn()};},
   });
@@ -134,10 +135,11 @@ it("keeps a filmed audience pick pending through collection and blackout, acknow
   onTestFinished(()=>rmSync(fixtureDir,{recursive:true,force:true}));
   const bytes=Buffer.from("Test clip bytes used to verify the audience receipt clock");
   writeFileSync(resolve(fixtureDir,"fixture-response-verified.mp4"),bytes);
+  writeFileSync(resolve(fixtureDir,"fixture-walk.mp4"),bytes);
   const take={role:"effect",id:"fixture-response",file:"fixture-response.mp4",verifiedScare:true,presetId:"mop-bucket",title:"A rolling bucket",
     frames:120,fps:24,durationMs:5000,sha256:createHash("sha256").update(bytes).digest("hex"),source:{episodeId:"fixture-episode"}};
   const receipt={verifiedInPixels:true,episodeId:take.source.episodeId,clipSha256:take.sha256,action:"recoil",obstacleFrame:36,responseFrame:75};
-  const library=buildPreparedLibrary([{role:"walk",file:"fixture-walk.mp4",durationMs:6000},
+  const library=buildPreparedLibrary([{role:"walk",file:"fixture-walk.mp4",durationMs:6000,sha256:take.sha256},
     {role:"idle",file:"fixture-idle.mp4",durationMs:6000},take,{...take,file:"fixture-response-verified.mp4",reactionEvidence:receipt}],pathToFileURL(fixtureDir+sep));
   const h = await world(false,library);
   const startedAt = Date.now();
@@ -157,6 +159,9 @@ it("keeps a filmed audience pick pending through collection and blackout, acknow
   expect(h.round().prepared.phase).toBe("handoff");
   expect((await state()).mine[0].status).toBe("dispatched");
   await h.tick(1600);
+  expect(h.round().prepared.clipUrl).toContain("fixture-walk.mp4");
+  expect((await state()).mine[0].status).toBe("dispatched");
+  await h.tick(7350);
   expect(h.round().prepared.clipUrl).toContain("fixture-response-verified.mp4");
   expect((await state()).mine[0].status).toBe("dispatched");
   await h.tick(1700);
@@ -180,4 +185,36 @@ it("refuses a screening with no verified library entry before publishing a round
   expect(start.json().error).toMatch(/verified robot response/);
   expect(h.providers).toHaveLength(0);
   expect(h.bus.history({types:["episode.started"]})).toHaveLength(0);
+});
+
+it("films two actual guests' ideas behind the same native hallway and never credits either for the prerecorded opening", async () => {
+  const renderer = vi.fn((input: BufferedInput) => new Promise((_,reject) => {
+    input.signal.addEventListener("abort", () => reject(Error("Round closed")), {once:true});
+  }));
+  const h = await world(false,undefined,renderer);
+  const join = async () => String((await h.app.inject("/api/crowd/state")).headers["set-cookie"]).split(";")[0]!;
+  const guests = [await join(), await join()];
+  expect(guests[0]).not.toBe(guests[1]);
+  const start = await h.post("/rehearsal/start",{mode:"buffered",expectedPlayMode:"buffered-live",useVenueOpening:true});
+  expect(start.statusCode, start.body).toBe(200);
+  const submits = await Promise.all(["bat-swarm","mop-bucket"].map((preset,i) => h.app.inject({
+    method:"POST",url:"/api/crowd/haunt",headers:{cookie:guests[i]!},payload:{preset}
+  })));
+  const ids = submits.map(r=>r.json().hauntId);
+  expect(new Set(ids).size).toBe(2);
+  await h.tick(18000);
+  expect(renderer).toHaveBeenCalledTimes(1);
+  const [input] = renderer.mock.calls[0]!;
+  expect(new Set(input.picks.map(p=>p.id))).toEqual(new Set(ids));
+  expect(input.continuation).toBe(true);
+  expect(input.chapter).toBe(3);
+  expect(createHash("sha256").update(input.seed).digest("hex")).toBe("e10355627e68d4a98a83d0ba90a98edc7cf7b2e453a523822f5ceb9d46e0f1d5");
+  expect(h.round().prepared.phase).toBe("collecting");
+  expect(h.round().playbackMetrics.firstRenderMs).toBeLessThan(18000);
+  await h.tick(33500);
+  expect(h.round().prepared.clipUrl).toMatch(/\/2\.mp4$/);
+  expect(h.round().fear).toBe(0);
+  expect(h.bus.history({types:["haunt.injected"]})).toHaveLength(0);
+  expect(h.providers).toHaveLength(0);
+  await h.end();
 });

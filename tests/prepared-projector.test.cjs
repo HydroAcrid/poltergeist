@@ -136,3 +136,28 @@ test('a late successor leaves the previous native picture visible until its repl
   player.show(fresh('playing',{clipUrl:b,clipStartedAt:12000}),16800);
   assert.equal(surface.dataset.cover,'open');assert.equal(videos[1].playbackRate,1);
 });
+
+test('filmed screening uses the matched original approach exactly once and holds the venue after the guest encounter',async()=>{
+  const {preparedLibrary,createPreparedShow}=await import('../apps/world/rehearsal/prepared-show.mjs');
+  assert.deepEqual(preparedLibrary.clips.map(clip=>clip.file),['venue-approach.mp4','bat-swarm.mp4']);
+  const receipts=[],reactions=[];
+  const show=createPreparedShow(0,300000,({id})=>receipts.push(id),30000,({id})=>reactions.push(id));
+  const idea={hauntId:'guest-bats',text:preparedLibrary.effectOptions[0].text};
+  assert.equal(show.choose(idea,'Misty',27000),true);
+  show.advance(30000);show.advance(31250);
+  assert.equal(show.state.clipUrl,'/rehearsal/clips/venue-approach.mp4');
+  assert.deepEqual(receipts,[]);
+  show.advance(48500);show.advance(49750);
+  assert.equal(show.state.clipUrl,'/rehearsal/clips/bat-swarm.mp4');
+  show.advance(49800);
+  assert.deepEqual(receipts,['guest-bats']);
+  show.advance(50500);
+  assert.deepEqual(reactions,['guest-bats']);
+  for (const t of [56750,59000,75000,111000]) {
+    show.advance(t);
+    assert.equal(show.state.phase,'waiting');
+    assert.equal(show.state.clipUrl,'/rehearsal/clips/bat-swarm.mp4');
+    assert.equal(show.state.upNext,null);
+  }
+  assert.deepEqual(receipts,['guest-bats']);
+});
