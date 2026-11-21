@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.4.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group
+export const VERSION = "1.5.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed"]);
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -17,12 +17,16 @@ export const Moderated = z
     text: z.string().max(60), // physical world event, present tense; "" when rejected
     tags: z.array(HauntTag).max(3),
     reason: z.string().max(80).optional(), // private: author and /operator only
+    suggestion: z.string().trim().min(1).max(80).optional(), // private, editable alternative for a rejected idea
     model: z.string().min(1), // "rules-only", "preset", "seed" or the model id
   })
   .strict()
   .superRefine((m, ctx) => {
     if (m.safe && (m.text.length === 0 || m.tags.length < 1)) {
       ctx.addIssue({ code: "custom", message: "safe moderation needs text and 1–3 tags" });
+    }
+    if (m.safe && m.suggestion !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["suggestion"], message: "only rejected ideas carry a suggestion" });
     }
     if (!m.safe && m.text.length > 0) {
       ctx.addIssue({ code: "custom", message: "rejected moderation must not carry display text" });
@@ -70,8 +74,20 @@ const HauntObject = z.object(hauntFields).strict();
 export const Haunt = HauntObject.superRefine(statusRules);
 export type Haunt = z.infer<typeof Haunt>;
 
-/** Haunt without `raw` and `deviceId`. Strict, so a payload that leaks either key is rejected. */
-export const HauntPublic = HauntObject.omit({ raw: true, deviceId: true }).strict().superRefine(statusRules);
+/** A private receipt visible only on the submitting device. */
+export const HauntReceipt = HauntObject.omit({ raw: true, deviceId: true }).strict().superRefine(statusRules);
+export type HauntReceipt = z.infer<typeof HauntReceipt>;
+
+/** Older public payloads may contain a reason. New producers omit all private feedback. */
+export const HauntPublic = HauntReceipt.superRefine((h, ctx) => {
+  if (h.moderated?.suggestion !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["moderated", "suggestion"], message: "suggestions are author-only" });
+  }
+}).transform((h): HauntReceipt => {
+  if (!h.moderated || h.moderated.reason === undefined) return h;
+  const { reason: _legacyReason, ...moderated } = h.moderated;
+  return { ...h, moderated };
+});
 export type HauntPublic = z.infer<typeof HauntPublic>;
 
 export const HauntDispatch = z
@@ -102,7 +118,9 @@ export const HauntSubmitRequest = z
   .object({
     text: z.string().trim().min(1).max(80).optional(),
     preset: z.string().min(1).max(40).optional(),
+    revisionOf: Id.optional(), // an author-owned rejected idea, resubmitted as text
   })
+  .refine((r) => r.revisionOf === undefined || r.text !== undefined, "a revision needs text")
   .refine((r) => (r.text === undefined) !== (r.preset === undefined), "send exactly one of text or preset");
 export type HauntSubmitRequest = z.infer<typeof HauntSubmitRequest>;
 
@@ -117,7 +135,7 @@ export const CrowdState = z
     nextRoundAt: EpochMs.optional(), // only between rounds
     roundEndsAt: EpochMs.optional(), // only during a round: Episode.startedAt + maxDurationMs
     you: z.object({ ghostName: z.string().min(1).max(16) }).strict().optional(), // the caller's assigned ghost name
-    mine: z.array(HauntPublic),
+    mine: z.array(HauntReceipt),
     queue: z.array(HauntPublic),
     hallway: z.array(HauntPublic).max(8).optional(), // this round's sent ideas, newest first, display-safe
   })

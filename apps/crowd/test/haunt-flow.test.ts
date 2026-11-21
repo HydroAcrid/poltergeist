@@ -51,6 +51,71 @@ describe("two-phone flow", () => {
     expect(JSON.stringify(bState)).not.toContain("CELEB_NAME");
   });
 
+  it("privately suggests a revision and sends it straight back through moderation exactly once", async () => {
+    const author = await phone();
+    const spectator = await phone();
+    const parent = (await author.submit({ text: "A hurricane blows the roof off" })).json().hauntId;
+    await hub.crowd.whenIdle();
+
+    const feedback = (await author.state()).mine[0]!.moderated!;
+    expect(feedback.reason).toBeTruthy();
+    expect(feedback.suggestion).toBeTruthy();
+    expect((await spectator.state()).mine).toEqual([]);
+    expect((await spectator.state()).queue).toEqual([]);
+    const events = JSON.stringify(hub.bus.history({ types: ["haunt.public"] }));
+    expect(events).not.toMatch(/"reason"|"suggestion"/);
+    expect(events).not.toContain(feedback.suggestion);
+    const publicParent = hub.bus.history({ types: ["haunt.public"] }).at(-1)!.payload as HauntPublic;
+    const legacy = { ...publicParent, moderated: { ...publicParent.moderated!, reason: feedback.reason } };
+    expect(HauntPublic.parse(legacy).moderated?.reason).toBeUndefined();
+    expect(HauntPublic.safeParse({ ...legacy, moderated: feedback }).success).toBe(false);
+
+    const revision = { text: feedback.suggestion, revisionOf: parent };
+    expect((await spectator.submit(revision)).statusCode).toBe(400);
+    expect((await author.submit({ preset: "banana-peel", revisionOf: parent })).statusCode).toBe(400);
+    const [first, second] = await Promise.all([author.submit(revision), author.submit(revision)]);
+    expect(first.statusCode).toBe(200);
+    expect(second.json()).toEqual(first.json());
+    expect(first.json().hauntId).not.toBe(parent);
+    expect((await author.submit({ ...revision, text: "another edit" })).statusCode).toBe(400);
+    await hub.crowd.whenIdle();
+
+    const revised = (await author.state()).mine.find(h => h.hauntId === first.json().hauntId);
+    expect(revised).toMatchObject({ status: "queued", moderated: { safe: true, model: "rules-only" } });
+    expect((await spectator.state()).queue.map(h => h.hauntId)).toEqual([first.json().hauntId]);
+    expect(hub.crowd.allHaunts()).toHaveLength(2);
+    expect(hub.bus.history({ types: ["haunt.public"] }).map(e => e.payload).filter(
+      p => (p as HauntPublic).hauntId === first.json().hauntId && (p as HauntPublic).status === "submitted"
+    )).toHaveLength(1);
+    expect((await author.submit({ text: "fog" })).statusCode).toBe(429);
+  });
+
+  it("checks edited originals and prevents an unlimited chain of immediate rejected revisions", async () => {
+    const author = await phone();
+    const parent = (await author.submit({ text: "hurricane" })).json().hauntId;
+    await hub.crowd.whenIdle();
+    const change = (await author.submit({ text: "tornado", revisionOf: parent })).json().hauntId;
+    await hub.crowd.whenIdle();
+    expect((await author.state()).mine.find(h => h.hauntId === change)?.status).toBe("rejected");
+    const next = { text: "Paper flutters across the floor", revisionOf: change };
+    expect((await author.submit(next)).statusCode).toBe(429);
+    hub.clock.advance(20_000);
+    expect((await author.submit(next)).statusCode).toBe(200);
+  });
+
+  it("counts an immediate revision against the same device's daily allowance", async () => {
+    const author = await phone();
+    for (let i = 0; i < 29; i++) {
+      expect((await author.submit({ text: "fog" })).statusCode).toBe(200);
+      hub.clock.advance(20_000);
+    }
+    const parent = (await author.submit({ text: "hurricane" })).json().hauntId;
+    await hub.crowd.whenIdle();
+    const response = await author.submit({ revisionOf: parent, text: "Paper flutters across the floor" });
+    expect(response.statusCode).toBe(429);
+    expect(response.json().error.message).toMatch(/daily/);
+  });
+
   it("shows approved ideas on both phones in FIFO order, with Mine as a filter", async () => {
     const a = await phone();
     const b = await phone();

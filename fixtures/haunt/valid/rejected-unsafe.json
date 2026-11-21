@@ -8,7 +8,8 @@
     "text": "",
     "tags": [],
     "reason": "Keep it about the hallway, not people.",
-    "model": "rules-only"
+    "model": "rules-only",
+    "suggestion": "A paper silhouette drifts through the hallway"
   },
   "votes": 0,
   "seeded": false,

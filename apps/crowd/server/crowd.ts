@@ -70,11 +70,11 @@ export interface CrowdDeps {
   log?: (msg: string, extra?: object) => void;
 }
 
-/** Display-safe copy. `forAuthor` keeps the private rejection reason. */
+/** Display-safe copy. `forAuthor` keeps private moderation feedback. */
 export function toPublic(h: Haunt, forAuthor = false): HauntPublic {
   const { raw: _raw, deviceId: _deviceId, ...rest } = h;
   if (rest.moderated && !forAuthor) {
-    const { reason: _reason, ...m } = rest.moderated;
+    const { reason: _reason, suggestion: _suggestion, ...m } = rest.moderated;
     return { ...rest, moderated: m };
   }
   return rest;
@@ -90,7 +90,8 @@ export class CrowdService {
   private names = new GhostNames();
   private hallwayIds: Id[] = []; // dispatched this round, oldest first
   private operatorApproved = new Set<Id>();
-  private submissions = new Map<string, number[]>(); // deviceId → submit times
+  private submissions = new Map<string, { time: number; hauntId: Id; revised: boolean }[]>();
+  private revisions = new Map<Id, Id>(); // rejected parent → its one resubmission
   private seenEnvelopes = new Set<string>();
   private pending = new Set<Promise<void>>();
   private seededCursor = 0;
@@ -136,11 +137,24 @@ export class CrowdService {
     const preset = req.preset !== undefined ? this.presetsById.get(req.preset) : undefined;
     if (req.preset !== undefined && !preset) return { ok: false, code: "INVALID", message: "That preset doesn't exist." };
 
-    const limited = this.rateLimit(deviceId, now);
+    if (req.revisionOf !== undefined) {
+      const parent = this.haunts.get(req.revisionOf);
+      if (!req.text || preset || parent?.deviceId !== deviceId || parent.status !== "rejected") {
+        return { ok: false, code: "INVALID", message: "Choose a rejected idea from My ideas to revise." };
+      }
+      const previous = this.revisions.get(parent.hauntId);
+      if (previous) {
+        if (this.haunts.get(previous)?.raw === req.text) return { ok: true, hauntId: previous, status: "submitted" };
+        return { ok: false, code: "INVALID", message: "You already sent a revision of this idea. Check My ideas." };
+      }
+    }
+
+    const hauntId = newId("ht", now);
+    const limited = this.rateLimit(deviceId, now, hauntId, req.revisionOf);
     if (limited) return { ok: false, code: "RATE_LIMITED", message: limited };
 
     const haunt: Haunt = {
-      hauntId: newId("ht", now),
+      hauntId,
       deviceId,
       displayName: this.ghostName(deviceId),
       raw: preset ? preset.label : req.text!,
@@ -151,6 +165,7 @@ export class CrowdService {
       createdAt: now,
     };
     this.haunts.set(haunt.hauntId, haunt);
+    if (req.revisionOf !== undefined) this.revisions.set(req.revisionOf, hauntId);
     this.publishPublic(haunt);
 
     const job = this.moderate(haunt, preset).finally(() => this.pending.delete(job));
@@ -158,18 +173,20 @@ export class CrowdService {
     return { ok: true, hauntId: haunt.hauntId, status: "submitted" };
   }
 
-  private rateLimit(deviceId: string, now: number): string | null {
+  private rateLimit(deviceId: string, now: number, hauntId: Id, revisionOf?: Id): string | null {
     const dayStart = new Date(now).setHours(0, 0, 0, 0);
-    const times = (this.submissions.get(deviceId) ?? []).filter((t) => t >= dayStart);
+    const times = (this.submissions.get(deviceId) ?? []).filter((entry) => entry.time >= dayStart);
     const last = times[times.length - 1];
-    if (last !== undefined && now - last < this.config.rateMs) {
-      const wait = Math.ceil((this.config.rateMs - (now - last)) / 1000);
+    // A rejected original can be corrected immediately. Further revisions use the usual interval.
+    const fastRevision = last && !last.revised && last.hauntId === revisionOf;
+    if (last && !fastRevision && now - last.time < this.config.rateMs) {
+      const wait = Math.ceil((this.config.rateMs - (now - last.time)) / 1000);
       return `One idea every ${Math.round(this.config.rateMs / 1000)} seconds. Try again in ${wait} seconds.`;
     }
     if (times.length >= this.config.dailyMax) {
       return `You've sent ${this.config.dailyMax} ideas today, the daily limit. Thanks for haunting!`;
     }
-    times.push(now);
+    times.push({ time: now, hauntId, revised: revisionOf !== undefined });
     this.submissions.set(deviceId, times);
     return null;
   }
