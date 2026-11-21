@@ -1,4 +1,5 @@
 import { createProjectorCue } from './haunt-cue.mjs';
+import {createPreparedPlayer, preparedCue, usesClipPlayer} from './prepared-player.mjs';
 import { createScene } from './scene.js';
 import { readPhoto, toJpeg } from './photo.js';
 const el = (id) => document.getElementById(id);
@@ -9,6 +10,7 @@ const diagnostics = host ? await import('./host-debug.mjs') : null;
 const canvas = el('scene');
 let liveImage = el('live');
 const projectorCue = createProjectorCue();
+const preparedPlayer = createPreparedPlayer(el('prepared-surface'));
 const hud = document.querySelector('.hud');
 function positionCue() {
   document.documentElement.style.setProperty('--cue-top', Math.ceil(hud.getBoundingClientRect().bottom + 12) + 'px');
@@ -270,8 +272,11 @@ async function updateState() {
   queue(s);
 
   const r = s.round;
+  el('prepared-format').hidden = !usesClipPlayer(r);
+  if (usesClipPlayer(r)) set('prepared-format', r.playMode === 'buffered-live' ? 'Live audience · buffered Genie' : 'Live audience · recorded scenes');
+  document.querySelector('.fear-readout').hidden = r?.playMode === 'prepared-show';
   canvas.classList.toggle('native-frame', !!r?.live);
-  const stream = r?.live && r.phase === 'playing' ? streamKey(r) : '';
+  const stream = r?.live && !usesClipPlayer(r) && r.phase === 'playing' ? streamKey(r) : '';
   if (stream !== liveId) {
     scene.freezeLive(liveImage,Date.now()+off);
     liveImage.removeAttribute('src');
@@ -295,7 +300,8 @@ async function updateState() {
   el('host').hidden = !host;
   controls();
   schedulePaint();
-  await Promise.all([refreshReceipt(), refreshLobbyJoin(s.lobby)]);
+  const collecting = usesClipPlayer(r) && r.prepared?.phase === 'collecting' && r.phase !== 'ended';
+  await Promise.all([refreshReceipt(), refreshLobbyJoin(collecting ? {phase:'lobby'} : s.lobby)]);
 }
 async function refresh() {
   if (refreshing || !running || document.hidden) return;
@@ -328,7 +334,14 @@ function paint() {
   if (state) {
     const active = r && r.phase !== 'ended';
     let worldVisible = false;
-    if (active) {
+    const prepared = preparedPlayer.show(r, now);
+    if (prepared) {
+      const original = 'prepared/' + state.revision;
+      if (paintedStill !== original) {
+        scene.paint({...state,round:null}, now);
+        paintedStill = original;
+      }
+    } else if (active) {
       paintedStill = '';
       if (r.live) worldVisible = scene.presentLive(liveId === streamKey(r) ? liveImage : null, r, now);
       else scene.paint(state, now);
@@ -349,11 +362,21 @@ function paint() {
       cue = '',
       caption = '',
       by = '',
-      card = projectorCue(connected ? r : null, now);
+      card = projectorCue(connected && !prepared ? r : null, now);
     if (r) {
       const sec = Math.max(0, Math.ceil((r.deadline - now) / 1000)),
         elapsed = (now - r.openedAt) / 1000;
-      if (r.phase === 'opening') {
+      if (prepared && active) {
+        const part = r.prepared || {};
+        phase = prepared.collecting ? 'Collecting hauntings' : prepared.handoff ? 'Changing scenes' : prepared.message ? 'Opening the hallway' : 'In the hallway';
+        label = prepared.collecting && Number.isFinite(part.collectUntil) ? 'Send ideas' : 'Time left';
+        clock = time(label === 'Send ideas' ? Math.max(0,Math.ceil((part.collectUntil-now)/1000)) : sec);
+        const notice = preparedCue(part, prepared, now);
+        cue = notice.label || '';
+        caption = notice.text || '';
+        by = notice.by || '';
+        card = notice.label && notice.text ? notice : null;
+      } else if (r.phase === 'opening') {
         phase = 'Ghosts can submit';
         label = 'Starts in';
         clock = time(sec);
@@ -420,6 +443,7 @@ function paint() {
     set('ghost-by', by);
     const story = el('story');
     story.classList.toggle('haunt-card', !!card);
+    story.classList.toggle('prepared-collect', !!prepared?.collecting);
     const robotX = r?.trackedBody ? (r.trackedBody[1] + r.trackedBody[3]) / 2 : r?.trackedFeet?.[1];
     story.classList.toggle('on-left', !!card && r?.trackedAt > now - 5000 && robotX > 520);
     el('story').hidden = !caption;
@@ -440,7 +464,7 @@ function paint() {
     }
   }
   if (r && r.phase !== 'ended') {
-    if (canvas.classList.contains('stream-mask')) hudTimer=setTimeout(schedulePaint,100);
+    if (usesClipPlayer(r) || canvas.classList.contains('stream-mask')) hudTimer=setTimeout(schedulePaint,100);
     else schedulePaint();
   }
 }
@@ -561,6 +585,7 @@ el('shutter').onclick = () =>
     await upload(blob);
   });
 function suspend() {
+  preparedPlayer.suspend();
   clearTimeout(refreshTimer);
   clearTimeout(hudTimer);
   cancelAnimationFrame(paintId);

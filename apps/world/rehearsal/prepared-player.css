@@ -1,0 +1,19 @@
+.prepared-surface, .prepared-surface video, .prepared-surface::after {
+  position:absolute; inset:0; width:100%; height:100%; pointer-events:none;
+}
+.prepared-surface { z-index:2; }
+.prepared-surface video { object-fit:contain; background:#070a09; }
+.prepared-surface::after { content:''; opacity:0; background:#030506; }
+.prepared-surface[data-cover=closing]::after { animation:hallway-power-off 580ms linear both; }
+.prepared-surface[data-cover=dark]::after { opacity:1; }
+.prepared-surface[data-cover=open]::after { animation:hallway-power-on 450ms ease-out both; }
+@keyframes hallway-power-off { 0%{opacity:0} 42%{opacity:.32} 57%{opacity:.16} 75%{opacity:.65} 100%{opacity:1} }
+@keyframes hallway-power-on { from{opacity:1} to{opacity:0} }
+.prepared-format { display:block; color:#f2e9d3; margin-top:8px; font-size:clamp(12px,1.05vw,16px); }
+@media (prefers-reduced-motion:reduce) {
+  .prepared-surface[data-cover=closing]::after { animation:none; opacity:1; }
+  .prepared-surface[data-cover=open]::after { animation:none; opacity:0; }
+}
+@media (max-aspect-ratio:1/1) {
+  .story.prepared-collect { bottom:max(145px, 16dvh); }
+}

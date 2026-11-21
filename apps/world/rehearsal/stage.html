@@ -8,6 +8,7 @@
     />
     <title>Poltergeist</title>
     <link rel="stylesheet" href="/stage.css" />
+    <link rel="stylesheet" href="/prepared-player.css" />
   </head>
   <body class="projector">
     <main class="world" aria-label="Poltergeist game">
@@ -19,9 +20,14 @@
           aria-label="The venue transforms into the robot’s hallway"
         ></canvas>
         <img id="live" class="decode-source" aria-hidden="true" alt="" />
+        <div id="prepared-surface" class="prepared-surface" hidden aria-hidden="true">
+          <video muted playsinline preload="auto" hidden></video>
+          <video muted playsinline preload="auto" hidden></video>
+        </div>
       </figure>
       <header class="hud">
-        <h1 id="title" class="brand">Poltergeist</h1>
+        <div><h1 id="title" class="brand">Poltergeist</h1>
+          <small id="prepared-format" class="prepared-format" hidden>Live audience · recorded scenes</small></div>
         <div class="score" hidden>
           <div
             class="fear-readout"

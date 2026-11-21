@@ -910,6 +910,8 @@ export async function registerStage(
     ['/stage', 'stage.html', 'text/html'],
     ['/phone', 'phone.html', 'text/html'],
     ['/stage.css', 'stage.css', 'text/css'],
+    ['/prepared-player.css', 'prepared-player.css', 'text/css'],
+    ['/prepared-player.mjs', 'prepared-player.mjs', 'text/javascript'],
     ['/stage.js', 'stage.js', 'text/javascript'],
     ['/scene.js', 'scene.js', 'text/javascript'],
     ['/look.mjs', 'look.mjs', 'text/javascript'],
