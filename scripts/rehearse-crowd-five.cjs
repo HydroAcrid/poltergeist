@@ -185,7 +185,7 @@ async function run() {
       const round = snapshot.round;
       assert.ok(!round.live);
       roundIds.add(round.id);
-      elapsed = sustained ? round.activeMs : totalWallGameMs;
+      elapsed = sustained ? round.durationMs-round.remainingMs : totalWallGameMs;
       const observations = sustained
         ? round.dispatches.map((d) => {
             assert.equal(d.episodeId, round.id);
@@ -208,13 +208,13 @@ async function run() {
         if (round.phase === 'handoff') {
           assert.ok(
             phones.every(
-              (s) => s.episodeActive && !s.roundEndsAt && s.roundPausedRemainingMs === round.remainingMs,
+              (s) => s.episodeActive && s.roundEndsAt === round.deadline && s.roundPausedRemainingMs === undefined,
             ),
           );
           const previous = boundaries.get(round.chapter);
           if (previous) {
             assert.equal(picks.size, previous.dispatched);
-            assert.equal(round.remainingMs, previous.remainingMs);
+            assert.ok(round.remainingMs < previous.remainingMs);
           } else {
             const i = phones.findIndex((s) =>
               s.mine.some((h) => h.status === 'queued' && h.hauntId !== s.upNext?.hauntId),

@@ -1,12 +1,15 @@
-// TEMPORARY stand-in for World's packages/contracts/src/episode.ts (C03).
-// Delete once World's scaffold lands. Crowd's operator.ts reads
-// `Episode.shape.seed` and `Episode.shape.task`, so this assumes Episode is a
-// plain z.object (asked World on #2).
+// C03. One public episode can span multiple provider sessions.
 import { z } from "zod";
 import { HallwayResult } from "@poltergeist/contracts/verdict.js";
 import { Driver, EpochMs, Id, Ms, WorldMode } from "./common.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
+export { WorldMode };
+export const maxProviderDurationMs = 90_000;
+export const Match = z.discriminatedUnion("clockMode", [
+  z.object({ clockMode: z.literal("wall"), durationMs: Ms.positive(), deadline: EpochMs }),
+  z.object({ clockMode: z.literal("active"), durationMs: Ms.positive() }),
+]);
 
 export const Episode = z.object({
   episodeId: Id,
@@ -23,7 +26,8 @@ export const Episode = z.object({
   policyVersion: z.string().min(1),
   round: z.number().int().nonnegative().optional(),
   startedAt: EpochMs,
-  maxDurationMs: Ms,
+  maxDurationMs: Ms.max(maxProviderDurationMs),
+  match: Match.optional(),
 });
 export type Episode = z.infer<typeof Episode>;
 

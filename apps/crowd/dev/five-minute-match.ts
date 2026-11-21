@@ -22,6 +22,7 @@ function clock() {
   if (!id) return undefined;
   const wallElapsed = Date.now() - startedAt;
   let activeMs = wallElapsed;
+  const deadline = startedAt + durationMs;
   let chapter = 1;
   for (let boundary = cutEveryMs; boundary < durationMs; boundary += cutEveryMs) {
     const wallCut = boundary + (chapter - 1) * holdMs;
@@ -32,21 +33,23 @@ function clock() {
         id,
         phase: 'handoff' as const,
         durationMs,
-        remainingMs: durationMs - activeMs,
-        deadline: 0,
+        clockMode: 'wall' as const,
+        remainingMs: Math.max(0, deadline-Date.now()),
+        deadline,
         activeMs,
         chapter,
       };
     }
     chapter++;
   }
-  const remainingMs = Math.max(0, durationMs - activeMs);
+  const remainingMs = Math.max(0, deadline - Date.now());
   return {
     id,
     phase: 'playing' as const,
     durationMs,
     remainingMs,
-    deadline: Date.now() + remainingMs,
+    clockMode: 'wall' as const,
+    deadline,
     activeMs: Math.min(activeMs, durationMs),
     chapter,
   };
@@ -79,7 +82,7 @@ app.post<{ Body: { mode?: string } }>('/rehearsal/start', async (req, reply) => 
   if (id || req.body?.mode !== 'offline')
     return reply.code(409).send({ error: 'Only one fixture match may start' });
   startedAt = Date.now();
-  id = world.startEpisode({ maxDurationMs: durationMs });
+  id = world.startEpisode({ maxDurationMs: cutEveryMs, match:{durationMs,clockMode:'wall',deadline:startedAt+durationMs} });
   return { id };
 });
 const ticker = setInterval(() => {

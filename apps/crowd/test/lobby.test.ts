@@ -82,7 +82,7 @@ describe("phone page follows World's phase", () => {
     const me = (await a.poll()).you;
     const durationMs = 600_000;
     const startedAt = hub.clock.now();
-    const id = hub.world.startEpisode({ maxDurationMs: durationMs });
+    const id = hub.world.startEpisode({ maxDurationMs: Math.min(90_000,durationMs), match:{durationMs,clockMode:"active"} });
     clock = { id, phase: "playing", durationMs, remainingMs: durationMs, deadline: startedAt + durationMs };
     expect(await a.poll()).toMatchObject({ episodeActive: true, roundEndsAt: startedAt + durationMs, slotsPerRound: 50 });
 
@@ -119,7 +119,7 @@ describe("phone page follows World's phase", () => {
     const a = await guest();
     const durationMs = 300_000;
     const deadline = hub.clock.now() + durationMs;
-    const id = hub.world.startEpisode({ maxDurationMs: durationMs });
+    const id = hub.world.startEpisode({ maxDurationMs: 90_000, match:{durationMs,clockMode:"wall",deadline} });
     clock = { id, phase: "handoff", clockMode: "wall", durationMs, remainingMs: 18_000, deadline };
     const first = await a.poll();
     hub.clock.advance(2_000);
@@ -134,7 +134,7 @@ describe("phone page follows World's phase", () => {
     let clock: MatchClock | undefined;
     hub = await buildTestHub({ matchClock: () => clock, config: { seededFallback: false } });
     const startedAt = hub.clock.now();
-    const id = hub.world.startEpisode({ maxDurationMs: 600_000 });
+    const id = hub.world.startEpisode({ maxDurationMs: 90_000, match:{durationMs:600_000,clockMode:"active"} });
     clock = { id, phase: "playing", durationMs: 600_000, remainingMs: 600_000, deadline: startedAt + 600_000 };
     for (let i = 0; i < 8; i++) {
       const a = await guest();

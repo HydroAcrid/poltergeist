@@ -27,7 +27,7 @@ export class FakeWorld {
     bus.subscribe(["haunt.dispatch"], (e) => this.onDispatch(e.payload as HauntDispatch));
   }
 
-  startEpisode(opts: { maxDurationMs?: number; autoEnd?: boolean } = {}): Id {
+  startEpisode(opts: { maxDurationMs?: number; match?: Episode["match"]; autoEnd?: boolean } = {}): Id {
     if (this.current) this.endEpisode("operator_stop");
     const episode: Episode = {
       episodeId: newId("ep", this.now()),
@@ -40,10 +40,14 @@ export class FakeWorld {
       round: ++this.round,
       startedAt: this.now(),
       maxDurationMs: opts.maxDurationMs ?? 60_000,
+      ...(opts.match ? {match: opts.match} : {}),
     };
-    this.current = episode;
     this.bus.publish("episode.started", "world", episode, episode.episodeId);
-    if (opts.autoEnd) this.endTimer = setTimeout(() => this.endEpisode("timeout"), episode.maxDurationMs);
+    this.current = episode;
+    if (opts.autoEnd) {
+      const ms = opts.match?.clockMode === "wall" ? opts.match.deadline-this.now() : opts.match?.durationMs ?? episode.maxDurationMs;
+      this.endTimer = setTimeout(() => this.endEpisode("timeout"), Math.max(0,ms));
+    }
     return episode.episodeId;
   }
 

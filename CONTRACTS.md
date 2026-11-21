@@ -128,7 +128,10 @@ export interface Episode {
   policyVersion: string;         // e.g. "v1"
   round?: number;
   startedAt: EpochMs;
-  maxDurationMs: Ms;             // ≤ 90000
+  maxDurationMs: Ms;             // single provider session, ≤ 90000
+  match?:                        // one episode ID across all provider sessions
+    | { clockMode: "active"; durationMs: Ms }
+    | { clockMode: "wall"; durationMs: Ms; deadline: EpochMs };
 }
 export interface EpisodeEnded {
   episodeId: Id;

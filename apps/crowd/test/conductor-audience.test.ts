@@ -91,7 +91,7 @@ describe("the live Crowd scheduler with a varied 300-phone burst", () => {
       expect(request).toHaveBeenCalledTimes(301); // never an extra model call to rank the pool
 
       collecting = false;
-      world.startEpisode({maxDurationMs: 180_000});
+      world.startEpisode({maxDurationMs:90_000, match:{durationMs:180_000,clockMode:"active"}});
       now += 8000;
       stable = false;
       crowd.tick();

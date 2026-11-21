@@ -155,6 +155,7 @@ export async function registerStage(
     pendingWinner = null,
     providerRound = null,
     placement = null;
+  const publishedStarts = new WeakSet();
   let activeTicket=null, continuation=null, nextChapterReady=false, chapterStartedAt=0, closing=false;
   const viewers = new Map();
   const liveMs = Number(process.env.PG_REHEARSAL_LIVE_MS || 45000);
@@ -238,6 +239,7 @@ export async function registerStage(
     );
   }
   function notifyEnd(r) {
+    if (!publishedStarts.has(r)) return;
     bus.publish(
       'episode.ended',
       'world',
@@ -293,6 +295,39 @@ export async function registerStage(
     if (r.startedAt) endLiveGame(r,null);
     else Object.assign(r,{phase:'ended',reason:'interrupted',finishedAt:Date.now(),action:'stopped'});
     live?.stop();
+  }
+  function failLiveCallback(r) {
+    if (r !== round || !r.live || r.callbackFailed) return;
+    r.callbackFailed = true;
+    nextChapterReady = false;
+    continuation = null;
+    r.stopDetail = publicStatus = publishedStarts.has(r)
+      ? 'World could not finish updating the round. The hallway is closing.'
+      : 'The round start could not be delivered. The hallway is closing.';
+    try {
+      if (publishedStarts.has(r)) endLiveGame(r,null);
+      else {
+        // Native pixels can arrive before the bus accepts episode.started.
+        // The audience has no game to score if validation rejected the start.
+        r.startedAt = null;
+        Object.assign(r,{phase:'ended',reason:'interrupted',winner:null,finishedAt:Date.now(),action:'stopped'});
+      }
+    } catch {
+      r.stopDetail = publicStatus = 'World could not deliver the round result. The hallway is closing.';
+    } finally {
+      try { live?.stop(); }
+      catch { r.stopDetail = publicStatus = 'World could not confirm the hallway closed.'; }
+    }
+  }
+  function protectLiveCallback(r, callback) {
+    return (...args) => {
+      try { callback(...args); }
+      catch {
+        // A subscriber can fail again while delivering the end; the driver
+        // must still drain and its terminal callback must remain attached.
+        failLiveCallback(r);
+      }
+    };
   }
   function showExpired(r,now) {
     if (r.clockMode!=='wall' || r.phase==='ended') return false;
@@ -373,7 +408,7 @@ export async function registerStage(
             dir: captureDir,
             seed:resuming ? continuation.bytes : seed,
             ...(r.chapters ? {chapter:ticket.chapter,chapterMs:chapterTiming.limitMs} : {}),
-            onMessage: (m) => {
+            onMessage: protectLiveCallback(r, (m) => {
               if (closing || ticket!==activeTicket || r.phase==='ended' || r!==round) return;
               if (showExpired(r,Date.now()) || ticket.rotating) return;
               if (m.chapterExpired && r.chapters && r.phase==='playing') {
@@ -513,8 +548,8 @@ export async function registerStage(
                 r.intent = null;
                 r.trackedBody = null;
               }
-            },
-            onClose: (terminal) => {
+            }),
+            onClose: protectLiveCallback(r, (terminal) => {
               if (ticket!==activeTicket) return;
               activeTicket=null;
               live = null;
@@ -533,9 +568,10 @@ export async function registerStage(
               else if (r.phase === 'preparing') {
                 Object.assign(r, {phase: 'ended', finishedAt: closedAt, reason: 'interrupted'});
               }
-            },
+            }),
           });
           providerRound = r;
+          if (r.callbackFailed) live.stop();
           if (resuming) r.providerClosedAt=null;
         } catch {
           activeTicket=null;
@@ -549,26 +585,29 @@ export async function registerStage(
     await updateRehearsal(r, now);
   }
   function publishStart(r, now, duration) {
-    bus.publish(
-      'episode.started',
-      'world',
-      {
-        episodeId: r.id,
-        sessionId: null,
-        mode: r.live ? 'genie' : 'replay',
-        driver: 'brain',
-        round: number,
-        seed: { kind: 'image', imagePath: 'venue-photo', prompt: 'Reach the signed exit in the photographed hallway.' },
-        policyVersion: 'v1',
-        task: {
-          targetLabel: 'exit',
-          instruction: 'Reach the exit through the hallway.',
-        },
-        startedAt: now,
-        maxDurationMs: duration,
-      },
-      r.id,
-    );
+    const payload = {
+      episodeId: r.id,
+      sessionId: null,
+      mode: r.live ? 'genie' : 'replay',
+      driver: 'brain',
+      round: number,
+      seed: {kind:'image', imagePath:'venue-photo', prompt:'Reach the signed exit in the photographed hallway.'},
+      policyVersion: 'v1',
+      task: {targetLabel:'exit', instruction:'Reach the exit through the hallway.'},
+      startedAt: now,
+      maxDurationMs: r.chapters ? Math.min(90_000, chapterTiming.limitMs, duration) : duration,
+      ...(r.chapters && {match: {clockMode:r.clockMode, durationMs:r.durationMs,
+        ...(r.clockMode === 'wall' && {deadline:r.showDeadline})}}),
+    };
+    try {
+      bus.publish('episode.started','world',payload,r.id);
+      publishedStarts.add(r);
+    } catch (error) {
+      // The bus appends before notifying subscribers. An accepted start with
+      // a failing listener must still be closed for consumers that received it.
+      if (bus.history?.({episodeId:r.id,types:['episode.started']}).length) publishedStarts.add(r);
+      throw error;
+    }
   }
   async function updateRehearsal(r, now) {
     if (now >= r.deadline) {
@@ -630,7 +669,16 @@ export async function registerStage(
       tickPending = false;
     }
   }
-  const timer = setInterval(() => void update(), 150);
+  const timer = setInterval(() => {
+    const current = round;
+    void update().catch(() => {
+      if (current?.live) {
+        failLiveCallback(current);
+      } else if (current && current === round) {
+        finish(current,null,'interrupted',Date.now());
+      }
+    });
+  }, 150);
   app.addHook('onClose', async () => {
     closing=true;
     clearInterval(timer);
@@ -680,6 +728,8 @@ export async function registerStage(
       return reply.code(400).send({error:'Choose a 5 or 10 minute chaptered Genie show.'});
     const paid = req.body?.mode === 'genie';
     const chaptered = paid && req.body?.chapters === true;
+    if (paid && !chaptered && (!Number.isSafeInteger(liveMs) || liveMs <= 0 || liveMs > 90_000))
+      return reply.code(400).send({error:'A single Genie camera test must run for 1–90,000 ms. Start a chaptered show for a longer game.'});
     const playMode = !paid ? 'offline-rehearsal' : !chaptered ? 'camera-test'
       : showMinutes === 5 ? 'five-minute-demo' : 'ten-minute-game';
     if (req.body?.expectedPlayMode !== undefined && req.body.expectedPlayMode !== playMode)

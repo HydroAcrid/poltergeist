@@ -1,10 +1,13 @@
-// TEMPORARY stand-in for World's packages/contracts/src/common.ts (C01).
-// World owns the real file; it is not on main yet. The brain contract files
-// import "./common.js", and both tsconfig (rootDirs) and vitest (alias) route
-// that import here until World's scaffold lands. Delete this file then.
-//
-// Names assumed: each export is a zod schema with a same-named inferred type.
+// C01. Shared primitives used by World, Brain and Crowd.
 import { z } from "zod";
+
+export const VERSION = "1.0.0";
+
+export const Lane = z.enum(["world", "brain", "crowd"]);
+export type Lane = z.infer<typeof Lane>;
+
+export const Source = z.enum(["world", "brain", "crowd", "operator", "hub"]);
+export type Source = z.infer<typeof Source>;
 
 export const Id = z.string().regex(/^(ep|ss|ht|ev|fr)_[0-9A-HJKMNP-TV-Z]{26}$/, "prefixed ULID");
 export type Id = z.infer<typeof Id>;
@@ -34,5 +37,14 @@ export const HauntTag = z.enum([
 ]);
 export type HauntTag = z.infer<typeof HauntTag>;
 
+export const Blame = z.enum(["adversary", "agent", "world"]);
+export type Blame = z.infer<typeof Blame>;
+
+export const WorldMode = z.enum(["genie", "webcam", "replay"]);
+export type WorldMode = z.infer<typeof WorldMode>;
+
 export const Driver = z.enum(["brain", "human"]);
 export type Driver = z.infer<typeof Driver>;
+
+export const Instance = z.enum(["local", "staging", "prod"]);
+export type Instance = z.infer<typeof Instance>;

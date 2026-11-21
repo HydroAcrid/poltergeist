@@ -252,7 +252,8 @@ test('five-minute show starts at the host request, counting seed review and gene
   h.frame(p,1);
   assert.equal(r.remainingMs,cutoff-Date.now());
   assert.equal(r.startedAt,Date.now());
-  assert.equal(h.events[0].startedAt+h.events[0].maxDurationMs,cutoff);
+  assert.ok(h.events[0].maxDurationMs <= 90_000);
+  assert.deepEqual(h.events[0].match,{durationMs:300000,clockMode:"wall",deadline:cutoff});
   assert.equal(r.deadline,cutoff);
   h.tick(cutoff-Date.now()+30);
   assert.equal(r.finishedAt,cutoff);

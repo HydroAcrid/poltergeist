@@ -519,7 +519,7 @@ export class CrowdService {
         this.active = {
           episodeId: ep.episodeId,
           startedAt: ep.startedAt,
-          endsAt: ep.startedAt + ep.maxDurationMs,
+          endsAt: ep.match?.clockMode === "wall" ? ep.match.deadline : ep.startedAt + (ep.match?.durationMs ?? ep.maxDurationMs),
           round: ep.round,
           dispatched: 0,
           nextSlotT: this.config.firstDispatchMs,
