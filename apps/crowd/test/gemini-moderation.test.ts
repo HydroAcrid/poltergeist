@@ -36,4 +36,23 @@ describe("Gemini review of custom hallway events", () => {
     const result = await new GeminiModeration("test",model,request).moderate("a hurricane");
     expect(result.suggestion).toBe("A gust sweeps loose papers across the aisle");
   });
+  it("strips control and invisible characters from accepted text and suggestions", async () => {
+    const accepted = await new GeminiModeration("test", model, requestFor({ decision: "accept", text: "A pine​apple\u0000 rolls‮ across\tthe aisle", tags: ["distractor"] })).moderate("a pineapple rolls across the aisle");
+    expect(accepted).toMatchObject({ safe: true, text: "A pineapple rolls across the aisle" });
+    const revised = await new GeminiModeration("test", model, requestFor({ decision: "revise", reason: "scale", suggestion: "Papers‍ swirl­ across the aisle" })).moderate("a hurricane");
+    expect(revised.suggestion).toBe("Papers swirl across the aisle");
+  });
+  it("rejects model text that hides blocked words, markup or becomes empty once cleaned", async () => {
+    for (const text of ["A g​un rolls across the aisle", "A k1ll3r chair tips over", "A <b>bold</b> chair tips over", "​‍\u0000"]) {
+      const result = await new GeminiModeration("test", model, requestFor({ decision: "accept", text, tags: ["geometry"] })).moderate("a chair tips over");
+      expect(result.safe, JSON.stringify(text)).toBe(false);
+      expect(result.text).toBe("");
+    }
+  });
+  it("replaces a model suggestion that hides blocked words or is empty once cleaned", async () => {
+    for (const suggestion of ["Papers swirl past a g​un", "​‍"]) {
+      const result = await new GeminiModeration("test", model, requestFor({ decision: "revise", reason: "scale", suggestion })).moderate("a hurricane");
+      expect(result.suggestion, JSON.stringify(suggestion)).toBe("A gust sweeps loose papers across the aisle");
+    }
+  });
 });
