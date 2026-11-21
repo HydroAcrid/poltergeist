@@ -11,10 +11,10 @@ export interface SceneObservation {
   cameraStable: boolean;
   obstacles: { label: string; kind: EffectKind; inBeam: boolean; progress?: number }[];
   producible: EffectKind[]; // effect kinds World can render and the camera can show right now
+  verifiedPathHauntIds?: string[]; // live camera confirmed these proposals occupied the walking path
   seenHauntIds: string[]; // hauntings World has visual evidence for
 }
 
-export interface Candidate {
 export const EFFECT_FAMILIES = ["wind", "fog", "lighting", "balloons", "direction", "slip", "rolling", "barrier", "creature", "sound", "water", "other"] as const;
 export interface Staging {
   family: typeof EFFECT_FAMILIES[number];
@@ -22,13 +22,14 @@ export interface Staging {
   placement: "ambient" | "route" | "scene_wide";
 }
 
+export interface Candidate {
   hauntId: string;
   createdAt: number;
   text: string; // moderated, display-safe
   tags: HauntTag[];
   preset?: string;
-  skips: number; // times it was eligible but not picked
   staging?: Staging; // assessed in the same request as moderation
+  skips: number; // times it was eligible but not picked
   authorPicksThisRound: number; // fair airtime: picks already given to this idea's author this round
 }
 
@@ -36,8 +37,8 @@ export interface RecentHaunt {
   hauntId: string;
   kind: EffectKind;
   primaryTag: HauntTag;
-  sentAt: number; // epoch ms
   family?: string;
+  sentAt: number; // epoch ms
   seen: boolean;
 }
 
@@ -55,8 +56,8 @@ export const POLICY = {
   latestProgress: { floor_prop: 0.7, airborne: 0.8, lighting: 0.85, visibility: 0.85, sign: 0.85, audio: 0.9, overhead: 0.7, other: 0.8 } as Record<EffectKind, number>,
   roomyProgress: 0.55, // props land ≥ several strides ahead with room to react
   landingWindowMs: 12_000, // wait for the last trick to be seen before stacking a same-kind one
-  starveAfterMs: 60_000,
   repeatWindowMs: 24_000, // give the audience a beat before replaying an uncontested effect
+  starveAfterMs: 60_000,
   priorityAfterSkips: 2,
   agentBudgetMs: 500,
 };
@@ -81,11 +82,10 @@ export function kindOf(c: Idea): EffectKind {
   if (c.tags.includes("sign_change")) return "sign";
   if (c.tags.includes("geometry") || c.tags.includes("distractor")) return "floor_prop";
   if (c.tags.includes("audio")) return "audio";
-  return "other";
   if (c.tags.includes("weather") && /rain|snow|hail|drizzle/i.test(c.text)) return "visibility";
+  return "other";
 }
 
-/** Short public reasons people can check against the shot (≤ 60 chars, display-safe, fixed templates). */
 // Presets and rules-only ideas use the very same comparison vocabulary as checked model output.
 export function familyOf(c: Idea, kind = kindOf(c)): string {
   if (c.staging && c.staging.family !== "other") return c.staging.family;
@@ -115,6 +115,7 @@ function visualScore(c: Candidate, kind: EffectKind): number {
   return 2;
 }
 
+/** Short public reasons people can check against the shot (≤ 60 chars, display-safe, fixed templates). */
 export const REASON: Record<EffectKind, string> = {
   floor_prop: "The aisle ahead is open and the beam will catch it",
   airborne: "It will drift across the beam in front of the robot",

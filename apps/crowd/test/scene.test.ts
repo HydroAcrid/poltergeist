@@ -37,9 +37,14 @@ describe("sceneFromRehearsal", () => {
     const r = { phase: "playing", live: true, observed: 7, trackedAt: 1500, trackedBody: [20, 40, 280, 180],
       props: [{ id: "penguin", kind: "chair", acked: true, seen: false, inPath: false, confirmedFrame: 0 }] };
     expect(sceneFromRehearsal(r, 2000)).toMatchObject({ observedAt: 1500, cameraStable: true, obstacles: [], seenHauntIds: [] });
+    expect(sceneFromRehearsal(r, 2000)?.verifiedPathHauntIds).toEqual([]);
     expect(sceneFromRehearsal(r, 2000)?.robotProgress).toBeUndefined();
     Object.assign(r.props[0]!, { seen: true, inPath: true, confirmedFrame: 7 });
     expect(sceneFromRehearsal(r, 2000)?.obstacles).toEqual([{ label: "chair", kind: "floor_prop", inBeam: true }]);
+    expect(sceneFromRehearsal(r, 2000)?.verifiedPathHauntIds).toEqual(["penguin"]);
+    expect(sceneFromRehearsal({ ...r, observed: 8 }, 2000)?.verifiedPathHauntIds).toEqual([]);
+    expect(sceneFromRehearsal({ ...r, props: [{...r.props[0], seen:true, inPath:false}] }, 2000)?.verifiedPathHauntIds).toEqual([]);
+    expect(sceneFromRehearsal({ ...r, observed: 8, props: [{...r.props[0], inPath:false, inPathPresentedAt:1550}] }, 2000)?.verifiedPathHauntIds).toEqual(["penguin"]);
     expect(sceneFromRehearsal({ ...r, observed: 8 }, 2000)?.obstacles).toEqual([]);
     expect(sceneFromRehearsal({ ...r, trackedBody: null }, 2000)?.cameraStable).toBe(false);
     expect(sceneFromRehearsal({ ...r, lastCameraAt: 1650 }, 2000)?.cameraStable).toBe(false);

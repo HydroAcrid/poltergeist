@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.10.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: paged waiting list and waitingReasons · 1.9.0: joined, lobbyPhase and holds
+export const VERSION = "1.11.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group · 1.5.0: private suggestion and revisionOf · 1.6.0: CrowdState.upNext/waiting (conductor) · 1.7.0: withdrawn status, CrowdState.slotsPerRound · 1.8.0: paged waiting list and waitingReasons · 1.9.0: joined, lobbyPhase and holds
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed", "withdrawn"]); // withdrawn: replaced by the author's newer idea (1.7.0)
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -144,6 +144,7 @@ export const CrowdState = z
     you: z.object({ ghostName: z.string().min(1).max(16) }).strict().optional(), // the caller's assigned ghost name
     mine: z.array(HauntReceipt),
     queue: z.array(HauntPublic),
+    verifiedPathHauntIds: z.array(Id).optional(), // live camera confirmed these effects in the robot’s walking path
     hallway: z.array(HauntPublic).max(8).optional(), // this round's sent ideas, newest first, display-safe
     slotsPerRound: z.number().int().nonnegative().optional(), // ideas sent per round, for "about N rounds away"
     holds: WaitingReasons.optional(),

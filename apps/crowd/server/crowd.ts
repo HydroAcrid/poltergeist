@@ -107,6 +107,7 @@ export class CrowdService {
 
   private haunts = new Map<Id, Haunt>();
   private names = new GhostNames();
+  private verifiedPathHaunts = new Set<Id>();
   private hallwayIds: Id[] = []; // dispatched this round, oldest first
   private ticksByEpisode = new Map<Id, RefTick[]>(); // Brain's TickLog, for the referee
   private injectedLog: (RefInjected & { episodeId: Id })[] = [];
@@ -114,11 +115,11 @@ export class CrowdService {
   private policyVersion = "v1";
   // Conductor: one reserved pick, stable until it's sent or becomes impossible.
   private reserved: { hauntId: Id; reason: string; mode: "conductor" | "fifo" } | null = null;
-  private waitingReasons = new Map<Id, string>();
   private reservedWithScene = false;
+  private waitingReasons = new Map<Id, string>();
   private skips = new Map<Id, number>();
-  private sentAt = new Map<Id, number>();
   private staging = new Map<Id, Staging>(); // server-only judgments from the existing moderation call
+  private sentAt = new Map<Id, number>();
   // Waiting room: guest phones by device, last poll time. Projector and other polls never land here.
   private guests = new Map<string, number>();
   private board: Scoreboard | null = null;
@@ -256,8 +257,8 @@ export class CrowdService {
       this.setStatus(current, "rejected", { moderated });
       return;
     }
-    this.setStatus(current, "approved", { moderated });
     if (staging) this.staging.set(current.hauntId, staging);
+    this.setStatus(current, "approved", { moderated });
     if (!this.finalsApprovalMode) this.setStatus(current, "queued");
   }
 
@@ -325,6 +326,7 @@ export class CrowdService {
       lobbyPhase: this.deps.lobbyPhase?.(),
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
       ...(reasons.length ? { holds: reasons } : {}),
+      ...(this.verifiedPathHaunts.size ? { verifiedPathHauntIds: [...this.verifiedPathHaunts] } : {}),
       hallway: this.hallwayIds.slice(-8).reverse().map((id) => toPublic(this.haunts.get(id)!)),
     };
   }
@@ -374,6 +376,10 @@ export class CrowdService {
     const clock = this.matchClock();
     this.expireStaleRound(clock);
     if (clock?.phase === "handoff") return;
+    if (this.active && this.hallwayIds.length) {
+      for (const id of this.deps.scene?.()?.verifiedPathHauntIds ?? [])
+        if (this.hallwayIds.includes(id)) this.verifiedPathHaunts.add(id);
+    }
     this.reserve();
     const ep = this.active;
     if (!ep || ep.dispatched >= this.slotLimit(clock)) return;
@@ -429,20 +435,20 @@ export class CrowdService {
       text: h.moderated?.text ?? "",
       tags: h.moderated?.tags ?? [],
       ...(h.preset ? { preset: h.preset } : {}),
+      staging: this.staging.get(h.hauntId),
       skips: this.skips.get(h.hauntId) ?? 0,
       authorPicksThisRound: picksBy.get(h.deviceId) ?? 0,
     }));
     const recent: RecentHaunt[] = this.hallwayIds.map((id) => {
       const h = this.haunts.get(id);
+      const idea = { preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "", staging: this.staging.get(id) };
       return {
-      staging: this.staging.get(h.hauntId),
         hauntId: id,
         kind: kindOf(idea),
         family: familyOf(idea),
         primaryTag: h?.moderated?.tags?.[0] ?? "other",
         sentAt: this.sentAt.get(id) ?? 0,
         seen: scene?.seenHauntIds.includes(id) ?? false,
-      const idea = { preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "", staging: this.staging.get(id) };
       };
     });
     return conduct(candidates, scene, recent, this.now());
@@ -478,13 +484,13 @@ export class CrowdService {
     for (const w of d.waiting) if (w.code === "ranked_lower") this.waitingReasons.delete(w.hauntId);
     if (!this.reserved && d.pick) {
       this.reserved = { hauntId: d.pick.hauntId, reason: d.pick.reason, mode: d.mode };
+      this.reservedWithScene = freshScene;
       this.waitingReasons.delete(d.pick.hauntId);
       // Fair turns: anything feasible that was passed over gets closer to its guaranteed turn.
       for (const w of d.waiting) if (w.code === "ranked_lower") this.skips.set(w.hauntId, (this.skips.get(w.hauntId) ?? 0) + 1);
     }
   }
 
-      this.reservedWithScene = freshScene;
   private takeSeeded(): Haunt | undefined {
     const pool = this.deps.seededPool;
     if (pool.length === 0) return undefined;
@@ -519,6 +525,7 @@ export class CrowdService {
           nextSlotT: this.config.firstDispatchMs,
         };
         if (ep.round !== undefined) this.lastRound = ep.round;
+        this.verifiedPathHaunts.clear();
         this.hallwayIds = []; // a new round starts with an empty hallway
         if (ep.policyVersion && ep.policyVersion !== this.policyVersion) {
           this.policyVersion = ep.policyVersion;

@@ -38,6 +38,7 @@ export function sceneFromRehearsal(json: unknown, now: number, producible: Effec
   const playing = /play|live/.test(phase);
   const props = Array.isArray(r.props) ? (r.props as Record<string, unknown>[]) : [];
   const obstacles: SceneObservation["obstacles"] = [];
+  const verifiedPathHauntIds: string[] = [];
   for (const p of props) {
     const word = String(p.kind ?? "").toLowerCase();
     const known = WORLD_KIND[word];
@@ -45,8 +46,12 @@ export function sceneFromRehearsal(json: unknown, now: number, producible: Effec
     const label = known?.noun ?? "prop";
     if (live) {
       // A delivery acknowledgment says nothing about what the camera sees.
-      if (p.seen === true && p.inPath === true && p.confirmedFrame === r.observed && num(r.observed) !== undefined)
-        obstacles.push({ label, kind, inBeam: true });
+      const confirmedNow = p.seen === true && p.inPath === true && p.confirmedFrame === r.observed && num(r.observed) !== undefined;
+      if (confirmedNow) obstacles.push({ label, kind, inBeam: true });
+      // World retains the first verified path sighting even if the prop later moves.
+      const firstPathSighting = num(p.inPathPresentedAt);
+      if ((confirmedNow || (firstPathSighting !== undefined && firstPathSighting > 0 && firstPathSighting <= now)) && typeof p.id === "string")
+        verifiedPathHauntIds.push(p.id);
     } else if (set(p.acked) || set(p.placedAt) || set(p.sentAt)) {
       const progress = num(p.depth) ?? depth + 0.1;
       const ahead = progress - depth;
@@ -64,6 +69,7 @@ export function sceneFromRehearsal(json: unknown, now: number, producible: Effec
       r.cameraStable !== false && (num(r.lastCameraAt) ?? 0) <= observedAt : r.cameraStable !== false,
     obstacles,
     producible,
+    verifiedPathHauntIds,
     seenHauntIds: props.filter((p) => set(p.seen) || set(p.reactedAt)).map((p) => String(p.id ?? p.hauntId ?? "")).filter(Boolean),
   };
 }
