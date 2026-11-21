@@ -140,7 +140,7 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
     const key = e > 0 ? "ArrowRight" : "ArrowLeft";
     const why = forward ? "obstacle ahead, turning toward exit" : `exit ${clock(e)} → turning`;
     if (forward) reaction ??= "avoid";
-    return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, 600)) }, "track", why);
+    return out({ key, holdMs: Math.round(clamp(n.kTurn * Math.abs(e), 120, n.maxTurnMs)) }, "track", why);
   }
 
   // Straight ahead is blocked: step aside. Roughly dead-centre → step toward the
