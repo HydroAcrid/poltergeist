@@ -1,3 +1,4 @@
+import { createHallwayLighting } from './look.mjs';
 const clamp = (v) => Math.max(0, Math.min(1, v));
 const smooth = (v) => {
   v = clamp(v);
@@ -14,13 +15,15 @@ export async function createScene(canvas) {
   const ctx = canvas.getContext('2d'),
     W = 1280,
     H = 720;
+  const grade = createHallwayLighting(ctx, W, H);
   const [hall, robot, peel] = await Promise.all(
     ['/hall.webp', '/explorer.webp', '/peel.webp'].map(image),
   );
   let preparedHall=null, cameraDepth=0, cameraPan=0, cameraZoom=1, tickTime=0;
-  function followLive(img) {
+  function followLive(img, _round, now = Date.now()) {
     if (!img.naturalWidth || !img.naturalHeight) return false;
     ctx.drawImage(img, 0, 0, W, H);
+    grade(1, now);
     return true;
   }
   let source = await image('/rehearsal/source'),
@@ -215,7 +218,7 @@ export async function createScene(canvas) {
     }
     ctx.restore();
   }
-  function paint(state, now, forceGame = false) {
+  function render(state, now, forceGame = false) {
     const r = state.round,
       custom = state.custom;
     const elapsed = r ? (now-r.openedAt)/1000 : 0;
@@ -258,6 +261,13 @@ export async function createScene(canvas) {
     );
     for (const item of props.filter((i) => i.depth < (r?.depth || 0)))
       prop(item, custom, now);
+  }
+  function paint(state, now, forceGame = false) {
+    render(state, now, forceGame);
+    const round = state.round;
+    const amount = forceGame ? 1 : !round ? 0 : round.phase === 'opening'
+      ? smooth(((now-round.openedAt)/1000-1.15)/3.85) : 1;
+    grade(amount, now, forceGame);
   }
   return {
     paint,drawLive:followLive,
