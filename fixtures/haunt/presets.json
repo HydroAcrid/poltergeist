@@ -6,7 +6,8 @@
     "tags": [
       "distractor",
       "geometry"
-    ]
+    ],
+    "group": "On the floor"
   },
   {
     "id": "paper-gust",
@@ -16,7 +17,8 @@
       "distractor",
       "occlusion",
       "weather"
-    ]
+    ],
+    "group": "In the air"
   },
   {
     "id": "lights-flicker",
@@ -24,7 +26,8 @@
     "text": "The hallway lights flicker and dim",
     "tags": [
       "lighting"
-    ]
+    ],
+    "group": "Lights"
   },
   {
     "id": "fog",
@@ -33,7 +36,8 @@
     "tags": [
       "visibility",
       "weather"
-    ]
+    ],
+    "group": "Fog and signs"
   },
   {
     "id": "painted-door",
@@ -42,7 +46,8 @@
     "tags": [
       "sign_change",
       "distractor"
-    ]
+    ],
+    "group": "Fog and signs"
   },
   {
     "id": "mop-bucket",
@@ -51,7 +56,8 @@
     "tags": [
       "geometry",
       "distractor"
-    ]
+    ],
+    "group": "On the floor"
   },
   {
     "id": "balloons",
@@ -60,7 +66,8 @@
     "tags": [
       "occlusion",
       "distractor"
-    ]
+    ],
+    "group": "In the air"
   },
   {
     "id": "chair-tips",
@@ -68,7 +75,8 @@
     "text": "A chair tips over in the middle of the aisle",
     "tags": [
       "geometry"
-    ]
+    ],
+    "group": "On the floor"
   },
   {
     "id": "power-cut",
@@ -76,7 +84,8 @@
     "text": "The power cuts out for a moment",
     "tags": [
       "lighting"
-    ]
+    ],
+    "group": "Lights"
   },
   {
     "id": "marbles",
@@ -85,6 +94,7 @@
     "tags": [
       "distractor",
       "geometry"
-    ]
+    ],
+    "group": "On the floor"
   }
 ]

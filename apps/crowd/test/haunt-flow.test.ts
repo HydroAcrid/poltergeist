@@ -302,7 +302,15 @@ describe("operator and page", () => {
       expect(page.body).toContain(`id="screen-${screen}"`);
       expect(page.body).toContain(`class="tab" href="#${screen}"`);
     }
-    expect(page.body.match(/class="next" href="#/g)?.length).toBe(4);
+    expect(page.body.match(/class="next" href="#/g)?.length).toBe(6); // every screen, sub-pages included, has a next step
+    // Sub-pages: "More ideas" (opened from the Haunt screen) and "Sent!" (where you land after sending).
+    expect(page.body).toContain('id="screen-ideas"');
+    expect(page.body).toContain('class="chip more" href="#ideas"');
+    expect(page.body).toContain('id="screen-sent"');
+    expect(page.body).toContain('location.hash = "#sent"');
+    // Speech to text, shown only where the browser supports it.
+    expect(page.body).toContain('id="mic"');
+    expect(page.body).toMatch(/SpeechRecognition \|\| window\.webkitSpeechRecognition/);
     // Delivery (haunt.injected) is only "Sent to the hallway"; "In the hallway" and reaction credit
     // need separate camera evidence (World, #2).
     expect(page.body).toContain('injected: ["Sent to the hallway"');

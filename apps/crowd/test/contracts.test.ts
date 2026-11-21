@@ -56,6 +56,10 @@ describe("presets.json", () => {
     expect(presets.length).toBeLessThanOrEqual(10);
     expect(new Set(presets.map((p) => p.id)).size).toBe(presets.length);
     expect(presets[0]?.id).toBe("banana-peel");
+    // Every preset has a group heading for the "More ideas" page; the first three (shown on
+    // the main screen) come from three different groups.
+    expect(presets.every((p) => p.group)).toBe(true);
+    expect(new Set(presets.slice(0, 3).map((p) => p.group)).size).toBe(3);
   });
 });
 

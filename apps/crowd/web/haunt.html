@@ -49,11 +49,29 @@ textarea::placeholder{color:#8f857c}
 .msg{margin:10px 0 0;font-size:15px}
 .msg:empty{display:none}
 .msg.bad{color:var(--bad)}
-.receipt{margin-top:12px;border-left:3px solid var(--sage);background:var(--raised);border-radius:0 12px 12px 0;padding:12px 14px}
-.receipt strong{color:var(--sage)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{min-height:44px;padding:0 14px;border-radius:30px;background:transparent;border:1px solid var(--line);color:var(--paper);font-size:15px}
 .chip:active{background:var(--raised)}
+.chip.more{display:inline-flex;align-items:center;gap:6px;border-style:dashed;color:var(--amber);text-decoration:none;font-weight:600}
+.send-row{justify-content:space-between;gap:10px}
+.btn.ghost{background:transparent;color:var(--paper);border:1px solid var(--line);display:inline-flex;align-items:center;gap:8px;padding:0 16px}
+.btn.ghost svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.btn.ghost[aria-pressed=true]{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 3px rgba(255,192,141,.2)}
+.back{display:inline-flex;align-items:center;gap:6px;min-height:44px;color:var(--amber);text-decoration:none;font-weight:600}
+.back::before{content:"←"}
+.ideas{display:grid;gap:8px}
+.idea{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-height:56px}
+.idea b{display:block;font-weight:700}
+.idea span{display:block;font-size:14px;color:var(--muted);margin-top:2px}
+.idea:active{background:var(--raised)}
+.hero{text-align:center;padding:8px 0 4px}
+.hero .big{font-size:44px;line-height:1}
+.hero h1{margin-top:8px}
+.what{counter-reset:w;margin-top:4px}
+.what li{counter-increment:w;display:flex;gap:10px;padding:8px 0;color:var(--muted)}
+.what li::before{content:counter(w);flex:none;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;font:600 12px ui-monospace,monospace;color:var(--paper)}
+.actions{display:grid;gap:10px;margin-top:18px}
+.actions .btn{display:flex;align-items:center;justify-content:center;text-decoration:none}
 
 .next{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;padding:14px 16px;border-radius:14px;border:1px solid var(--line);text-decoration:none;color:var(--amber);font-weight:600;min-height:48px}
 .next::after{content:"→";font-size:1.2rem}
@@ -123,12 +141,39 @@ ol,ul{list-style:none;margin:0;padding:0}
         <textarea id="text" maxlength="80" placeholder="A banana peel lands in the aisle" enterkeyhint="send"></textarea>
         <span class="count" id="count" aria-hidden="true">0/80</span>
       </div>
-      <div class="send-row"><button class="btn" id="send" type="submit">Send</button></div>
+      <div class="send-row">
+        <button class="btn ghost" id="mic" type="button" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="mic-label">Speak</span></button>
+        <button class="btn" id="send" type="submit">Send</button>
+      </div>
       <p class="msg" id="msg" role="status" aria-live="polite"></p>
-      <div class="receipt" id="receipt" hidden></div>
     </form>
-    <h2 id="h-presets">Or tap one to send it</h2>
-    <div class="chips" id="chips" role="group" aria-labelledby="h-presets"></div>
+    <h2 id="h-presets">Or try one</h2>
+    <div class="chips" id="chips" role="group" aria-labelledby="h-presets"><a class="chip more" href="#ideas">+ More ideas</a></div>
+    <a class="next" href="#next">See what's up next</a>
+  </section>
+
+  <section class="screen" id="screen-ideas" aria-labelledby="h-ideas" hidden>
+    <a class="back" href="#haunt">Back</a>
+    <h1 id="h-ideas" tabindex="-1">More ideas</h1>
+    <p class="lede">Tap one to send it. Each idea is checked before it goes into the hallway.</p>
+    <div id="ideas-list"></div>
+    <a class="next" href="#haunt">Write your own instead</a>
+  </section>
+
+  <section class="screen" id="screen-sent" aria-labelledby="h-sent" hidden>
+    <div class="hero"><div class="big" aria-hidden="true">👻</div><h1 id="h-sent" tabindex="-1">Sent!</h1></div>
+    <p class="lede" id="sent-who" style="text-align:center;margin-left:auto;margin-right:auto"></p>
+    <div class="card" id="sent-card"></div>
+    <h2>What happens next</h2>
+    <ol class="what">
+      <li><span>We check your idea. Only you can see it until it's approved.</span></li>
+      <li><span>Approved ideas join <strong>Up next</strong> for everyone, with your ghost name.</span></li>
+      <li><span>When its turn comes, it's sent to the hallway. Watch the big screen to see the robot react.</span></li>
+    </ol>
+    <div class="actions">
+      <a class="btn" href="#mine">Track it in My ideas</a>
+      <a class="btn ghost" href="#haunt">Send another idea</a>
+    </div>
     <a class="next" href="#next">See what's up next</a>
   </section>
 
@@ -179,7 +224,9 @@ ol,ul{list-style:none;margin:0;padding:0}
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const rawById = store.get("pg_raw", {}); // my own typed text, kept on this phone only
-  const SCREENS = ["haunt", "next", "hallway", "mine"];
+  const SCREENS = ["haunt", "ideas", "sent", "next", "hallway", "mine"];
+  const TAB_FOR = { ideas: "haunt", sent: "mine" }; // sub-pages light up their parent tab
+  let lastSent = store.get("pg_last_sent", "");
   let state = { episodeActive: false, mine: [], queue: [], hallway: [] };
   let filter = "all";
   let pendingMine = [];
@@ -204,7 +251,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     screen = SCREENS.includes(name) ? name : "haunt";
     for (const s of SCREENS) $("screen-" + s).hidden = s !== screen;
     for (const a of document.querySelectorAll(".tab")) {
-      if (a.dataset.screen === screen) a.setAttribute("aria-current", "page");
+      if (a.dataset.screen === (TAB_FOR[screen] || screen)) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     }
     markSeen();
@@ -270,14 +317,9 @@ ol,ul{list-style:none;margin:0;padding:0}
       store.set("pg_raw", rawById);
       pendingMine.push({ hauntId: body.hauntId, status: "submitted" });
       if (payload.text) { $("text").value = ""; updateCount(); }
-      const r = $("receipt");
-      r.textContent = "";
-      r.append(el("strong", "", "✓ Got it" + (state.you ? ", " + state.you.ghostName : "") + "!"), " We're checking “" + rawText + "”. Only you can see this.");
-      const track = el("a", "next", "Track your idea");
-      track.href = "#mine";
-      track.style.marginTop = "10px";
-      r.append(track);
-      r.hidden = false;
+      lastSent = body.hauntId;
+      store.set("pg_last_sent", lastSent);
+      location.hash = "#sent"; // the confirmation page
       render();
       refresh();
     } catch {
@@ -409,6 +451,34 @@ ol,ul{list-style:none;margin:0;padding:0}
       m.append(li);
     }
 
+    // Sent page: the idea you just sent, with live progress
+    const sc = $("sent-card");
+    sc.textContent = "";
+    if (state.you) $("sent-who").textContent = "Thanks, " + state.you.ghostName + ". We've got your idea.";
+    const sentItem = mine.find((h) => h.hauntId === lastSent);
+    if (sentItem) {
+      const raw = rawById[sentItem.hauntId];
+      sc.append(el("div", "label", "Your idea"), el("div", "text", sentItem.status !== "rejected" && sentItem.moderated?.text ? sentItem.moderated.text : raw || "Your idea"));
+      if (sentItem.status === "rejected") {
+        sc.append(el("span", "pill p-bad", "Not approved"));
+        if (sentItem.moderated?.reason) sc.append(el("div", "reason", sentItem.moderated.reason));
+        if (raw) {
+          const edit = el("button", "edit", "Edit & resubmit");
+          edit.type = "button";
+          edit.onclick = () => { $("text").value = raw; updateCount(); location.hash = "#haunt"; setTimeout(() => $("text").focus(), 0); };
+          sc.append(edit);
+        }
+      } else {
+        const at = stepIndex(sentItem, head?.hauntId === sentItem.hauntId);
+        const steps = el("ol", "steps");
+        steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
+        STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
+        sc.append(steps);
+      }
+    } else {
+      sc.append(el("div", "empty", "Send an idea and it will show up here."));
+    }
+
     // Badges for screens you're not on
     badge("b-mine", screen === "mine" ? 0 : state.mine.filter((h) => seen.mine[h.hauntId] && seen.mine[h.hauntId] !== h.status).length);
     badge("b-hallway", screen === "hallway" ? 0 : hall.filter((h) => !seen.hallway.includes(h.hauntId + ":" + h.status)).length);
@@ -420,11 +490,31 @@ ol,ul{list-style:none;margin:0;padding:0}
     try {
       const { ok, body } = await api("/api/crowd/presets");
       if (!ok) return;
-      for (const p of body) {
+      const more = $("chips").querySelector(".more");
+      for (const p of body.slice(0, 3)) {
         const c = el("button", "chip", p.label);
         c.type = "button";
         c.onclick = () => send({ preset: p.id }, p.label);
-        $("chips").append(c);
+        $("chips").insertBefore(c, more);
+      }
+      const groups = new Map();
+      for (const p of body) {
+        const g = p.group || "More";
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(p);
+      }
+      for (const [g, list] of groups) {
+        $("ideas-list").append(el("h2", "", g));
+        const box = el("div", "ideas");
+        for (const p of list) {
+          const b = el("button", "idea");
+          b.type = "button";
+          b.append(el("b", "", p.label), el("span", "", p.text));
+          b.setAttribute("aria-label", "Send: " + p.label + ". " + p.text);
+          b.onclick = () => send({ preset: p.id }, p.label);
+          box.append(b);
+        }
+        $("ideas-list").append(box);
       }
     } catch {}
   }
@@ -436,6 +526,44 @@ ol,ul{list-style:none;margin:0;padding:0}
     send({ text }, text);
   });
   $("text").addEventListener("input", updateCount);
+
+  // Speech to text (Web Speech API). Hidden where the browser doesn't support it;
+  // the phone keyboard's own dictation still works everywhere.
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (Speech) {
+    const mic = $("mic");
+    let rec = null;
+    let base = "";
+    mic.hidden = false;
+    const stop = () => { if (rec) rec.stop(); };
+    mic.addEventListener("click", () => {
+      if (rec) { stop(); return; }
+      rec = new Speech();
+      rec.lang = document.documentElement.lang === "en" ? (navigator.language || "en-US") : document.documentElement.lang;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      base = $("text").value.trim();
+      rec.onresult = (e) => {
+        const heard = Array.from(e.results).map((r) => r[0].transcript).join(" ").trim();
+        $("text").value = ((base ? base + " " : "") + heard).slice(0, 80);
+        updateCount();
+      };
+      rec.onerror = (e) => {
+        say(e.error === "not-allowed" || e.error === "service-not-allowed" ? "Microphone is blocked. You can type, or use your keyboard's microphone." : "Didn't catch that. Try again, or type it.", true);
+      };
+      rec.onend = () => {
+        rec = null;
+        mic.setAttribute("aria-pressed", "false");
+        $("mic-label").textContent = "Speak";
+        if ($("text").value.trim() && !$("msg").classList.contains("bad")) say("Check what you said, then tap Send.");
+        $("text").focus();
+      };
+      say("Listening… say what happens in the hallway.");
+      mic.setAttribute("aria-pressed", "true");
+      $("mic-label").textContent = "Stop";
+      try { rec.start(); } catch { rec = null; say("Couldn't start the microphone. Try typing instead.", true); }
+    });
+  }
   $("text").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("form").requestSubmit(); }
   });

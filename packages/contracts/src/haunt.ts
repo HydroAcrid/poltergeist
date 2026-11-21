@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag, Id, Ms } from "./common.js";
 
-export const VERSION = "1.3.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway
+export const VERSION = "1.4.0"; // 1.1.0: CrowdState.roundEndsAt · 1.2.0: CrowdState.you, client displayName ignored · 1.3.0: CrowdState.hallway · 1.4.0: Preset.group
 
 export const HauntStatus = z.enum(["submitted", "rejected", "approved", "queued", "dispatched", "injected", "failed"]);
 export type HauntStatus = z.infer<typeof HauntStatus>;
@@ -92,6 +92,7 @@ export const Preset = z
     label: z.string().min(1).max(28), // chip text
     text: z.string().min(1).max(60), // pre-approved world event
     tags: z.array(HauntTag).min(1).max(3),
+    group: z.string().min(1).max(24).optional(), // heading on the "More ideas" page
   })
   .strict();
 export type Preset = z.infer<typeof Preset>;
