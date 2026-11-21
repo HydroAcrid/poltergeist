@@ -173,19 +173,22 @@ summary:hover,
   gap: 7px;
 }
 .fear {
-  display: flex;
-  gap: 4px;
+  --fear-level: 0;
+  width: clamp(75px, 8vw, 125px);
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid #e6d2b49e;
+  border-radius: 99px;
+  background: #171915ce;
 }
-.fear i {
-  width: 16px;
-  height: 5px;
-  transform: skewX(-12deg);
-  border: 1px solid #f6dec9bb;
-  background: #1117119c;
-}
-.fear i.on {
-  background: #f3aa78;
-  border-color: #f3aa78;
+.fear-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #ffb581;
+  transform-origin: left;
+  transform: scaleX(var(--fear-level));
+  transition: transform 500ms ease-out;
 }
 .clockbox {
   border-left: 1px solid #eee8c880;
@@ -423,8 +426,8 @@ body:not(.projector) main {
     min-width: 64px;
     padding-left: 10px;
   }
-  .fear i {
-    width: 12px;
+  .fear {
+    width: 68px;
   }
   .hud-label {
     font-size: 10px;

@@ -18,7 +18,8 @@ function positionCue() {
 new ResizeObserver(positionCue).observe(hud);
 window.addEventListener('resize', positionCue);
 positionCue();
-const scene = await createScene(canvas);
+let scene = host ? await createScene(canvas) : undefined;
+let backdropJob, nextBackdropRetry = 0;
 let state,
   revision = -1,
   plateKey,
@@ -104,11 +105,14 @@ function controls() {
   const beforePhoto = !state?.round && state?.lobby?.phase === 'before-photo';
   const waiting = !!state && !state.round;
   const menu = el('show-minutes');
-  const recordedOption = menu.querySelector('[value="prepared"]');
-  recordedOption.disabled = !state?.preparedAvailable;
-  for (const option of menu.options) if (option !== recordedOption) option.disabled = !state?.canLive;
-  menu.querySelector('[value="buffered"]').disabled = !state?.bufferedAvailable;
-  if (menu.selectedOptions[0]?.disabled && state) menu.value = state.preparedAvailable ? 'prepared' : '5';
+  if (state) {
+    const recorded = menu.querySelector('[value="prepared"]'), buffered = menu.querySelector('[value="buffered"]');
+    for (const option of menu.options) option.disabled = !state.canLive;
+    recorded.disabled = !state.preparedAvailable;
+    buffered.disabled = !state.canLive || !state.bufferedAvailable;
+    if (menu.selectedOptions[0]?.disabled)
+      menu.value = !buffered.disabled ? 'buffered' : state.canLive ? '5' : 'prepared';
+  }
   const screening = menu.value === 'prepared';
   const canLaunch = !beforePhoto && !busy && (state?.canLive || state?.preparedAvailable);
   document.body.classList.toggle('waiting', waiting);
@@ -141,7 +145,7 @@ function controls() {
   const buffered = menu.value === 'buffered';
   const isDemo = el('show-minutes').value === '5';
   set('go-show',buffered ? 'Start buffered live game' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
-  set('show-cost',buffered ? 'Generates paid Genie scenes from audience ideas. Guests can submit while the first scenes develop.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
+  set('show-cost',buffered ? 'Generates two opening scenes, then continues from audience ideas. About $6 per generated minute.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
     'The clock pauses during blackouts. About $6 per generated minute.');
   el('go-show').disabled ||= !canLaunch || (!screening && el('go-live').disabled);
   el('show-cost').hidden = !canLaunch;
@@ -262,11 +266,8 @@ async function refreshLobbyJoin(lobby) {
     set('guests', headcount);
   } catch { /* Keep the join link available if the room count is unavailable. */ }
 }
-async function updateState() {
-  const res = await fetch('/rehearsal/state', { cache: 'no-store' });
-  if (!res.ok) throw Error();
-  const s = await res.json();
-  off = s.now - Date.now();
+async function loadBackdrop(s) {
+  scene ??= await createScene(canvas);
   if (revision !== s.revision) {
     await scene.setPhoto(s.revision);
     revision = s.revision;
@@ -275,18 +276,30 @@ async function updateState() {
     await scene.setPlate(s.plateKey, s.aisle);
     plateKey = s.plateKey;
   }
+  paintedStill = '';
+  schedulePaint();
+}
+async function updateState() {
+  const res = await fetch('/rehearsal/state', { cache: 'no-store' });
+  if (!res.ok) throw Error();
+  const s = await res.json();
+  off = s.now - Date.now();
+  if (!scene || revision !== s.revision || plateKey !== s.plateKey) {
+    if (host) await loadBackdrop(s);
+    else if (!backdropJob && Date.now() >= nextBackdropRetry)
+      backdropJob = loadBackdrop(s).catch(() => { nextBackdropRetry = Date.now() + 2000; })
+        .finally(() => { backdropJob = null; });
+  }
   state = s;
   connected = true;
   queue(s);
 
   const r = s.round;
-  el('prepared-format').hidden = !usesClipPlayer(r);
-  if (usesClipPlayer(r)) set('prepared-format', r.playMode === 'buffered-live' ? 'Live audience · buffered Genie' : 'Live audience · recorded scenes');
   document.querySelector('.fear-readout').hidden = r?.playMode === 'prepared-show';
   canvas.classList.toggle('native-frame', !!r?.live);
   const stream = r?.live && !usesClipPlayer(r) && r.phase === 'playing' ? streamKey(r) : '';
   if (stream !== liveId) {
-    scene.freezeLive(liveImage,Date.now()+off);
+    scene?.freezeLive(liveImage,Date.now()+off);
     liveImage.removeAttribute('src');
     liveId = '';
     if (stream && running && !document.hidden) {
@@ -297,7 +310,7 @@ async function updateState() {
       liveId = stream;
       fresh.onerror = () => {
         if (fresh!==liveImage) return;
-        scene.freezeLive(fresh,Date.now()+off);
+        scene?.freezeLive(fresh,Date.now()+off);
         liveId='';
       };
       fresh.src = '/rehearsal/video?round=' + encodeURIComponent(r.id) +
@@ -346,20 +359,20 @@ function paint() {
     if (prepared) {
       const original = 'prepared/' + state.revision;
       if (paintedStill !== original) {
-        scene.paint({...state,round:null}, now);
+        scene?.paint({...state,round:null}, now);
         paintedStill = original;
       }
     } else if (active) {
       paintedStill = '';
-      if (r.live) worldVisible = scene.presentLive(liveId === streamKey(r) ? liveImage : null, r, now);
-      else scene.paint(state, now);
+      if (r.live) worldVisible = scene?.presentLive(liveId === streamKey(r) ? liveImage : null, r, now);
+      else scene?.paint(state, now);
     } else {
       const still = [state.revision, r?.id || 'lobby'].join('/');
       if (paintedStill !== still) {
         // Keep the last native image visible through the result.
-        if (!r?.live) scene.paint(state, now);
+        if (!r?.live) scene?.paint(state, now);
         else if (!r.startedAt || !canvas.dataset.played || canvas.dataset.played !== r.id)
-          scene.paint({...state, round: null}, now);
+          scene?.paint({...state, round: null}, now);
         paintedStill = still;
       }
     }
@@ -402,7 +415,7 @@ function paint() {
         clock = time(Math.max(0,Math.ceil((r.clockMode==='wall' ? r.showDeadline-now : r.remainingMs)/1000)));
         label = 'Time left';
       } else if (r.phase === 'playing') {
-        phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
+        phase = r.live ? (worldVisible ? 'In the hallway' : 'Opening the hallway') : 'Round in play';
         clock = time(sec);
         label = 'Time left';
         if (card) {
@@ -460,15 +473,12 @@ function paint() {
       set('announce', announcement);
       previousCaption = announcement;
     }
-    const fear = r?.fear || 0,
+    const fear = Math.max(0, Math.min(3, Number(r?.fear) || 0)),
       fearMeter = document.querySelector('.fear');
     if (fearMeter.getAttribute('aria-valuenow') !== String(fear)) {
       fearMeter.setAttribute('aria-valuenow', fear);
       fearMeter.setAttribute('aria-valuetext', fear + ' of 3 scares');
-      fearMeter
-        .querySelectorAll('i')
-        .forEach((i, n) => i.classList.toggle('on', n < fear));
-      set('fear', fear + ' / 3');
+      fearMeter.style.setProperty('--fear-level', String(fear / 3));
     }
   }
   if (r && r.phase !== 'ended') {
@@ -601,7 +611,7 @@ function suspend() {
   clearTimeout(hudTimer);
   cancelAnimationFrame(paintId);
   paintId = 0;
-  if (liveId) { scene.freezeLive(liveImage,Date.now()+off);liveImage.removeAttribute('src'); liveId = ''; }
+  if (liveId) { scene?.freezeLive(liveImage,Date.now()+off);liveImage.removeAttribute('src'); liveId = ''; }
   if (dialog.open) dialog.close();
   release();
 }

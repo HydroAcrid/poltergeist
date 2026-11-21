@@ -70,9 +70,12 @@ export function createPreparedPlayer(surface) {
       if (visible) { visible.pause(); visible.hidden = true; visible = undefined; }
       segment = undefined;
       cover('clear');
-      source(part.upNext?.clipUrl);
+      const opening = part.preload || [];
+      const first = source(part.upNext?.clipUrl || opening[0]?.clipUrl);
+      const second = opening.find(item => item.clipUrl && item.clipUrl !== first?.getAttribute('src'));
+      if (second) source(second.clipUrl, first);
       if (fresh && Number.isFinite(part.collectUntil) && now >= part.collectUntil)
-        return {message:'Preparing the first Genie scene…'};
+        return {message:'Preparing the first scene…'};
       return {collecting:true};
     }
     if (part.phase === 'handoff') {
@@ -111,7 +114,7 @@ export function createPreparedPlayer(surface) {
           v.dataset.retryAt = String(now + 4000);
           v.load();
         }
-        return {message:'Waiting for the next Genie scene…'};
+        return {message:'Waiting for the next scene…'};
       }
       return {message:'This clip could not play. Waiting for the next scene.'};
     }

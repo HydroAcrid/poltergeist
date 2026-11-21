@@ -26,8 +26,7 @@
         </div>
       </figure>
       <header class="hud">
-        <div><h1 id="title" class="brand">Poltergeist</h1>
-          <small id="prepared-format" class="prepared-format" hidden>Live audience · recorded scenes</small></div>
+        <h1 id="title" class="brand">Poltergeist</h1>
         <div class="score" hidden>
           <div
             class="fear-readout"
@@ -36,16 +35,15 @@
             <span class="hud-label">Fear</span>
             <div
               class="fear"
-              role="meter"
+              role="progressbar"
               aria-label="Robot fear"
               aria-valuemin="0"
               aria-valuemax="3"
               aria-valuenow="0"
               aria-valuetext="0 of 3 scares"
             >
-              <i></i><i></i><i></i>
+              <span class="fear-fill"></span>
             </div>
-            <span id="fear" class="visually-hidden">0 / 3</span>
           </div>
           <div id="round-clock" class="clockbox" hidden>
             <span id="timer-label" class="hud-label"></span
@@ -93,13 +91,13 @@
             <button id="prepare" hidden>Prepare photo</button>
             <label id="show-length" class="show-length" hidden>Show format
               <select id="show-minutes">
-                <option value="5">5-minute live demo</option>
-                <option value="buffered">5-minute buffered live game</option>
+                <option value="buffered" selected>5-minute buffered live game</option>
+                <option value="5">5-minute direct live demo</option>
                 <option value="prepared">5-minute audience screening</option>
                 <option value="10">10 minutes of play</option>
               </select>
             </label>
-            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start 5-minute demo</button>
+            <button id="go-show" class="primary" aria-describedby="show-cost" hidden disabled>Start buffered live game</button>
             <small id="show-cost" hidden></small>
             <button id="offline-primary" class="primary" hidden>Start offline rehearsal</button>
             <button id="stop-show" hidden>End game</button>
