@@ -146,8 +146,8 @@ ol,ul{list-style:none;margin:0;padding:0}
   </section>
 
   <section class="screen" id="screen-hallway" aria-labelledby="h-hallway" hidden>
-    <h1 id="h-hallway" tabindex="-1">In the hallway</h1>
-    <p class="lede">What went into the world this round. Watch the big screen to see how the robot reacts.</p>
+    <h1 id="h-hallway" tabindex="-1">Sent to the hallway</h1>
+    <p class="lede">Ideas sent to the hallway this round. Watch the big screen to see whether each one shows up and how the robot reacts.</p>
     <ol class="list card" id="hallway"></ol>
     <a class="next" href="#haunt">Send another idea</a>
   </section>
@@ -293,11 +293,11 @@ ol,ul{list-style:none;margin:0;padding:0}
   // ---------- rendering ----------
   const STATUS = {
     dispatched: ["Going into the hallway…", "p-go"],
-    injected: ["Sent to world", "p-ok"],
+    injected: ["Sent to the hallway", "p-ok"],
     failed: ["Didn't make it in", "p-bad"],
     rejected: ["Not approved", "p-bad"],
   };
-  const STEPS = ["Checking", "Approved", "Up next", "Sent to world"];
+  const STEPS = ["Checking", "Approved", "Up next", "Sent to the hallway"];
 
   // Index of the current step; STEPS.length means every step is done.
   function stepIndex(h, isHead) {
@@ -335,7 +335,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     const live = state.mine.find((h) => h.status === "dispatched" || (h.status === "injected" && hall.some((x) => x.hauntId === h.hauntId)));
     hap.textContent = "";
     if (live) {
-      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea is in the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
+      hap.append(live.status === "dispatched" ? "👻 Your idea is going into the hallway now!" : "👻 Your idea was sent to the hallway. Watch the big screen!", el("small", "", live.moderated?.text || ""));
       hap.href = "#hallway";
     } else if (head && mineIds.has(head.hauntId)) {
       hap.append("Your idea is up next!", el("small", "", head.moderated?.text || ""));
@@ -366,7 +366,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     // Hallway
     const hw = $("hallway");
     hw.textContent = "";
-    if (!hall.length) hw.append(el("li", "empty", state.episodeActive ? "Nothing has gone in yet. The first idea goes in a few seconds after the robot starts." : "Nothing has gone in yet. Ideas go in once the round starts."));
+    if (!hall.length) hw.append(el("li", "empty", state.episodeActive ? "Nothing sent yet. The first idea goes a few seconds after the robot starts." : "Nothing sent yet. Ideas go once the round starts."));
     for (const h of hall) {
       const li = el("li");
       const b = el("div", "body");
@@ -401,7 +401,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       } else {
         const at = stepIndex(h, head?.hauntId === h.hauntId);
         const steps = el("ol", "steps");
-        steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to world"));
+        steps.setAttribute("aria-label", "Progress: " + (STEPS[at] || "Sent to the hallway"));
         STEPS.forEach((s, i) => steps.append(el("li", i < at ? "done" : i === at ? "now" : "", s)));
         b.append(steps);
       }

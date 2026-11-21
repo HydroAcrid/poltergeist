@@ -303,5 +303,9 @@ describe("operator and page", () => {
       expect(page.body).toContain(`class="tab" href="#${screen}"`);
     }
     expect(page.body.match(/class="next" href="#/g)?.length).toBe(4);
+    // Delivery (haunt.injected) is only "Sent to the hallway"; "In the hallway" and reaction credit
+    // need separate camera evidence (World, #2).
+    expect(page.body).toContain('injected: ["Sent to the hallway"');
+    expect(page.body).not.toMatch(/Sent to world|idea is in the hallway|>In the hallway</);
   });
 });
