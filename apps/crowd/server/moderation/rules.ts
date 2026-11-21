@@ -109,6 +109,7 @@ const EVENTS: Event[] = [
   { re: /\b(balloons?)\b/i, tags: ["occlusion", "distractor"], canonical: "A bunch of balloons drifts across the hall" },
   { re: /\b(chairs?|tables?|box(es)?|crates?|carts?|buckets?|cones?|ladders?|bins?|trash|barrels?|benches?|desks?|plants?|furniture)\b/i, tags: ["geometry"], canonical: "A chair tips over in the middle of the aisle" },
   { re: /\b(blocks?|blocked|curtains?|covers?|hides?)\b/i, tags: ["occlusion"], canonical: "A heavy curtain drops across half the aisle" },
+  { re: /\b(bats?|bat swarm)\b/i, tags: ["occlusion", "distractor"], canonical: "A swarm of bats crosses the flashlight beam" },
   { re: /\b(cats?|dogs?|pigeons?|birds?|mice|mouse|rats?|squirrels?|raccoons?)\b/i, tags: ["distractor"], canonical: "A cat darts across the aisle" },
   { re: /\b(signs?|exit|arrows?|doors?)\b/i, tags: ["sign_change"], canonical: "The EXIT sign slides to the other wall" },
   { re: /\b(mirrors?|glare|reflections?)\b/i, tags: ["visibility"], canonical: "A tall mirror appears at the end of the hall" },

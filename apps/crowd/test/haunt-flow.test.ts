@@ -467,6 +467,10 @@ describe("operator and page", () => {
     const page = await hub.app.inject({ method: "GET", url: "/haunt" });
     expect(page.statusCode).toBe(200);
     expect(page.headers["content-type"]).toMatch(/text\/html/);
+    // Budget is what phones download (gzip, checked below, per World's paging commit 22355eb).
+    // The served page is compacted; the compaction must stay safe for this source.
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../web/haunt.html"), "utf8");
+    expect(src).not.toMatch(/`|<pre/);
     const phone = await hub.app.inject({ method: "GET", url: "/haunt", headers: { "accept-encoding": "gzip, deflate, br" } });
     expect(phone.headers["content-encoding"]).toBe("gzip");
     expect(phone.rawPayload.byteLength).toBeLessThan(30_000);

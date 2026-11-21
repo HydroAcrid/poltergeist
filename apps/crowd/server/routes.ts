@@ -48,9 +48,15 @@ export interface RouteOptions {
 
 export async function registerCrowdRoutes(app: FastifyInstance, crowd: CrowdService, opts: RouteOptions): Promise<void> {
   let page: string | null = null;
-  // Phones are on venue Wi-Fi: serve the page without each line's leading indentation and blank
-  // lines (the source stays readable). The page has no <pre> or multi-line strings, so this is safe.
-  const compact = (html: string) => html.replace(/^[ \t]+/gm, "").replace(/\n{2,}/g, "\n");
+  // Phones are on venue Wi-Fi: serve the page without indentation, blank lines, whole-line //
+  // comments and /* */ comments (the source stays readable). Safe because the page has no <pre>,
+  // no template literals and no "//" at the start of any non-comment line (checked in tests).
+  const compact = (html: string) =>
+    html
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]+/gm, "")
+      .replace(/^\/\/.*$/gm, "")
+      .replace(/\n{2,}/g, "\n");
   const loadPage = () => (page ??= compact(readFileSync(opts.hauntPagePath, "utf8")));
   let compressedPage: Buffer | undefined;
 

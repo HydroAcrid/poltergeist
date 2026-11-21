@@ -9,7 +9,8 @@ import type { OperatorCommand } from "@poltergeist/contracts/operator.js";
 import type { Scoreboard } from "@poltergeist/contracts/scoreboard.js";
 import type { Verdict } from "@poltergeist/contracts/verdict.js";
 import { GhostNames } from "./ghost-names.js";
-import { conduct, familyOf, kindOf, POLICY, type Candidate, type Decision, type RecentHaunt, type SceneObservation, type Staging } from "./conductor.js";
+import { conduct, familyOf, kindOf, POLICY, withAgent, type Candidate, type Decision, type RecentHaunt, type SceneObservation, type Staging } from "./conductor.js";
+import { isDisplaySafeReason, type ConductorAgent } from "./conductor-agent.js";
 import { ruleVerdict, type RefInjected, type RefTick } from "./referee.js";
 import { buildScoreboard } from "./scoreboard.js";
 import { newId } from "./ids.js";
@@ -90,6 +91,7 @@ export interface CrowdDeps {
   matchClock?: () => MatchClock | undefined;
   prepared?: () => PreparedWindow | null;
   renderWindow?: () => RenderWindow | null;
+  conductorAgent?: ConductorAgent;
 }
 
 /** Display-safe copy. `forAuthor` keeps private moderation feedback. */
@@ -119,6 +121,8 @@ export class CrowdService {
   // Conductor: one reserved pick, stable until it's sent or becomes impossible.
   private reserved: { hauntId: Id; reason: string; mode: "conductor" | "fifo" } | null = null;
   private reservedWithScene = false;
+  private lastAgentKey = "";
+  private pendingRank: Promise<void> | null = null;
   private waitingReasons = new Map<Id, string>();
   private skips = new Map<Id, number>();
   private staging = new Map<Id, Staging>(); // server-only judgments from the existing moderation call
@@ -330,6 +334,7 @@ export class CrowdService {
     const reasons = [...this.waitingReasons]
       .filter(([id]) => !shown || shown.has(id))
       .map(([hauntId, reason]) => ({ hauntId, reason }));
+    const lobbyPhase = this.deps.lobbyPhase?.();
     return {
       ...(waiting ? { waiting, waitingReasons: reasons } : reasons.length ? { waiting: reasons } : {}),
       episodeActive: this.active !== null,
@@ -341,7 +346,7 @@ export class CrowdService {
       queue: queue.map((h) => toPublic(h)),
       slotsPerRound: this.slotLimit(clock),
       joined: this.joined().here,
-      lobbyPhase: this.deps.lobbyPhase?.(),
+      ...(lobbyPhase ? { lobbyPhase } : {}),
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
       ...(reasons.length ? { holds: reasons } : {}),
       ...(this.verifiedPathHaunts.size ? { verifiedPathHauntIds: [...this.verifiedPathHaunts] } : {}),
@@ -424,7 +429,10 @@ export class CrowdService {
       if (pick) this.sendPick(pick, ep, t, "film-selected");
       return;
     }
-    if (batch) this.reserve();
+    if (batch) {
+      this.reserve(true);
+      if (this.pendingRank) return;
+    }
 
     // Re-check the reserved pick's hard rules right before sending; if it's now impossible,
     // release it (with its public reason) and pick again. The public pick changes only here.
@@ -523,11 +531,13 @@ export class CrowdService {
 
   private releaseReservation(): void {
     this.reserved = null;
+    this.lastAgentKey = "";
+    this.pendingRank = null;
     this.waitingReasons.clear();
   }
 
   /** Keep exactly one reserved pick while ideas are eligible, and refresh the public waiting reasons. */
-  private reserve(): void {
+  private reserve(buffered = false): void {
     // Courtney's call (with World): no Up next in the lobby, so guests can keep changing their idea;
     // the first pick is reserved once the round is playing.
     if (!this.active) return this.releaseReservation();
@@ -538,7 +548,11 @@ export class CrowdService {
     if (!eligible.length) return;
     const scene = this.deps.scene?.();
     const freshScene = !!scene && this.now() - scene.observedAt <= POLICY.sceneMaxAgeMs;
-    const d = this.decide(eligible, scene);
+    const rules = this.decide(eligible, scene);
+    // Buffered scenes are scheduled before a camera frame exists. Rank only
+    // feasible ideas using the actual audience input and recent dispatches.
+    const d = buffered && this.deps.conductorAgent && rules.mode === "fifo"
+      ? { ...rules, mode: "conductor" as const } : rules;
     if (this.reserved && (this.reserved.mode !== d.mode || this.reservedWithScene !== freshScene ||
       d.waiting.some(w => w.hauntId === this.reserved?.hauntId && w.code === "similar"))) {
       this.reserved = null;
@@ -556,6 +570,65 @@ export class CrowdService {
       // Fair turns: anything feasible that was passed over gets closer to its guaranteed turn.
       for (const w of d.waiting) if (w.code === "ranked_lower") this.skips.set(w.hauntId, (this.skips.get(w.hauntId) ?? 0) + 1);
     }
+    this.maybeConsultAgent(d, freshScene ? scene : undefined);
+  }
+
+  private maybeConsultAgent(d: Decision, scene: SceneObservation | undefined): void {
+    const agent = this.deps.conductorAgent;
+    const ep = this.active;
+    if (!agent || !ep || d.mode !== "conductor") return;
+    const feasibleIds = [
+      d.pick?.hauntId,
+      ...d.waiting.filter((w) => w.code === "ranked_lower").map((w) => w.hauntId),
+    ].filter((x): x is Id => !!x);
+    if (feasibleIds.length < 2) return;
+    const key = `${ep.episodeId}:${ep.dispatched}`;
+    if (key === this.lastAgentKey) return;
+    this.lastAgentKey = key;
+    const epId = ep.episodeId;
+    const slot = ep.dispatched;
+    const recent = this.hallwayIds.slice(-4).map((id) => {
+      const h = this.haunts.get(id);
+      const idea = { preset: h?.preset, tags: h?.moderated?.tags ?? [], text: h?.moderated?.text ?? "", staging: this.staging.get(id) };
+      return { hauntId: id, kind: kindOf(idea), family: familyOf(idea), seen: scene?.seenHauntIds.includes(id) ?? false };
+    });
+    const job = withAgent(
+      d,
+      (ids) =>
+        agent.rank({
+          candidates: ids.slice(0, 12)
+            .map((id) => this.haunts.get(id))
+            .filter((h): h is Haunt => !!h && h.status === "queued" && !!h.moderated?.safe)
+            .map((h) => {
+              const st = this.staging.get(h.hauntId);
+              const idea = { preset: h.preset, tags: h.moderated!.tags, text: h.moderated!.text, staging: st };
+              return {
+                hauntId: h.hauntId,
+                text: h.moderated!.text,
+                tags: h.moderated!.tags,
+                family: familyOf(idea),
+                ...(st ? { impact: st.impact } : {}),
+              };
+            }),
+          scene,
+          recent,
+        }),
+      isDisplaySafeReason,
+    )
+      .then((res) => {
+        if (!res.agentUsed || !res.pick) return;
+        if (this.pendingRank !== job || this.active?.episodeId !== epId || this.active.dispatched !== slot) return;
+        const chosen = this.haunts.get(res.pick.hauntId);
+        if (!chosen || chosen.status !== "queued") return;
+        this.reserved = { hauntId: chosen.hauntId, reason: res.pick.reason, mode: "conductor" };
+        this.waitingReasons.delete(chosen.hauntId);
+      })
+      .finally(() => {
+        if (this.pendingRank === job) this.pendingRank = null;
+        this.pending.delete(job);
+      });
+    this.pendingRank = job;
+    this.pending.add(job);
   }
 
   private takeSeeded(): Haunt | undefined {
@@ -615,7 +688,18 @@ export class CrowdService {
         const k = e.payload as RefTick & { episodeId?: Id };
         if (!k?.episodeId || typeof k.t !== "number" || !k.perception) return;
         const list = this.ticksByEpisode.get(k.episodeId) ?? [];
-        if (list.length < 2000) list.push({ seq: k.seq, t: k.t, perception: k.perception, action: k.action, mode: k.mode, ...(k.reaction ? { reaction: k.reaction } : {}) });
+        if (list.length < 2000) {
+          list.push({
+            seq: k.seq,
+            t: k.t,
+            perception: k.perception,
+            action: k.action,
+            mode: k.mode,
+            ...(k.rationale !== undefined ? { rationale: k.rationale } : {}),
+            ...(k.reaction ? { reaction: k.reaction } : {}),
+            ...(k.decision ? { decision: k.decision } : {}),
+          });
+        }
         this.ticksByEpisode.set(k.episodeId, list);
         break;
       }

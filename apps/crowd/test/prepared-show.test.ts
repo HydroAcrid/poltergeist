@@ -110,3 +110,37 @@ it("admits separate moderated ideas one tick apart while a buffered generation w
   expect(hub.crowd.state("observer").hallway?.[0]?.sceneReceipt).toBe("generated-in-path");
   unsubscribe();
 });
+
+it("waits for the shared-key Conductor before sending a buffered guest pick, even before the first camera frame", async () => {
+  let release!: (response: Response) => void;
+  const request = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(resolve => { release = resolve; }));
+  const gate = { canDispatch: true, slots: 1 };
+  hub = await buildTestHub({
+    env: { GEMINI_API_KEY: "fixture-server-key" }, renderWindow: () => gate,
+    config: { firstDispatchMs: 0, seededFallback: false },
+  });
+  const first = await phone(), second = await phone();
+  const firstId = await first.post({ preset: "banana-peel" });
+  hub.clock.advance(100);
+  const secondId = await second.post({ preset: "lights-flicker" });
+  await hub.crowd.whenIdle();
+  hub.world.startEpisode();
+  hub.crowd.tick();
+  hub.crowd.tick();
+  expect(hub.dispatched()).toEqual([]);
+  expect(request).toHaveBeenCalledTimes(1);
+  const init = request.mock.calls[0]![1]!;
+  expect(new Headers(init.headers).get("x-goog-api-key")).toBe("fixture-server-key");
+  const payload = JSON.parse(JSON.parse(String(init.body)).contents[0].parts[0].text);
+  expect(payload.scene).toBeNull();
+  expect(payload.candidates.map((c: {hauntId: string}) => c.hauntId)).toEqual([firstId, secondId]);
+  const rank = { ranked: [{ hauntId: secondId, reason: "A sudden flicker frames the first footstep" }] };
+  release(Response.json({ candidates: [{content: {parts: [{text: JSON.stringify(rank)}]}}] }));
+  await hub.crowd.whenIdle();
+  expect((await second.state()).upNext).toMatchObject({ hauntId: secondId, reason: rank.ranked[0]!.reason });
+  hub.bus.subscribe(["haunt.dispatch"], () => { gate.slots = 0; });
+  hub.crowd.tick();
+  hub.crowd.tick();
+  expect(hub.dispatched()).toMatchObject([{ hauntId: secondId }]);
+  expect(request).toHaveBeenCalledTimes(1);
+});

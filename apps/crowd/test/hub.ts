@@ -17,7 +17,7 @@ export interface TestHub {
   close: () => Promise<void>;
 }
 
-export async function buildTestHub(opts: { scene?: () => SceneObservation | undefined; config?: Partial<CrowdConfig>; lobbyPhase?: CrowdDeps["lobbyPhase"]; matchClock?: CrowdDeps["matchClock"]; prepared?: CrowdDeps["prepared"]; renderWindow?: CrowdDeps["renderWindow"] } = {}): Promise<TestHub> {
+export async function buildTestHub(opts: { env?: Record<string,string>; scene?: () => SceneObservation | undefined; config?: Partial<CrowdConfig>; lobbyPhase?: CrowdDeps["lobbyPhase"]; matchClock?: CrowdDeps["matchClock"]; prepared?: CrowdDeps["prepared"]; renderWindow?: CrowdDeps["renderWindow"] } = {}): Promise<TestHub> {
   let t = new Date("2026-11-21T14:00:00").getTime();
   const clock = { now: () => t, advance: (ms: number) => void (t += ms) };
   const bus = new MemoryBus(clock.now);
@@ -29,7 +29,7 @@ export async function buildTestHub(opts: { scene?: () => SceneObservation | unde
   await mod.register(app, {
     bus,
     dataDir: "./data-test",
-    env: { PG_OPERATOR_TOKEN: operatorToken },
+    env: { ...opts.env, PG_OPERATOR_TOKEN: operatorToken },
     instance: "local",
     log: () => {},
   });

@@ -1,6 +1,10 @@
 # Crowd's Gemini keys
 
-Crowd uses two Gemini keys for idea moderation (`gemini-4-hydrogen`). Key 1 does the work. If key 1 is rate-limited (429), rejected (401/403) or Gemini has a server error (5xx), key 2 takes over, and key 1 rests for a minute. An optional rolling cap (`PG_CROWD_GEMINI_MAX_PER_MIN`, optional limit across both keys) protects the bill. If both keys fail or the cap is hit, the idea is held back with "The idea check is unavailable…", never approved without a check. The preset suggestions keep working.
+Crowd uses two Gemini keys (`gemini-4-hydrogen`) across two server-only adapters:
+1. **Creative moderation & staging (`server/moderation/gemini.ts`):** rewrites free-text guest ideas into family-safe hallway events, proposes private one-Enter revisions, and labels visual staging (`family`, `impact`, `placement`).
+2. **Live show conductor (`server/conductor-agent.ts`):** ranks rule-feasible ideas for the current hallway shot within a 500 ms budget (`withAgent`), falling back deterministically to rules if slow or unavailable.
+
+Key 1 does the work. If key 1 is rate-limited (429), rejected (401/403) or Gemini has a server error (5xx), key 2 takes over, and key 1 rests for a minute. Set `PG_CROWD_GEMINI_MAX_PER_MIN` to cap calls per adapter when the event has an agreed budget. If both keys fail or the cap is hit, moderation holds the idea back ("The idea check is unavailable…", never approved unchecked) and the conductor keeps its deterministic rule pick. The preset suggestions keep working.
 
 ## Where the keys live
 
@@ -16,7 +20,7 @@ PG_CROWD_GEMINI_KEY_2=...
 - Crowd reads the file itself. The keys are never put into `process.env`, so other lanes' code in the same process can't see them.
 - Crowd refuses the file if other users can read it, and logs `chmod 600 …`.
 - On a hosted server (Vercel), set `PG_CROWD_GEMINI_KEY` and `PG_CROWD_GEMINI_KEY_2` as encrypted environment variables instead.
-- World's shared `GEMINI_API_KEY` is used only if no Crowd key is set.
+- Both adapters fall back to World’s server-only `GEMINI_API_KEY` when no dedicated Crowd keys are configured. Set `PG_CONDUCTOR_AGENT=0` to use rule-based selection.
 
 ## What keeps them safe (tested in `test/gemini-keys.test.ts`)
 
