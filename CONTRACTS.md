@@ -216,16 +216,21 @@ export interface Haunt {
   raw: string;                   // ≤ 80 chars; NEVER rendered on /stage or /overlay
   preset?: string;               // preset id if tapped
   status: HauntStatus;
-  moderated?: { safe: boolean; text: string; tags: HauntTag[]; reason?: string; model: string };   // text ≤ 60 chars
+  moderated?: { safe: boolean; text: string; tags: HauntTag[]; reason?: string; suggestion?: string; model: string };   // text ≤ 60 chars
   votes: number;
   seeded: boolean;               // pre-approved fallback pool
   episodeId?: Id;
   injectedT?: Ms;
   createdAt: EpochMs;
 }
-export type HauntPublic = Omit<Haunt, "raw" | "deviceId">;
+export type HauntReceipt = Omit<Haunt, "raw" | "deviceId">; // author only; optional reason and suggestion ≤ 80 chars
+export type HauntPublic = Omit<HauntReceipt, "moderated"> & {
+  moderated?: Omit<NonNullable<Haunt["moderated"]>, "reason" | "suggestion">;
+};
 export interface HauntDispatch { hauntId: Id; episodeId: Id; text: string; tags: HauntTag[] }   // text = moderated.text
 ```
+
+A phone can submit a text revision with the rejected idea’s ID in `revisionOf`. The author may immediately revise their most recent original once. Each revision goes through moderation and counts toward the daily limit. Repeating the same revision returns its existing receipt.
 
 ### C08 HauntInjected (`haunt-injected.ts`, world)
 
@@ -381,9 +386,9 @@ data/
 | `POST /api/brain/replay-eval` | brain | `ReplayEvalRequest` → `ReplayEvalResult` | `/operator`, MCP, `pnpm proof` |
 | `GET /api/brain/coach/status` | brain | → `{ running, lastRun?, proposals[] }` | `/operator` |
 | `POST /mcp` | brain | MCP Streamable HTTP, `Authorization: Bearer PG_MCP_TOKEN` | the Managed Agent coach |
-| `POST /api/crowd/haunt` | crowd | `{ text? , preset?, displayName? }` + `pg_device` cookie → `{ hauntId, status }` | phones |
+| `POST /api/crowd/haunt` | crowd | `{ text?, preset?, revisionOf? }` + `pg_device` cookie → `{ hauntId, status }` | phones |
 | `GET /api/crowd/presets` | crowd | → `{ id, label, text, tags }[]` | phones |
-| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntPublic[], queue: HauntPublic[] }` | phones (poll every 2 s) |
+| `GET /api/crowd/state` | crowd | → `{ episodeActive, round?, nextRoundAt?, mine: HauntReceipt[], queue: HauntPublic[] }` | phones (poll every 2 s) |
 | `GET /api/crowd/scoreboard` | crowd | → `Scoreboard` | `/stage`, `/operator` |
 | `GET /api/crowd/queue` | crowd | → `Haunt[]` (includes raw; operator token) | `/operator` |
 | `GET /api/bus/history` | hub | `?episodeId&types&since` → `Envelope[]` | referee, tests |

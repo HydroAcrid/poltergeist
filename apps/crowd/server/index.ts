@@ -2,6 +2,7 @@
 import type { HubContext, LaneModule } from "@poltergeist/contracts/hub-types.js";
 import { configFromEnv, CrowdService, type CrowdConfig } from "./crowd.js";
 import { HAUNT_PAGE, loadPresets, loadSeededPool } from "./load.js";
+import { GeminiModeration } from "./moderation/gemini.js";
 import { RulesOnlyModeration } from "./moderation/rules.js";
 import type { ModerationAdapter } from "./moderation/types.js";
 import { registerCrowdRoutes } from "./routes.js";
@@ -15,9 +16,11 @@ export interface CrowdModuleOptions {
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
-  const wanted = ctx.env.PG_MODERATION_ADAPTER ?? "rules-only";
-  if (wanted !== "rules-only") ctx.log("crowd", `moderation adapter "${wanted}" not built yet; using rules-only`);
-  return new RulesOnlyModeration();
+  const key = ctx.env.GEMINI_API_KEY ?? "";
+  const mode = ctx.env.PG_MODERATION_ADAPTER ?? (key ? "hydrogen" : "rules-only");
+  if (mode === "rules-only") return new RulesOnlyModeration();
+  if (mode !== "hydrogen") throw Error("Unknown moderation adapter: " + mode);
+  return new GeminiModeration(key, ctx.env.PG_MODEL_MODERATION || "gemini-4-hydrogen", fetch, fault => ctx.log("crowd", fault));
 }
 
 export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {

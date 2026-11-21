@@ -37,6 +37,21 @@ const BLOCK: Rule[] = [
   { re: /https?:|www\.|@\w|\b(guy|girl|man|woman|men|women|person|people|someone|somebody|everyone|everybody|audience|judges?|attendees?|crowd|kids?|boy|lady|dude|he|she|him|her|his|you|your|me|my|i)\b/i, reason: REASONS.people },
 ];
 
+export function blockedReason(text: string): string | undefined {
+  if (!text || text.length > 80) return REASONS.length;
+  return BLOCK.find((rule) => rule.re.test(text))?.reason;
+}
+
+/** A private, prewritten way to keep the harmless part of a rejected idea. */
+export function alternativeFor(text: string): string {
+  if (/wind|hurricane|storm|cyclone|tornado|weather|roof/i.test(text)) return "A gust sweeps loose papers across the aisle";
+  if (/water|rain|flood|wave|tsunami|spill/i.test(text)) return "A shallow puddle spreads across the aisle";
+  if (/light|fire|flash|laser|explod|blast|bomb/i.test(text)) return "The lamps flash once and cast long shadows";
+  if (/hit|fall|push|throw|knock|attack|chase|crush|shoot/i.test(text)) return "A foam ball bounces into the robot’s path";
+  if (/name|sign|text|logo|words|message/i.test(text)) return "A sign swings gently across the flashlight beam";
+  return "A shadow sweeps across the hallway floor";
+}
+
 type Event = { re: RegExp; tags: HauntTag[]; canonical: string };
 
 /** World-event keywords. The first match supplies the canonical rewrite; tags merge in order (max 3). */
@@ -73,8 +88,8 @@ function truncate60(s: string): string {
   return (space > 30 ? cut.slice(0, space) : s.slice(0, 60)).trim();
 }
 
-function rejected(reason: string): Moderated {
-  return { safe: false, text: "", tags: [], reason, model: "rules-only" };
+function rejected(reason: string, input: string): Moderated {
+  return { safe: false, text: "", tags: [], reason, suggestion: alternativeFor(input), model: "rules-only" };
 }
 
 export class RulesOnlyModeration implements ModerationAdapter {
@@ -82,11 +97,12 @@ export class RulesOnlyModeration implements ModerationAdapter {
 
   async moderate(input: string): Promise<Moderated> {
     const text = input.normalize("NFKC").replace(/\s+/g, " ").trim();
-    if (text.length === 0 || text.length > 80) return rejected(REASONS.length);
-    for (const rule of BLOCK) if (rule.re.test(text)) return rejected(rule.reason);
+    const reason = blockedReason(text);
+    if (reason) return rejected(reason, text);
+    if (/\b(hurricane|tornado|tsunami|cyclone)\b/i.test(text)) return rejected("Give the storm one visible effect inside the hallway.", text);
 
     const matches = EVENTS.filter((e) => e.re.test(text));
-    if (matches.length === 0) return rejected(REASONS.notEvent);
+    if (matches.length === 0) return rejected(REASONS.notEvent, text);
     const tags = [...new Set(matches.flatMap((m) => m.tags))].slice(0, 3);
 
     const cleaned = clean(text);
