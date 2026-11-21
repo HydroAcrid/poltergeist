@@ -12,12 +12,27 @@ const box = (b) =>
   b[1] < b[3];
 const effects = [
   [
+    /\b(?:bats?|bat swarm)\b/i,
+    /\bbats?\b|winged swarm/i,
+    'A dense flock of distinct dark bats pours out of the doorway ahead, wheels through the flashlight at chest height, and passes across the explorer’s route. Let the wing silhouettes read against the lit far wall, leave the robot visible and keep the hallway intact.',
+  ],
+  [
+    /\b(?:hurricanes?|tornado(?:es)?|cyclones?|twisters?)\b/i,
+    /vortex|funnel|cyclon|tornad|twist(?:er|ing debris)|rotating (?:dust|debris)|spiral(?:ing)? debris/i,
+    'Form a tall rotating funnel of illuminated dust and airborne debris in the open aisle ahead. Let the vortex cross the flashlight beam while the walls, floor and explorer stay recognizable.',
+  ],
+  [
+    /\b(?:thunderstorms?|lightning|thunder)\b/i,
+    /lightning|storm cloud|rain curtain|slanting rain|rain shaft/i,
+    'Storm clouds gather below the ceiling ahead. A blue-white sheet of lightning silhouettes a curtain of driving rain that crosses the flashlight beam. Keep the explorer and its path visible.',
+  ],
+  [
     /\b(?:breezes?|light drafts?)\b/i,
     /paper|sheet|leaf|leaves|debris/i,
     'Let the light breeze carry a few loose sheets across the next footsteps in the flashlight beam. Keep the breeze gentle.',
   ],
   [
-    /\b(?:gusts?|hurricanes?|wind(?:s|y)?|tornado(?:es)?)\b|\bpaper storm\b/i,
+    /\b(?:gusts?|wind(?:s|y)?)\b|\bpaper storm\b/i,
     /paper|sheet|leaf|leaves|debris/i,
     'Blow a clearly visible stream of loose papers across the next footsteps, from one side of the walking lane to the other.',
   ],

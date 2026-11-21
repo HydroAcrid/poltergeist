@@ -82,7 +82,7 @@ test('an off-axis, behind, missing or pre-existing chair cannot verify the haunt
 });
 test('papers in the path provide a visible gust and a free-text object uses its own identity', async () => {
   const { describeEffect, inspectPlacement } = await moduleUnderTest;
-  const gust = describeEffect('A hurricane blows through');
+  const gust = describeEffect('A gust blows loose papers across the aisle');
   assert.match(gust.hint, /papers across/);
   assert.ok(
     inspectPlacement(scene([chair(650, 450, 'loose papers')]), gust, []).inPath,
@@ -96,6 +96,15 @@ test('papers in the path provide a visible gust and a free-text object uses its 
     inspectPlacement(scene([chair(650, 450, 'chair')]), boots, []).visible,
     false,
   );
+});
+test('large hauntings retain their visible identity in the world', async () => {
+  const {describeEffect} = await moduleUnderTest;
+  for (const [idea, label] of [['A hurricane blows through','rotating debris funnel'],['Lightning cracks over the aisle','lightning flash'],['A swarm of bats descends','bats in front of the flashlight']]) {
+    const effect = describeEffect(idea);
+    assert.ok(effect.matches(label));
+    assert.equal(effect.matches('loose papers'), false);
+    assert.doesNotMatch(effect.hint, /loose papers/);
+  }
 });
 test('windup toys keep their identity when unrelated paper crosses the lane', async () => {
   const { describeEffect } = await moduleUnderTest;
