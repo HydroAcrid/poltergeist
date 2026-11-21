@@ -215,7 +215,8 @@ function paint() {
     set('ghost-by', by);
     const story = el('story');
     story.classList.toggle('haunt-card', !!card);
-    story.classList.toggle('on-left', !!card && r?.trackedAt > now - 5000 && r.trackedBody?.[1] + r.trackedBody?.[3] > 1040);
+    const robotX = r?.trackedBody ? (r.trackedBody[1] + r.trackedBody[3]) / 2 : r?.trackedFeet?.[1];
+    story.classList.toggle('on-left', !!card && r?.trackedAt > now - 5000 && robotX > 520);
     el('story').hidden = !caption;
     const announcement = [cue, caption, by].filter(Boolean).join('. ');
     if (announcement !== previousCaption) {
