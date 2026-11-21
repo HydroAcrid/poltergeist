@@ -37,6 +37,7 @@ export function fromShoulderView(scene, [y, x]) {
   return {
     feet: measured ? scene.feet : { left: [y, Math.max(0, x - 15)], right: [y, Math.min(1000, x + 15)] },
     feetEstimated: !measured,
+    ...(scene.bodyBox && {robotBox:scene.bodyBox}),
     goal: scene.goal,
     forward: scene.ahead,
     obstacles: scene.obstacles.map(({box, point, solid}) => ({

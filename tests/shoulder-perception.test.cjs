@@ -29,7 +29,10 @@ test('the shoulder pilot keeps native exit and obstacle coordinates and marks hi
   assert.deepEqual(view.feet,{left:[1000,205],right:[1000,235]});
   assert.equal(view.feetEstimated, true);
   const feet={left:[911,183],right:[920,248]};
-  const measured=fromShoulderView({...scene,feet,feetVisible:true},[1000,220]);
+  assert.equal(view.robotBox,undefined);
+  const bodyBox=[350,200,920,370];
+  const measured=fromShoulderView({...scene,feet,feetVisible:true,bodyBox},[1000,220]);
+  assert.deepEqual(measured.robotBox,bodyBox,'the Brain needs the observed width for its small-player hold');
   assert.deepEqual(measured.feet,feet);
   assert.equal(measured.feetEstimated,false);
   assert.deepEqual(view.goal,scene.goal);

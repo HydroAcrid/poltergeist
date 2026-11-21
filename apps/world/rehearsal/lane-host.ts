@@ -45,6 +45,7 @@ const unsubscribe = bus.subscribe(
 );
 app.post('/api/brain/tick', async (req) => ticks.handle(req.body));
 const makePilot = () => {
+  const start = performance.now();
   let state = initialState();
   const policy = withRig(loadPolicy(), process.env.PG_CAMERA_RIG === 'trail' ? 'trail' : 'shoulder');
   return (scene) => {
@@ -57,7 +58,7 @@ const makePilot = () => {
     }
     const view = policy.navigation.rig === 'shoulder'
       ? fromShoulderView(scene, policy.navigation.shoulder.anchor) : fromTrailView(scene);
-    const tick = { driver: 'brain' } as Parameters<typeof stepReact>[3];
+    const tick = { driver: 'brain', t: Math.round(performance.now()-start) } as Parameters<typeof stepReact>[3];
     if (process.env.PG_DECISION !== 'rules' && !scene.move)
       return {action: {key: 'NOOP'}, rationale: 'Checking the path'};
     const decision = process.env.PG_DECISION === 'rules'
