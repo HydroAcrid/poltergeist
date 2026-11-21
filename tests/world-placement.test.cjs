@@ -306,3 +306,14 @@ test('a relocation cannot claim a chair that was already in the hallway', async 
   assert.equal(r.props[0].reactionRequestedAt, undefined);
   assert.equal(r.fear, 0);
 });
+
+test('slow vision still presents a fresh card while preserving the original evidence time', async () => {
+  const { hauntCue } = await import('../apps/world/rehearsal/haunt-cue.mjs');
+  const p = {id:'chair', name:'A chair tips', selectedAt:1, seenAt:3000, inPathPresentedAt:9500, seen:true, inPath:true};
+  const r = {phase:'playing', props:[p]};
+  assert.equal(hauntCue(r, 9900).label, 'In the robot’s path');
+  assert.equal(hauntCue(r, 15000), null);
+  r.lastReaction = { at: 11000, presentedAt: 17500, name:p.name, flinch:true };
+  assert.equal(hauntCue(r, 17800).label, 'The robot flinched');
+  assert.equal(hauntCue(r, 21000), null);
+});

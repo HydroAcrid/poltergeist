@@ -3,7 +3,7 @@ export function hauntCue(round, now) {
   if (round?.phase !== 'playing') return null;
   const props = round.props || [];
   const reaction = round.lastReaction;
-  if (reaction && now - reaction.at < 3000) {
+  if (reaction && now - (reaction.presentedAt ?? reaction.at) < 3000) {
     const prop = props.find((p) => p.reactedAt === reaction.at);
     return {
       label: reaction.flinch ? 'The robot flinched' : 'The robot sidestepped',
@@ -13,7 +13,7 @@ export function hauntCue(round, now) {
   const pending = round.upcoming?.[0];
   const p = props.find((item) => item.selectedAt != null && !item.reactedAt &&
     !['off-path', 'passed', 'failed', 'unverified'].includes(item.placement) &&
-    (!item.seenAt || now - item.seenAt < 4200 || item.placement === 'correcting'));
+    (!item.seenAt || now - (item.inPathPresentedAt ?? item.seenPresentedAt ?? item.seenAt) < 4200 || item.placement === 'correcting'));
   const item = p || pending;
   if (!item) return null;
   let label = 'Up next';

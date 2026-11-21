@@ -5,6 +5,13 @@ const el = (id) => document.getElementById(id);
 const host = location.pathname === '/team';
 const canvas = el('scene'),
   liveImage = el('live');
+const hud = document.querySelector('.hud');
+function positionCue() {
+  document.documentElement.style.setProperty('--cue-top', Math.ceil(hud.getBoundingClientRect().bottom + 12) + 'px');
+}
+new ResizeObserver(positionCue).observe(hud);
+window.addEventListener('resize', positionCue);
+positionCue();
 const scene = await createScene(canvas);
 let state,
   revision = -1,
@@ -194,6 +201,7 @@ function paint() {
       }
     }
     if (!connected) {
+      phase = 'Reconnecting';
       cue = '';
       caption = 'Reconnecting…';
       card = null;
