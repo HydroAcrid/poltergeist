@@ -127,3 +127,46 @@ describe("decision mode through the tick handler", () => {
   });
 });
 
+
+describe("hold cap (decision.maxHolds)", () => {
+  const holdReply = (obstacles: unknown[] = []) => reply({ obstacles, change: "something appeared", intent: "hold", reason: "waiting to see", avoiding: true });
+
+  async function run(n: number, text: string) {
+    const { h } = handler(...Array(n).fill(text));
+    const keys: string[] = [];
+    const sources: (string | undefined)[] = [];
+    for (let seq = 0; seq < n; seq++) {
+      const r = await h.handle(req(seq, b64("foil-crossing.jpg")));
+      keys.push(r.action.key);
+      sources.push(r.decision?.source);
+    }
+    return { keys, sources };
+  }
+
+  it("holds up to maxHolds (4) ticks, then geometry moves, then the model decides again", async () => {
+    expect(policy.decision.maxHolds).toBe(4);
+    const { keys, sources } = await run(7, holdReply([{ label: "flat strip", box: FOIL_ACROSS, solid: false }]));
+    expect(keys).toEqual(["NOOP", "NOOP", "NOOP", "NOOP", "W", "NOOP", "NOOP"]);
+    expect(sources).toEqual(["model", "model", "model", "model", "geometry", "model", "model"]);
+  });
+
+  it("past the cap it still won't walk into something the model called solid", async () => {
+    const { keys } = await run(5, holdReply([{ label: "barrier", box: NEAR_SOLID, solid: true }]));
+    expect(keys.slice(0, 4)).toEqual(["NOOP", "NOOP", "NOOP", "NOOP"]);
+    expect(keys[4]).not.toBe("W");
+    expect(keys[4]).not.toBe("NOOP");
+  });
+
+  it("any non-hold choice resets the streak", async () => {
+    const texts = [holdReply(), holdReply(), holdReply(), reply({ intent: "walk" }), holdReply(), holdReply(), holdReply(), holdReply()];
+    const { h } = handler(...texts);
+    const keys: string[] = [];
+    for (let seq = 0; seq < texts.length; seq++) keys.push((await h.handle(req(seq, b64("clear-route.jpg")))).action.key);
+    expect(keys).toEqual(["NOOP", "NOOP", "NOOP", "W", "NOOP", "NOOP", "NOOP", "NOOP"]);
+  });
+
+  it("safety holds don't count: two robots keep holding past the cap", async () => {
+    const { keys } = await run(6, reply({ robotCount: 2, intent: "hold" }));
+    expect(keys).toEqual(Array(6).fill("NOOP"));
+  });
+});

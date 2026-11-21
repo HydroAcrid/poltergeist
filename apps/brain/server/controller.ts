@@ -18,6 +18,8 @@ export interface ControllerState {
   lastTrack?: { action: Action; t: number };
   /** Whether the previous third-person tick saw the robot stumbling. */
   stumbling?: boolean;
+  /** Consecutive ticks the player model itself chose to hold (decision mode "model"). */
+  holdStreak?: number;
 }
 
 export interface ControllerOutput {

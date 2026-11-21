@@ -28,6 +28,7 @@ const CASES: { name: string; frames: string[]; kevin?: boolean; genie?: boolean 
   { name: "chair on the route, open floor to its right", frames: ["clear-route.jpg", "chair-ahead-right-open.jpg"] },
   { name: "robot stumbling", frames: ["clear-route.jpg", "stumbling.jpg"] },
   { name: "exit threshold in the foreground (twice)", frames: ["at-exit.jpg", "at-exit.jpg"] },
+  { name: "foil left across the path for 5 ticks (hold cap)", frames: ["clear-route.jpg", ...Array(5).fill("foil-crossing.jpg")] },
   { name: "GENIE frame 1: two robots (World's hold case)", frames: ["genie:shoulder-double.jpg", "genie:shoulder-double.jpg"], genie: true },
   { name: "GENIE frame 1 → 123: papers appear", frames: ["genie:shoulder-double.jpg", "genie:windup-papers.jpg"], genie: true },
   { name: "GENIE frame 123 → 151: penguins appear", frames: ["genie:windup-papers.jpg", "genie:windup-penguins.jpg"], genie: true },
@@ -45,13 +46,17 @@ describe.skipIf(process.env.PG_LIVE !== "1")("@live player model chooses its own
     for (const c of CASES) {
       const adapter = new Er2Perception(new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!, apiVersion: "v1beta" }), model, undefined, policy.navigation.shoulder.anchor);
       const handler = new TickHandler({ adapter, policy, taskFor: () => task });
-      await handler.handle(req(0, b64(c.frames[0]!)));
-      const res = await handler.handle(req(1, b64(c.frames[1]!)));
+      let res = await handler.handle(req(0, b64(c.frames[0]!)));
+      const sequence: string[] = [];
+      for (let i = 1; i < c.frames.length; i++) {
+        res = await handler.handle(req(i, b64(c.frames[i]!)));
+        sequence.push(`${res.action.key}${res.decision?.source === "model" ? "" : `(${res.decision?.source})`}`);
+      }
       const raw = (() => { try { return JSON.parse(adapter.lastRaw); } catch { return {}; } })();
       prompts.add(buildDecisionPrompt({ frame: { mime: "image/jpeg", width: 640, height: 360, b64: "x" }, previousFrame: { mime: "image/jpeg", width: 640, height: 360, b64: "y" }, ...task }));
       const solid = (raw.obstacles ?? []).map((o: any) => `${o.label}${o.solid ? " (solid)" : " (not solid)"}`).join(", ") || "none";
       const d = res.decision;
-      rows.push(`| ${c.kevin ? "**" : ""}${c.name}${c.kevin ? "**" : ""} | ${res.perception.latencyMs} | ${raw.robotCount ?? ""} | ${d?.observed ?? raw.change ?? ""} | ${solid} | ${d?.blocked ? "yes" : "no"} | ${raw.intent ?? ""} | ${d?.source ?? "(no decision)"} | \`${res.action.key}\` · ${res.rationale} | ${raw.pose ?? ""} |`);
+      rows.push(`| ${c.kevin ? "**" : ""}${c.name}${c.kevin ? "**" : ""} | ${res.perception.latencyMs} | ${raw.robotCount ?? ""} | ${d?.observed ?? raw.change ?? ""} | ${solid} | ${d?.blocked ? "yes" : "no"} | ${raw.intent ?? ""} | ${d?.source ?? "(no decision)"} | ${sequence.length > 1 ? `${sequence.join(" → ")} · ` : `\`${res.action.key}\` · `}${res.rationale} | ${raw.pose ?? ""} |`);
       console.log(`${c.name}: ${res.perception.latencyMs} ms · robots ${raw.robotCount} · model ${raw.intent} → ${d?.source} ${res.action.key} · blocked ${d?.blocked} · "${res.rationale}" · saw: ${d?.observed ?? raw.change}`);
     }
 

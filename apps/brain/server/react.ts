@@ -39,6 +39,7 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
     const b = blockingObstacle(solid, facing, policy);
     return b !== undefined && b.along <= n.sidestepWithin;
   })();
+  const reset = { ...geo.state, holdStreak: 0 };
   const meta = {
     intent: decision.intent,
     ...(decision.target ? { target: decision.target } : {}),
@@ -49,7 +50,7 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
   // More than one robot matching the player: can't tell which one is ours. Hold.
   if ((decision.robotCount ?? 1) > 1) {
     return {
-      state: geo.state,
+      state: reset,
       action: { key: "NOOP", holdMs: 0 },
       mode: "search",
       rationale: `${decision.robotCount} robots visible, holding`,
@@ -60,7 +61,20 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
 
   // Fixed rules still own these: mid-stumble hold, arrival, exit not in view.
   if (scene.pose === "stumbling" || geo.mode === "success" || !scene.goal) {
-    return { ...geo, decision: { ...meta, source: "geometry", intent: INTENT_OF[geo.action.key] ?? "hold" } };
+    return { ...geo, state: reset, decision: { ...meta, source: "geometry", intent: INTENT_OF[geo.action.key] ?? "hold" } };
+  }
+
+  // Cap the model's own holds so a hazard that never goes away can't freeze the
+  // robot. Past the cap, geometry moves (around anything the model called
+  // solid); the streak resets so the model decides again next tick.
+  const holds = decision.intent === "hold" ? (prev.holdStreak ?? 0) + 1 : 0;
+  if (holds > policy.decision.maxHolds) {
+    return {
+      ...geo,
+      state: reset,
+      rationale: `waited ${holds - 1} ticks, ${geo.rationale}`.slice(0, 60),
+      decision: { ...meta, source: "geometry", intent: INTENT_OF[geo.action.key] ?? "hold" },
+    };
   }
 
   const chosen = motor(decision.intent, policy);
@@ -71,13 +85,13 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
     (key === "D" && !sideClear(solid, facing!, "right", policy));
   if (vetoed) {
     const said = decision.intent.replace("_", " ");
-    return { ...geo, rationale: `${said} blocked, ${geo.rationale}`.slice(0, 60), reaction: "avoid", decision: { ...meta, source: "veto" } };
+    return { ...geo, state: reset, rationale: `${said} blocked, ${geo.rationale}`.slice(0, 60), reaction: "avoid", decision: { ...meta, source: "veto" } };
   }
 
   // The model's move. Keep stepNav's state bookkeeping (stumble/recover memory).
   const reaction = geo.reaction === "recover" ? "recover" : decision.avoiding ? "avoid" : undefined;
   return {
-    state: geo.state,
+    state: { ...geo.state, holdStreak: holds },
     action: chosen.action,
     mode: chosen.mode,
     rationale: decision.reason.slice(0, 60),
