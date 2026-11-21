@@ -138,7 +138,7 @@ ol,ul{list-style:none;margin:0;padding:0}
     <p class="lede">Change one thing in the hallway. The robot has to get past it.</p>
     <div class="card lobby" id="lobby" hidden>
       <strong>👻 You're in the waiting room</strong>
-      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span> Send an idea now so it's ready.</div>
+      <div class="why"><span id="lobby-count"></span> <span id="lobby-next"></span></div>
     </div>
     <form class="card" id="form" autocomplete="off">
       <label for="text" class="by" id="composer-label">What happens in the hallway?</label>
@@ -336,7 +336,12 @@ ol,ul{list-style:none;margin:0;padding:0}
     m.className = "msg" + (bad ? " bad" : "");
   }
 
+  function waitingForPhoto() {
+    return state.lobbyPhase === "before-photo" || state.lobbyPhase === "ended";
+  }
+
   async function send(payload, rawText) {
+    if (waitingForPhoto()) { say("You can send your idea when the host opens the hallway."); return; }
     if (sending) return;
     sending = true;
     $("send").disabled = true;
@@ -368,7 +373,7 @@ ol,ul{list-style:none;margin:0;padding:0}
       showError("No connection. Try again in a moment.");
     } finally {
       sending = false;
-      $("send").disabled = false;
+      $("send").disabled = waitingForPhoto();
     }
   }
 
@@ -475,10 +480,11 @@ ol,ul{list-style:none;margin:0;padding:0}
       ph.textContent = "Waiting for the host";
     }
     const card = $("lobby");
+    $("send").disabled = sending || waitingForPhoto();
     card.hidden = !lp || lp === "playing";
     if (!card.hidden) {
       $("lobby-count").textContent = state.joined > 1 ? state.joined + " ghosts are here." : "You're the only ghost here.";
-      $("lobby-next").textContent = lp === "before-photo" ? "The host is setting up the hallway." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "The host will start the round.";
+      $("lobby-next").textContent = lp === "before-photo" ? "You can draft an idea while the host chooses a photo." : lp === "starting" ? "The round is starting." : lp === "ended" ? "The next round starts when the host is ready." : "Send an idea while you wait for the host to start.";
     }
   }
 
