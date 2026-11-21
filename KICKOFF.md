@@ -4,6 +4,9 @@ The [robot reference and haunted hallway](apps/world/robot-v1/README.md) define 
 
 Gemini has to reach an exit in a hallway photographed at the venue. Genie 4 turns that photo into the world. The audience is the poltergeist. Someone might drop a banana peel in Gemini’s path or send a gust through the hall. When the change happens, a stylized ghost briefly appears at that spot and fades. The projector shows how Gemini responds and whether it gets out.
 
+
+For a live rehearsal, open the [host controls](https://poltergeist-world.vercel.app/debug), choose a room photo, and wait for guests to join. Choose **5-minute demo** for a stage slot or **10 minutes of play** for a longer game. Guests submit ideas from their phones. The conductor considers camera visibility, impact, and recent effects when choosing what comes next. A guest can press Enter or tap **Send this version** to accept a suggested change. [Projector](https://poltergeist-world.vercel.app/stage) · [Guest entrance](https://poltergeist-world.vercel.app/haunt)
+
 ## Try the prototype on your laptop
 
 From your existing Poltergeist checkout, run `git pull --ff-only origin main`. Open `apps/world/painted-door/haunting/index.html` from the checkout in your browser. All assets are bundled and the test runs offline without a Gemini key.
