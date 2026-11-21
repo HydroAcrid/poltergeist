@@ -2,7 +2,7 @@
 import type { Point } from "@poltergeist/contracts/common.js";
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import type { Reaction } from "@poltergeist/contracts/tick-log.js";
-import type { Action, Decision, TickMode } from "@poltergeist/contracts/tick-response.js";
+import type { Action, Decision, Intent, TickMode } from "@poltergeist/contracts/tick-response.js";
 import type { Resolved } from "./perception/resolve.js";
 import type { Policy } from "./policy.js";
 
@@ -20,6 +20,8 @@ export interface ControllerState {
   stumbling?: boolean;
   /** Consecutive ticks the player model itself chose to hold (decision mode "model"). */
   holdStreak?: number;
+  /** Decision mode: the move being carried out, and a proposed switch awaiting a second look. */
+  plan?: { intent: Intent; avoiding: boolean; pending?: Intent; next?: Intent; at: number; clear: { walk: boolean; left: boolean; right: boolean } };
 }
 
 export interface ControllerOutput {

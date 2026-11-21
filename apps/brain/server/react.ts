@@ -5,7 +5,7 @@
 import type { TickRequest } from "@poltergeist/contracts/tick-request.js";
 import type { Action, Intent } from "@poltergeist/contracts/tick-response.js";
 import type { ControllerOutput, ControllerState } from "./controller.js";
-import { blockingObstacle, facingFor, sideClear, stepNav } from "./navigate.js";
+import { blockingObstacle, facingFor, robotTooSmall, sideClear, stepNav } from "./navigate.js";
 import type { ModelDecision, Scene } from "./perception/types.js";
 import type { Policy } from "./policy.js";
 
@@ -39,12 +39,13 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
     const b = blockingObstacle(solid, facing, policy);
     return b !== undefined && b.along <= n.sidestepWithin;
   })();
-  const reset = { ...geo.state, holdStreak: 0 };
+  const reset: ControllerState = { ...geo.state, holdStreak: 0, plan: undefined };
   const meta = {
     intent: decision.intent,
     ...(decision.target ? { target: decision.target } : {}),
     observed: decision.observed,
     blocked: blockedAhead,
+    ...(decision.then ? { next: decision.then } : {}),
   };
 
   // More than one robot matching the player: can't tell which one is ours. Hold.
@@ -54,6 +55,18 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
       action: { key: "NOOP", holdMs: 0 },
       mode: "search",
       rationale: `${decision.robotCount} robots visible, holding`,
+      successClaim: false,
+      decision: { ...meta, source: "geometry", intent: "hold" },
+    };
+  }
+
+  // Camera drifted wide (shoulder rig): the ground estimate is wrong. Hold.
+  if (robotTooSmall(scene, policy)) {
+    return {
+      state: reset,
+      action: { key: "NOOP", holdMs: 0 },
+      mode: "search",
+      rationale: "robot too small in frame, holding",
       successClaim: false,
       decision: { ...meta, source: "geometry", intent: "hold" },
     };
@@ -77,26 +90,77 @@ export function stepReact(prev: ControllerState, scene: Scene, decision: ModelDe
     };
   }
 
-  const chosen = motor(decision.intent, policy);
+  // Steadiness: a non-urgent change of plan waits for a second look that agrees.
+  // Urgent (switch now): no plan yet, same intent, a hold, resuming from a hold,
+  // or a newly avoided hazard. Otherwise keep the plan and remember the proposal.
+  const plan = prev.plan;
+  const urgent =
+    !plan || decision.intent === plan.intent || decision.intent === "hold" || plan.intent === "hold" ||
+    (decision.avoiding && !plan.avoiding);
+  let intent: Intent = decision.intent;
+  let steadied = false;
+  let pending: Intent | undefined;
+  if (policy.decision.steady && plan && !urgent && plan.pending !== decision.intent) {
+    intent = plan.intent;
+    steadied = true;
+    pending = decision.intent;
+  }
+
+  const chosen = motor(intent, policy);
   const key = chosen.action.key;
   const vetoed =
     (key === "W" && blockedAhead) ||
     (key === "A" && !sideClear(solid, facing!, "left", policy)) ||
     (key === "D" && !sideClear(solid, facing!, "right", policy));
   if (vetoed) {
-    const said = decision.intent.replace("_", " ");
+    const said = intent.replace("_", " ");
     return { ...geo, state: reset, rationale: `${said} blocked, ${geo.rationale}`.slice(0, 60), reaction: "avoid", decision: { ...meta, source: "veto" } };
   }
 
-  // The model's move. Keep stepNav's state bookkeeping (stumble/recover memory).
-  const reaction = geo.reaction === "recover" ? "recover" : decision.avoiding ? "avoid" : undefined;
+  // The move (the model's, or the kept plan). Keep stepNav's bookkeeping.
+  const clear = facing
+    ? { walk: !blockedAhead, left: sideClear(solid, facing, "left", policy), right: sideClear(solid, facing, "right", policy) }
+    : { walk: false, left: false, right: false };
+  const nextPlan: ControllerState["plan"] = {
+    intent,
+    avoiding: steadied ? plan!.avoiding : decision.avoiding,
+    ...(pending ? { pending } : {}),
+    ...(decision.then ? { next: decision.then } : {}),
+    at: req.t,
+    clear,
+  };
+  const reaction = geo.reaction === "recover" ? "recover" : !steadied && decision.avoiding ? "avoid" : undefined;
+  const said = (i: Intent) => i.replace("_", " ");
   return {
-    state: { ...geo.state, holdStreak: holds },
+    state: { ...geo.state, holdStreak: holds, plan: nextPlan },
     action: chosen.action,
     mode: chosen.mode,
-    rationale: decision.reason.slice(0, 60),
+    rationale: steadied ? `keeping ${said(intent)}; 2nd look before ${said(decision.intent)}`.slice(0, 60) : decision.reason.slice(0, 60),
     successClaim: false,
     ...(reaction ? { reaction } : {}),
-    decision: { ...meta, source: "model" },
+    decision: { ...meta, source: steadied ? "steady" : "model" },
+  };
+}
+
+/**
+ * The look for this tick failed or came back too late: carry out the model's
+ * planned follow-up move if it is recent and the last scene showed it clear.
+ * Returns undefined when there is no safe planned move (the caller falls back).
+ */
+export function planFallback(prev: ControllerState, req: TickRequest, policy: Policy): ControllerOutput | undefined {
+  const plan = prev.plan;
+  if (!policy.decision.useNext || !plan?.next || req.t - plan.at > policy.decision.nextMaxAgeMs) return undefined;
+  const next = plan.next;
+  const safe =
+    (next !== "walk" || plan.clear.walk) && (next !== "step_left" || plan.clear.left) && (next !== "step_right" || plan.clear.right);
+  if (!safe) return undefined;
+  const chosen = motor(next, policy);
+  return {
+    state: { ...prev, holdStreak: 0, plan: { ...plan, intent: next, next: undefined, pending: undefined, at: req.t } },
+    action: chosen.action,
+    mode: "fallback",
+    rationale: `look late, doing planned ${next.replace("_", " ")}`.slice(0, 60),
+    successClaim: false,
+    decision: { source: "steady", intent: next },
   };
 }

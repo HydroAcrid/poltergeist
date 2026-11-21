@@ -76,6 +76,16 @@ export function facingPoint(feet: Point, forward: Point | undefined, goal: Point
   return [goal[0], Math.round(clamp(feet[1] + (ahead[1] - feet[1]) * k, 0, 1000))];
 }
 
+/**
+ * Shoulder rig only: the robot's body is narrower than the rig assumes, so the
+ * camera has drifted wide and the estimated ground anchor is no longer valid.
+ */
+export function robotTooSmall(scene: Scene, policy: Policy): boolean {
+  const n = policy.navigation;
+  if (n.rig !== "shoulder" || !scene.robotBox) return false;
+  return (scene.robotBox[3] - scene.robotBox[1]) / 1000 < n.shoulder.minRobotWidth;
+}
+
 /** The robot's facing point for this scene under the policy's rig (undefined without an exit). */
 export function facingFor(scene: Scene, policy: Policy): Point | undefined {
   const n = policy.navigation;
@@ -137,6 +147,12 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   if (scene.pose === "stumbling") {
     s.successTicks = 0;
     return out(NOOP, "unstick", "stumbled, waiting to recover");
+  }
+
+  // Camera drifted wide (shoulder rig): the ground estimate is wrong, so hold.
+  if (robotTooSmall(scene, policy)) {
+    s.successTicks = 0;
+    return out(NOOP, "search", "robot too small in frame, holding");
   }
 
   const goal = scene.goal;
