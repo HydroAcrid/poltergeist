@@ -57,3 +57,9 @@ npm run rehearsal:review -- /path/to/session.json /path/to/outcome.json
 ```
 
 The command checks round identity, observed player count, forward input, sampled framing and the identities in the first and in-path encounter frames. A clean result qualifies the recording for visual review. The next live take still needs to demonstrate forward parallax and a response to an unfamiliar obstacle. Phone load and fixture results measure different parts of the app.
+
+## Hosted single-player test
+
+The first Vercel take used an empty reconstruction of the venue and a single composited explorer. The opening check rejected the earlier two-robot frame and accepted the new seed. Across 776 native frames, all 12 vision samples reported the same explorer. Its visible width fell from 34% to 15%. The camera lost its shoulder distance. Crowd approved and selected the wind-up penguin, but World never found a current tracked view for placement. The penguin never appeared, and the audience won on time.
+
+Replaying those frames on the amended tracker preserved the explorer’s identity. The first two observations permitted movement. The remaining ten requested a physical forward camera correction while the explorer waited. Recorded pixels cannot respond to a new command. The next live acceptance check is steady forward parallax, an obstacle appearing across the walking line, and a reaction visible in subsequent native frames.
