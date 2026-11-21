@@ -155,7 +155,12 @@ function performTake({launchLive, captureDir, seed, picks, durationMs, reactionT
       lastObserved = observed;
       lastObservedAt = observedAt;
       const ready = message.trackingPlacementReady === true;
-      evidence.observations.push({frame:observed, playerCount:scene.playerCount, visible:scene.visible, ready});
+      evidence.observations.push({
+        frame:observed, playerCount:scene.playerCount, visible:scene.visible, ready,
+        subjectTracked:message.trackingSubjectVerified === true,
+        feetVisible:scene.feetVisible === true,
+        shoulderView:scene.shoulderView ?? 'unclear',
+      });
       if (!selected && scene.visible && scene.playerMatch && scene.playerCount === 1) {
         selected = true;
         for (const pick of picks) placement.add(pick.id, pick.text, pick.by, now);

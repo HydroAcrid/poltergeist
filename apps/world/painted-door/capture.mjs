@@ -540,7 +540,7 @@ async function capture() {
               }
               const checkpoint = chapterNumber && !reviewed && checkpointEligible(verifiedScene,held || !current)
                 ? chapterSeed(delta.data) : null;
-              publish({scene:verifiedScene,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:reviewed || held || !current,trackingPlacementReady,
+              publish({scene:verifiedScene,trackingSubjectVerified:tracked,proposedKey:proposedKey(scene),trackingReason:lock.holdReason,observed,observedAt,trackingNavigationHeld:reviewed || held || !current,trackingPlacementReady,
                 ...(checkpoint ? {checkpoint} : {})});
               record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason,placementReady:trackingPlacementReady}});
             }

@@ -41,7 +41,7 @@ test('one closed take encodes the complete native archive and timestamps only co
   opts.durationMs=150;
   const pictures=Array.from({length:12},(_,i)=>picture(i+1));
   const commands=[], calls=[], starts=[];
-  const shot = (obstacles=[]) => ({visible:true, feetVisible:true, playerMatch:true, playerCount:1, pose:'upright', threat:'ordinary',
+  const shot = (obstacles=[]) => ({visible:true, feetVisible:true, shoulderView:'rear-right', playerMatch:true, playerCount:1, pose:'upright', threat:'ordinary',
     feet:{left:[800,440],right:[800,460]}, ahead:[580,450], obstacles});
   const launchLive = native => {
     assert.equal(native.chapterMs,opts.durationMs);
@@ -50,7 +50,7 @@ test('one closed take encodes the complete native archive and timestamps only co
     setImmediate(async () => {
       try {
         const publish = native.onMessage;
-        const observed = (n,scene) => publish({scene, observed:n, observedAt:Date.now(), trackingPlacementReady:true});
+        const observed = (n,scene) => publish({scene, observed:n, observedAt:Date.now(), trackingSubjectVerified:scene.visible, trackingPlacementReady:true});
         publish({frame:pictures[0].toString('base64'),frameNumber:1});
         assert.equal(commands.length,0); // first media alone cannot place a proposal
         observed(1,{visible:false, playerCount:0, obstacles:[]});
@@ -89,6 +89,8 @@ test('one closed take encodes the complete native archive and timestamps only co
   assert.equal(result.frameCount,12);
   assert.deepEqual(result.finalFrame,pictures[11]);
   assert.equal(result.evidence.winner,null);
+  assert.deepEqual(result.evidence.observations.at(-1),{frame:9,playerCount:1,visible:true,ready:true,
+    subjectTracked:true,feetVisible:true,shoulderView:'rear-right'});
   assert.equal(result.evidence.finalFear,1);
   assert.deepEqual(result.evidence.moves,[{observed:4,key:'A'}]);
   const p=result.evidence.picks[0];
