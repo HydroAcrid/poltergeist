@@ -295,7 +295,6 @@ async function updateState() {
   queue(s);
 
   const r = s.round;
-  document.querySelector('.fear-readout').hidden = r?.playMode === 'prepared-show';
   canvas.classList.toggle('native-frame', !!r?.live);
   const stream = r?.live && !usesClipPlayer(r) && r.phase === 'playing' ? streamKey(r) : '';
   if (stream !== liveId) {

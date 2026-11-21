@@ -108,7 +108,7 @@ test('both projector slots play at normal speed without jumping over reactions d
 test('a screening choice requires the same filmed encounter to contain an obstacle and a later visible reaction',async()=>{
   const {hasFilmedResponse}=await import('../apps/world/rehearsal/prepared-show.mjs');
   const sha256='a'.repeat(64);
-  const clip={role:'effect',frames:240,sha256,source:{episodeId:'ep_test'}};
+  const clip={role:'effect',frames:240,fps:24,sha256,source:{episodeId:'ep_test'}};
   const evidence={episodeId:'ep_test',clipSha256:sha256,action:'duck',obstacleFrame:72,responseFrame:105,verifiedInPixels:true};
   assert.equal(hasFilmedResponse(clip),false);
   assert.equal(hasFilmedResponse({...clip,reactionEvidence:evidence}),true);

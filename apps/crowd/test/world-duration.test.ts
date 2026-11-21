@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import fastify from "fastify";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { MemoryBus } from "../dev/memory-bus";
 import { createCrowdModule } from "../server/index";
 import { newId } from "../server/ids";
@@ -124,13 +128,17 @@ it("closes an accepted episode once if a live subscriber throws",async()=>{
   expect(h.bus.history({types:["episode.started","episode.ended"]}).map(e=>e.type)).toEqual(["episode.started","episode.ended"]);
 });
 
-it("keeps a filmed audience pick pending through collection and blackout, acknowledges it at actual clip playback, and ends at five minutes", async () => {
+it("keeps a filmed audience pick pending through collection and blackout, acknowledges it at actual clip playback, and ends at five minutes", async ({onTestFinished}) => {
   const {buildPreparedLibrary}=await import(resolve(__dirname,"../../world/rehearsal/prepared-show.mjs"));
-  const take={role:"effect",id:"fixture-response",file:"fixture-response.mp4",presetId:"mop-bucket",title:"A rolling bucket",
-    frames:120,durationMs:5000,sha256:"c".repeat(64),source:{episodeId:"fixture-episode"}};
-  const receipt={verifiedInPixels:true,episodeId:take.source.episodeId,clipSha256:take.sha256,action:"sidestep",obstacleFrame:36,responseFrame:75};
+  const fixtureDir=mkdtempSync(resolve(tmpdir(),"pg-screening-test-"));
+  onTestFinished(()=>rmSync(fixtureDir,{recursive:true,force:true}));
+  const bytes=Buffer.from("Test clip bytes used to verify the audience receipt clock");
+  writeFileSync(resolve(fixtureDir,"fixture-response-verified.mp4"),bytes);
+  const take={role:"effect",id:"fixture-response",file:"fixture-response.mp4",verifiedScare:true,presetId:"mop-bucket",title:"A rolling bucket",
+    frames:120,fps:24,durationMs:5000,sha256:createHash("sha256").update(bytes).digest("hex"),source:{episodeId:"fixture-episode"}};
+  const receipt={verifiedInPixels:true,episodeId:take.source.episodeId,clipSha256:take.sha256,action:"recoil",obstacleFrame:36,responseFrame:75};
   const library=buildPreparedLibrary([{role:"walk",file:"fixture-walk.mp4",durationMs:6000},
-    {role:"idle",file:"fixture-idle.mp4",durationMs:6000},take,{...take,file:"fixture-response-verified.mp4",reactionEvidence:receipt}]);
+    {role:"idle",file:"fixture-idle.mp4",durationMs:6000},take,{...take,file:"fixture-response-verified.mp4",reactionEvidence:receipt}],pathToFileURL(fixtureDir+sep));
   const h = await world(false,library);
   const startedAt = Date.now();
   expect((await h.post("/rehearsal/start", {mode:"prepared"})).statusCode).toBe(200);
@@ -150,7 +158,12 @@ it("keeps a filmed audience pick pending through collection and blackout, acknow
   expect((await state()).mine[0].status).toBe("dispatched");
   await h.tick(1600);
   expect(h.round().prepared.clipUrl).toContain("fixture-response-verified.mp4");
+  expect((await state()).mine[0].status).toBe("dispatched");
+  await h.tick(1700);
   expect((await state()).mine[0].status).toBe("injected");
+  expect(h.round().fear).toBe(0);
+  await h.tick(1800);
+  expect(h.round().fear).toBe(1);
   expect(h.bus.history({types:["haunt.dispatch","haunt.injected"]}).map(e=>e.type)).toEqual(["haunt.dispatch","haunt.injected"]);
   await h.tick(300000 - (Date.now()-startedAt) + 150);
   expect((await state()).episodeActive).toBe(false);
