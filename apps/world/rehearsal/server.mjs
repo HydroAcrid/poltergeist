@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPlateCache, photoKey } from './photo-plate.mjs';
-import { reviewPlayerSeed } from './seed-review.mjs';
+import { openingCorrection, reviewedVenueOpening, reviewPlayerSeed } from './seed-review.mjs';
 import { worldLeaseWarning } from '../../hosting/world-lease.mjs';
 import { canCrossThreshold, observedCrossing } from './crossing.mjs';
 import { checkpointEligible,validCheckpoint,matchDurationMs,fiveMinuteShowMs,chapterCutMs,chapterLimitMs } from './chapters.mjs';
@@ -60,7 +60,8 @@ export async function registerStage(
   });
   let sourceKey = 'venue';
   let checkingPlayer = false;
-  let verifiedSeedKey;
+  const venueOpening = reviewedVenueOpening(root, stockPlate);
+  const seedReviews = new Map();
   function plateStatus() {
     const entry = custom ? plates.get(sourceKey) : null;
     const ready = !custom || !!entry?.image;
@@ -660,6 +661,7 @@ export async function registerStage(
     queue: [...queue.values()],
     canLive: !!captureDir,
     cameraTestDurationMs: liveMs,
+    approvedVenueOpening: !custom && !!venueOpening,
     providerClosing: !!providerClosing(),
     custom,
     revision,
@@ -696,7 +698,10 @@ export async function registerStage(
         return reply.code(409).send({
           error: 'Prepare this photo for Genie before starting a live round.',
         });
-      const candidate = Buffer.from(req.body?.seed || '', 'base64');
+      const useVenueOpening = req.body?.useVenueOpening === true;
+      if (useVenueOpening && (custom || !venueOpening))
+        return reply.code(409).send({error:'The venue opening does not match this photo. Start with the current hallway.'});
+      const candidate = useVenueOpening ? venueOpening.jpeg : Buffer.from(req.body?.seed || '', 'base64');
       if (
         !captureDir ||
         !makePilot ||
@@ -707,22 +712,28 @@ export async function registerStage(
         return reply
           .code(400)
           .send({ error: 'The live hallway needs a valid camera seed.' });
-      const key = photoKey(candidate);
-      if (key !== verifiedSeedKey) {
-        const checkedRevision = revision;
-        checkingPlayer = true;
-        try {
-          const review = await reviewSeed(candidate, captureDir);
-          if (revision !== checkedRevision)
-            return reply.code(409).send({ error: 'The photo changed. Start with the current photo.' });
-          if (!review.passes)
-            return reply.code(422).send({ error: 'The opening needs one robot on the left and room to see obstacles ahead on the right. Try a photo with a clearer view down the aisle.' });
-          verifiedSeedKey = key;
-        } catch {
-          return reply.code(503).send({ error: 'The opening shot could not be checked. Try again.' });
-        } finally {
-          checkingPlayer = false;
+      const seedDigest = photoKey(candidate);
+      if (custom && seedDigest === venueOpening?.digest)
+        return reply.code(409).send({error:'The venue opening does not match the selected photo. Start with the current hallway.'});
+      if (custom || seedDigest !== venueOpening?.digest) {
+        const reviewKey = sourceKey + '/' + seedDigest;
+        let review = seedReviews.get(reviewKey);
+        if (!review) {
+          const checkedRevision = revision;
+          checkingPlayer = true;
+          try {
+            review = await reviewSeed(candidate, captureDir);
+            if (typeof review?.passes !== 'boolean') throw Error('Incomplete opening review');
+            seedReviews.set(reviewKey, review);
+            if (revision !== checkedRevision)
+              return reply.code(409).send({error:'The photo changed. Start with the current photo.'});
+          } catch {
+            return reply.code(503).send({error:'The opening shot could not be checked. Try again.'});
+          } finally {
+            checkingPlayer = false;
+          }
         }
+        if (!review.passes) return reply.code(422).send({error:openingCorrection(review)});
       }
       if (showMinutes===5 && Date.now()>=requestedAt+fiveMinuteShowMs)
         return reply.code(408).send({error:'The five-minute show window ended before the opening was ready.'});

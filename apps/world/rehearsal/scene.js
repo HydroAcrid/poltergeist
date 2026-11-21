@@ -20,6 +20,7 @@ export async function createScene(canvas) {
   seedCanvas.width = W;
   seedCanvas.height = H;
   const seedContext = seedCanvas.getContext('2d');
+  let openingSeed;
   const seedGrade = createHallwayLighting(seedContext, W, H);
   const veil = createGhostVeil(W,H), motion = createMotionGate();
   let presentingId, fullyCovered = false, revealedAt = null, hasShownWorld = false;
@@ -375,6 +376,7 @@ export async function createScene(canvas) {
   return {
     paint,drawLive:followLive,presentLive,freezeLive,
     async setPlate(key, aisle) {
+      openingSeed = undefined;
       if (!key) { preparedHall=null; return; }
       const plate=await image('/rehearsal/plate?key='+encodeURIComponent(key));
       const point=aisle || aislePoint(plate, {x:.55,y:.48});
@@ -388,14 +390,16 @@ export async function createScene(canvas) {
     },
     async setPhoto(rev) {
       source = await image('/rehearsal/source?v=' + rev);
+      openingSeed = undefined;
       sourceAisle=aislePoint(source,{x:.52,y:.54});
     },
     seed(state) {
+      if (openingSeed) return openingSeed;
       // Build the provider seed entirely offscreen. The host shares the same
       // projector surface and must never briefly expose the composited sprite.
       ctx=seedContext;
       try {
-        render({ ...state, round: null }, Date.now(), true);
+        render({ ...state, round: null }, 0, true);
         seedGrade(1,0,true);
       } finally { ctx=screen; }
       const small = document.createElement('canvas');
@@ -404,7 +408,10 @@ export async function createScene(canvas) {
       small.getContext('2d').drawImage(seedCanvas, 0, 0, 960, 540);
       for (const quality of [0.68, 0.55, 0.42, 0.3, 0.2]) {
         const encoded = small.toDataURL('image/jpeg', quality).split(',')[1];
-        if (encoded.length <= 64000) return encoded;
+        if (encoded.length <= 64000) {
+          openingSeed = encoded;
+          return openingSeed;
+        }
       }
       throw Error('The camera image is too large to open.');
     },

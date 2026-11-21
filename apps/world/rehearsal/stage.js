@@ -485,7 +485,7 @@ function startWorld(chapters) {
       mode: 'genie', expectedPlayMode,
       ...(chapters ? {chapters:true, showMinutes:minutes} : {}),
       plateKey: state.plateKey,
-      seed: scene.seed(state),
+      ...(state.approvedVenueOpening && !state.custom ? {useVenueOpening:true} : {seed:scene.seed(state)}),
     });
     if (receipt.playMode && receipt.playMode !== expectedPlayMode)
       throw Error('The host started a different game mode. Check the run report.');

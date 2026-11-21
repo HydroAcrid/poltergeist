@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { shoulderFrame } from './look.mjs';
-import { venueVisionModels } from './photo-plate.mjs';
+import { photoKey, venueVisionModels } from './photo-plate.mjs';
 
 export async function reviewPlayerSeed(bytes, captureDir, models = venueVisionModels(captureDir)) {
   const result = await models.generateContent({
@@ -37,4 +39,28 @@ export function audienceCanSeeApproach({playerCount, view, routeVisible, diagona
   const center = (right + left) / 2000;
   return width >= shoulderFrame.width * .78 && width <= shoulderFrame.width * 1.22 &&
     Math.abs(center - shoulderFrame.x) <= .105 && top < 550 && bottom > 770 && bottom - top >= 400;
+}
+
+export function reviewedVenueOpening(root, plate) {
+  try {
+    const receipt = JSON.parse(readFileSync(resolve(root, 'venue-opening.json'), 'utf8'));
+    const jpeg = readFileSync(resolve(root, 'venue-opening.jpg'));
+    const explorer = readFileSync(resolve(root, 'explorer.webp'));
+    if (photoKey(jpeg) === receipt.seedSha256 && photoKey(plate) === receipt.plateSha256 &&
+        photoKey(explorer) === receipt.explorerSha256 && audienceCanSeeApproach(receipt.review))
+      return {jpeg, digest: receipt.seedSha256};
+  } catch { /* A build without a matching receipt uses the normal camera review. */ }
+  return null;
+}
+
+export function openingCorrection(review) {
+  if (review.playerCount !== undefined && review.playerCount !== 1)
+    return 'The opening needs exactly one robot. Use the venue photo or choose a hallway without figures or reflections.';
+  if (review.standingOnFloor === false)
+    return 'Furniture overlaps the robot’s feet. Use the venue photo or choose a hallway with clear foreground floor.';
+  if (review.view && review.view !== 'right-shoulder')
+    return 'The camera could not confirm the robot’s right shoulder. Use the venue photo or choose a view angled down the aisle.';
+  if (review.routeVisible === false || review.diagonal === false)
+    return 'The opening needs two clear strides ahead and to the right. Use the venue photo or choose a view with more open floor.';
+  return 'The opening needs the robot on the left with room for an obstacle on the right. Use the venue photo or choose a wider hallway view.';
 }
