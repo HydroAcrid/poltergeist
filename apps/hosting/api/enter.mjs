@@ -25,7 +25,7 @@ async function startWorld(box, origin) {
       PG_BIND_HOST: '0.0.0.0', PORT: '3000', PG_PUBLIC_URL: origin,
       PG_JOIN_URL: 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL,
       PG_CROWD_SCENE_URL: 'http://127.0.0.1:3000/rehearsal/state',
-      PG_REHEARSAL_LIVE_MS: '32000',
+      ...(process.env.PG_REHEARSAL_LIVE_MS ? {PG_REHEARSAL_LIVE_MS: process.env.PG_REHEARSAL_LIVE_MS} : {}),
       PG_VENUE_PHOTO: '/vercel/sandbox/plate.jpg',
       GEMINI_API_KEY: process.env.GEMINI_API_KEY, PG_HOST_TOKEN: process.env.PG_HOST_TOKEN,
     },
