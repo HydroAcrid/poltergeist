@@ -4,14 +4,23 @@ import type { HauntTag } from "@poltergeist/contracts/common.js";
 import type { Episode, EpisodeEnded } from "@poltergeist/contracts/episode.js";
 import type { Verdict } from "@poltergeist/contracts/verdict.js";
 
-/** The TickLog fields the referee reads (Brain's C06; `reaction` is TickLog 1.1.0). */
+/** The TickLog fields the referee reads (Brain's C06; `reaction` is 1.1.0, `decision` is 1.2.0). */
+export interface RefDecision {
+  source: "model" | "veto" | "geometry" | string;
+  intent: string;
+  target?: [number, number];
+  observed?: string;
+  blocked?: boolean;
+}
 export interface RefTick {
   seq: number;
   t: number;
   perception: { visible: boolean; conf: number };
   action: { key: string; holdMs: number };
   mode: string;
+  rationale?: string;
   reaction?: "avoid" | "stumble" | "recover" | "unclear" | string;
+  decision?: RefDecision;
 }
 export interface RefInjected {
   hauntId: string;
@@ -64,6 +73,37 @@ function smallAction(a: { key: string; holdMs: number }): boolean {
 
 const clip = (s: string) => (s.length > 80 ? s.slice(0, 79) + "…" : s);
 const secs = (ms: number) => (ms / 1000).toFixed(1) + " s";
+const DECISION_NEAR_MS = 2000;
+
+/** Optional judge evidence from the nearest TickLog.decision at failureT (blame rule stays unchanged). */
+function decisionEvidence(ticks: RefTick[], failureT: number): { t: number; note: string } | undefined {
+  const withDecision = ticks.filter((k) => k.decision !== undefined);
+  if (withDecision.length === 0) return undefined;
+  const nearest = withDecision.reduce((best, k) =>
+    Math.abs(k.t - failureT) < Math.abs(best.t - failureT) ? k : best,
+  );
+  if (Math.abs(nearest.t - failureT) > DECISION_NEAR_MS) return undefined;
+  const d = nearest.decision!;
+  if (d.source === "model" && d.intent === "hold") {
+    return { t: failureT, note: "Brain chose to hold" };
+  }
+  if (d.source === "geometry" && d.intent === "hold" && /\brobots visible, holding\b/i.test(nearest.rationale ?? "")) {
+    return { t: failureT, note: "Brain held: more than one robot in view" };
+  }
+  if (d.source === "veto") {
+    return { t: failureT, note: "Brain avoided a solid obstacle" };
+  }
+  return undefined;
+}
+
+function withDecisionNote(
+  evidence: { t: number; note: string }[],
+  ticks: RefTick[],
+  failureT: number,
+): { t: number; note: string }[] {
+  const extra = decisionEvidence(ticks, failureT);
+  return (extra ? [...evidence, extra] : evidence).slice(0, 5);
+}
 
 export function ruleVerdict(input: RefereeInput, now: number): Verdict {
   const { ended } = input;
@@ -78,41 +118,55 @@ export function ruleVerdict(input: RefereeInput, now: number): Verdict {
   }
 
   const ticks = [...input.ticks].sort((a, b) => a.seq - b.seq);
+  const everVisible = ticks.some((k) => k.perception.visible);
+  const start = lostRunStart(ticks);
+  const lost = everVisible && start < ticks.length;
   const failureT = failureTime(ticks);
   const tagsOf = new Map(input.haunts.map((h) => [h.hauntId, h.moderated?.tags ?? []]));
   const textOf = new Map(input.haunts.map((h) => [h.hauntId, h.moderated?.text ?? "a haunting"]));
 
-  // a. adversary: the latest visual haunting injected in [failureT − 8 s, failureT + 1 s]
-  const culprit = input.injected
-    .filter((h) => h.ok && h.t >= failureT - ADVERSARY_BEFORE_MS && h.t <= failureT + ADVERSARY_AFTER_MS)
-    .filter((h) => (tagsOf.get(h.hauntId) ?? []).some((t) => VISUAL_TAGS.has(t)))
-    .sort((a, b) => b.t - a.t)[0];
+  // a. adversary: target was lost, and a visual haunting was injected in [failureT − 8 s, failureT + 1 s]
+  const culprit = lost
+    ? input.injected
+        .filter((h) => h.ok && h.t >= failureT - ADVERSARY_BEFORE_MS && h.t <= failureT + ADVERSARY_AFTER_MS)
+        .filter((h) => (tagsOf.get(h.hauntId) ?? []).some((t) => VISUAL_TAGS.has(t)))
+        .sort((a, b) => b.t - a.t)[0]
+    : undefined;
   if (culprit) {
     return {
       ...base, outcome: "failure", failureT, blame: "adversary", ruleBlame: "adversary", culpritHauntId: culprit.hauntId, confidence: 0.6,
-      evidence: [
+      evidence: withDecisionNote([
         { t: culprit.t, note: clip(`Injected: ${textOf.get(culprit.hauntId)}`) },
         { t: failureT, note: `Target lost ${secs(failureT - culprit.t)} later` },
-      ],
+      ], ticks, failureT),
     };
   }
 
   // b. world: the target was confidently visible right before L and the robot barely moved
-  const start = lostRunStart(ticks);
-  const before = start > 0 && start < ticks.length ? ticks[start - 1] : undefined;
+  const before = lost && start > 0 ? ticks[start - 1] : undefined;
   if (before && before.perception.visible && before.perception.conf >= CONFIDENT && smallAction(before.action)) {
     return {
       ...base, outcome: "failure", failureT, blame: "world", ruleBlame: "world", confidence: 0.5,
-      evidence: [
+      evidence: withDecisionNote([
         { t: before.t, note: clip(`Target visible (conf ${before.perception.conf.toFixed(2)}), action ${before.action.key}`) },
         { t: failureT, note: "Target gone with no haunting and no large move" },
-      ],
+      ], ticks, failureT),
     };
   }
 
-  // c. agent: everything else, including never-seen and "tracked but slow"
-  const evidence = failureT === 0
+  // c. agent: everything else, including never-seen and "tracked but slow" (target stayed visible)
+  const baseEvidence = !everVisible
     ? [{ t: 0, note: "Target never visible this round" }]
-    : [{ t: failureT, note: before ? clip(`Target lost after ${before.action.key} ${before.action.holdMs} ms`) : "Target lost" }];
-  return { ...base, outcome: "failure", failureT, blame: "agent", ruleBlame: "agent", confidence: 0.5, evidence };
+    : !lost
+      ? [{ t: failureT, note: "Target stayed visible until time ran out" }]
+      : [{ t: failureT, note: before ? clip(`Target lost after ${before.action.key} ${before.action.holdMs} ms`) : "Target lost" }];
+  return {
+    ...base,
+    outcome: "failure",
+    failureT,
+    blame: "agent",
+    ruleBlame: "agent",
+    confidence: 0.5,
+    evidence: withDecisionNote(baseEvidence, ticks, failureT),
+  };
 }
