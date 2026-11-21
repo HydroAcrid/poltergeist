@@ -1,0 +1,26 @@
+{
+  "framework": null,
+  "functions": {
+    "api/enter.mjs": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/enter?view=haunt"
+    },
+    {
+      "source": "/:view(haunt|stage|team|debug)",
+      "destination": "/api/enter?view=:view"
+    },
+    {
+      "source": "/rehearsal/lobby",
+      "destination": "/api/enter?view=rehearsal/lobby"
+    },
+    {
+      "source": "/api/crowd/state",
+      "destination": "/api/enter?view=api/crowd/state"
+    }
+  ]
+}
