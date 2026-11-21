@@ -35,7 +35,13 @@ export class TickHandler {
     const { policy, adapter } = this.deps;
     const input = buildPlayerInput(req, task);
     const result = await withTimeout(
-      (signal) => adapter.perceive(input, { timeoutMs: policy.perception.timeoutMs, promptAddenda: policy.perception.promptAddenda, signal }),
+      (signal) =>
+        adapter.perceive(input, {
+          timeoutMs: policy.perception.timeoutMs,
+          promptAddenda: policy.perception.promptAddenda,
+          thinking: policy.perception.thinking,
+          signal,
+        }),
       policy.perception.timeoutMs,
       adapter.name,
     );

@@ -41,6 +41,8 @@ export type PerceptionResult = Perception & { candidates?: Candidate[]; scene?: 
 export interface PerceiveOptions {
   timeoutMs: number;
   promptAddenda: string[];
+  /** Model thinking effort from the policy; "low" means no thinking budget. */
+  thinking?: "low" | "medium" | "high";
   signal?: AbortSignal;
 }
 

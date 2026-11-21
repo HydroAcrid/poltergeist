@@ -1,7 +1,7 @@
-{ "lane": "brain", "updatedAt": "2026-11-21T12:15", "tier": 0, "demoPathOk": null,
-  "working": ["brain contracts + fixtures (local, branch brain/contracts)"],
-  "next": ["fake brain (server/fake.ts)", "six scenario bundles", "fixture-zero hallway photos"],
-  "blocked": ["World scaffold not on main: no root workspace, common.ts or tick-request.ts yet; brain tests run against local shims"],
+{ "lane": "brain", "updatedAt": "2026-11-21T18:40", "tier": 0, "demoPathOk": null,
+  "working": ["er2 adapter on live Gemini Robotics-ER 2 (branch brain/contracts)"],
+  "next": ["POST /api/brain/tick + frames + tick publish (needs World scaffold)", "fake brain", "six referee scenario bundles", "TickLog.reaction 1.1.0 if World and Crowd agree", "turn calibration from a before/after pair"],
+  "blocked": ["World scaffold not on main (common.ts, episode.ts, haunt-injected.ts, hub-types, LaneModule); Brain runs against local shims"],
   "implements": { "TickResponse": "1.0.0", "TickLog": "1.0.0", "PolicyPromoted": "1.0.0", "ReplayFrame": "1.0.0" },
-  "measured": {},
-  "notes": "Painted-door first move verified with the fixture adapter: head-on → D 1000 ms (verify), sideways → ArrowRight toward the recessed door. Worktrees: ../pg-brain-replay (brain/replay), ../pg-brain-coach (brain/coach)." }
+  "measured": { "perceptionP50Ms": 1763, "perceptionP95Ms": 2007 },
+  "notes": "ER 2 live probe on World's 8 labeled third-person frames, thinking budget 0: robot 8/8, feet 8/8, exit 8/8, obstacles 7/7, same move as labels 6/8. Default thinking truncated JSON at MAX_TOKENS (~8 s). ER 2's forward point is noisy, so facing comes from the follow camera (useForwardPoint: false). See apps/brain/EVALS.md." }

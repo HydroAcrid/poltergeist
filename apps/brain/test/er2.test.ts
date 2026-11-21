@@ -69,7 +69,7 @@ describe("Er2Perception", () => {
     expect(parts).toHaveLength(2);
     expect(parts[0]).toEqual({ inlineData: { mimeType: "image/jpeg", data: "QUJD" } });
     expect(parts[1].text).toBe(buildScenePrompt(input));
-    expect(call.config).toMatchObject({ temperature: 0, responseMimeType: "application/json" });
+    expect(call.config).toMatchObject({ temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 1200 });
     expect(call.config.responseJsonSchema).toBeDefined();
   });
 
@@ -87,6 +87,12 @@ describe("Er2Perception", () => {
     expect(r.scene?.goal).toEqual([478, 716]);
     expect(r.hazards).toEqual([{ label: "chair", point: [532, 461] }]);
     expect([r.visible, r.point]).toEqual([true, [478, 716]]);
+  });
+
+  it("gives a higher thinking effort its own budget plus room for the JSON", async () => {
+    const { client, calls } = fake(reply(chairAhead));
+    await new Er2Perception(client).perceive(input, { ...opts, thinking: "high" });
+    expect(calls[0]!.config).toMatchObject({ thinkingConfig: { thinkingBudget: 2048 }, maxOutputTokens: 3248 });
   });
 
   it("retries once on unparseable output, then reports a parse error", async () => {
@@ -113,5 +119,20 @@ describe("Er2Perception", () => {
     const fb = await bad.handle(req(1));
     expect([fb.mode, fb.action.key, fb.perception.error]).toEqual(["fallback", "NOOP", "api"]);
     expect(fb.episodeId).toBe(EP);
+  });
+});
+
+describe("facingPoint (forward route from the trailing camera)", () => {
+  it("extends a short forward point out to the exit's depth so far obstacles count", async () => {
+    const { facingPoint } = await import("../server/navigate.js");
+    // boots at y 745, forward a stride up-right at y 689, exit row at y 474
+    expect(facingPoint([745, 388], [689, 483], [474, 715], 500)).toEqual([474, 848]);
+  });
+
+  it("ignores a forward point level with or behind the boots, falling back to the camera heading", async () => {
+    const { facingPoint } = await import("../server/navigate.js");
+    expect(facingPoint([747, 525], [823, 532], [465, 467], 500)).toEqual([465, 500]);
+    expect(facingPoint([747, 525], [745, 600], [465, 467], 500)).toEqual([465, 500]);
+    expect(facingPoint([747, 525], undefined, [465, 467], 500)).toEqual([465, 500]);
   });
 });

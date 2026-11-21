@@ -58,6 +58,22 @@ export function blockingObstacle(scene: Scene, to: Point, policy: Policy): Block
 }
 
 /**
+ * Where the robot's forward route reaches the exit's depth (the exit's row).
+ * Uses the perceiver's forward floor point when it is ahead of the boots (up
+ * the frame), extended so obstacles several strides out still count; ER 2's
+ * forward point is typically only about a stride away. A forward point level
+ * with or behind the boots is ignored (seen on the live probe), and then the
+ * follow camera is assumed to look along the robot (headingX).
+ */
+export function facingPoint(feet: Point, forward: Point | undefined, goal: Point, headingX: number): Point {
+  const ahead = forward && feet[0] - forward[0] >= 10 ? forward : undefined;
+  if (!ahead || feet[0] <= goal[0]) return [goal[0], headingX];
+  const k = (feet[0] - goal[0]) / (feet[0] - ahead[0]);
+  if (k <= 1) return ahead;
+  return [goal[0], Math.round(clamp(feet[1] + (ahead[1] - feet[1]) * k, 0, 1000))];
+}
+
+/**
  * Signed image-space angle from the robot's facing to the exit, as seen from
  * the boots: −1 = 90° left … 0 = straight ahead … 1 = 90° right.
  */
@@ -109,9 +125,7 @@ export function stepNav(prev: ControllerState, scene: Scene, req: TickRequest, p
   }
   s.successTicks = 0;
 
-  // Facing: ER 2's forward floor point when it reports one (trailing camera);
-  // otherwise assume the follow camera looks along the robot (headingX).
-  const facing: Point = scene.forward ?? [goal[0], n.headingX];
+  const facing = facingPoint(mid, n.useForwardPoint ? scene.forward : undefined, goal, n.headingX);
   const e = bearing(mid, facing, goal);
   const forward = blockingObstacle(scene, facing, policy);
   const toGoal = blockingObstacle(scene, goal, policy);

@@ -7,6 +7,14 @@ import type { PerceiveOptions, PerceptionAdapter, PerceptionResult, PlayerInput,
 
 export const DEFAULT_MODEL = "gemini-robotics-er-2-preview";
 
+/**
+ * Thinking tokens count toward maxOutputTokens. Measured on the live probe:
+ * default thinking spent ~765 tokens and truncated the JSON at an 800 cap;
+ * a 0 budget finished in ~1.8 s. The output cap always leaves room for the JSON.
+ */
+export const THINKING_BUDGET = { low: 0, medium: 512, high: 2048 } as const;
+const JSON_TOKENS = 1200;
+
 /** The player's own body, from apps/world/robot-v1 (not audience or answer data). */
 export const ROBOT_DESCRIPTION =
   "a knee-high robot with a scuffed sage-green shell, a burnt-orange backpack with two dark straps, thin jointed legs, cream-soled boots and a short black flashlight in its right hand";
@@ -140,7 +148,8 @@ export class Er2Perception implements PerceptionAdapter {
           contents: [{ role: "user", parts: [{ inlineData: { mimeType: input.frame.mime, data: input.frame.b64 } }, { text: prompt }] }],
           config: {
             temperature: 0,
-            maxOutputTokens: 800,
+            maxOutputTokens: THINKING_BUDGET[opts.thinking ?? "low"] + JSON_TOKENS,
+            thinkingConfig: { thinkingBudget: THINKING_BUDGET[opts.thinking ?? "low"] },
             responseMimeType: "application/json",
             responseJsonSchema: SCENE_SCHEMA,
             httpOptions: { timeout: Math.max(1, Math.round(remaining)) },

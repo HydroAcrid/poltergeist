@@ -44,7 +44,7 @@ describe.skipIf(process.env.PG_LIVE !== "1")("@live ER 2 probe on World's labele
       for (const f of loadHallwayLabels(set.dir).frames) {
         const b64 = readFileSync(join(set.dir, f.file)).toString("base64");
         const t0 = performance.now();
-        const r = await adapter.perceive({ frame: { mime: "image/jpeg", width: 640, height: 360, b64 }, ...task }, { timeoutMs: PROBE_TIMEOUT_MS, promptAddenda: [] });
+        const r = await adapter.perceive({ frame: { mime: "image/jpeg", width: 640, height: 360, b64 }, ...task }, { timeoutMs: PROBE_TIMEOUT_MS, promptAddenda: [], thinking: policy.perception.thinking });
         const ms = Math.round(performance.now() - t0);
         latencies.push(ms);
 
@@ -109,7 +109,7 @@ describe.skipIf(process.env.PG_LIVE !== "1")("@live ER 2 probe on World's labele
 
 ## ER 2 live probe: ${summary.ranAt}
 
-Model \`${model}\`, ${summary.frames} World-labeled third-person frames (6 prototype from \`apps/world/painted-door/haunting/fixtures\`, 2 live flashlight from \`apps/world/robot-v1/fixtures\`). One call per frame, no retries beyond the adapter's single parse retry. Errors are in 0–1000 frame units; a hit is ≤ ${HIT} (CONTRACTS C12). "move" compares Brain's controller on ER 2's scene with the same controller on World's labels.
+Model \`${model}\`, ${summary.frames} World-labeled third-person frames (6 prototype from \`apps/world/painted-door/haunting/fixtures\`, 2 live flashlight from \`apps/world/robot-v1/fixtures\`). One call per frame at policy thinking "${policy.perception.thinking}", no retries beyond the adapter's single parse retry. Errors are in 0–1000 frame units; a hit is ≤ ${HIT} (CONTRACTS C12). "move" compares Brain's controller on ER 2's scene with the same controller on World's labels.
 
 - Robot found: **${summary.robotFound}/${summary.frames}**; API/parse errors: ${summary.errors}
 - Feet within ${HIT}: **${summary.feetHits}/${summary.robotFound}**; exit within ${HIT}: **${summary.exitHits}/${summary.frames}**
@@ -120,6 +120,8 @@ Model \`${model}\`, ${summary.frames} World-labeled third-person frames (6 proto
 ${table}
 
 Raw ER 2 replies: \`apps/brain/evals/er2-probe-raw.json\`.
+
+**Reading the moves:** World's prototype labels put the goal at the far end of the test aisle; ER 2 reports the exit doorway beneath the sign, ~70 units further, which is the live win rule ("feet cross the signed exit"). So on the prototype \`arrived\` frame ER 2 correctly keeps walking. Facing comes from the follow camera (\`useForwardPoint: ${policy.navigation.useForwardPoint}\`): ER 2's single forward floor point changed between runs on identical frames, so it is logged but not steered by until a before/after turn calibration pair.
 `;
     mkdirSync(resolve(__dirname, "../../evals"), { recursive: true });
     writeFileSync(resolve(__dirname, "../../EVALS.md"), md);

@@ -50,6 +50,7 @@ export const Policy = z.object({
     headingX: z.number().min(0).max(1000),
     turnDeadband: unit,
     kTurn: z.number().positive(),
+    useForwardPoint: z.boolean(),
   }),
 });
 export type Policy = z.infer<typeof Policy>;

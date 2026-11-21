@@ -35,4 +35,7 @@ navigation:
   headingX: 500          # follow camera: W walks toward the frame's centre column
   turnDeadband: 0.15     # exit bearing (|goalX − headingX| / 500) that triggers a turn
   kTurn: 600             # ms of turn per unit bearing (calibrate live)
+  # ER 2's forward floor point varied between runs on the same frames (live probe
+  # 2026-11-21), so facing comes from the follow camera until a calibration pair.
+  useForwardPoint: false
 
