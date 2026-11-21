@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>The hallway · Poltergeist</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #151419;
+      color: #fbf6ed;
+      font:
+        16px/1.45 'DM Sans',
+        system-ui,
+        sans-serif;
+    }
+    main {
+      width: min(1020px, 100%);
+      margin: auto;
+      padding: clamp(18px, 4vw, 48px) clamp(14px, 4vw, 44px);
+    }
+    header,
+    .bar,
+    .actions,
+    .views {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+    header,
+    .bar {
+      justify-content: space-between;
+    }
+    h1 {
+      font:
+        normal clamp(34px, 6vw, 59px) / 1.05 Georgia,
+        serif;
+      letter-spacing: -0.045em;
+      margin: 0;
+    }
+    header {
+      margin-bottom: 17px;
+    }
+    .views {
+      gap: 0;
+      background: #27252d;
+      border-radius: 30px;
+      padding: 3px;
+    }
+    button {
+      font: inherit;
+      cursor: pointer;
+      border: 0;
+    }
+    .views button {
+      color: #c3bfca;
+      background: none;
+      border-radius: 24px;
+      padding: 7px 13px;
+      font-size: 14px;
+    }
+    .views button[aria-pressed='true'] {
+      background: #ebe3fd;
+      color: #271d38;
+    }
+    canvas {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 9px;
+      display: block;
+      cursor: crosshair;
+      background: #222;
+    }
+    .bar {
+      margin-top: 15px;
+    }
+    .actions button {
+      border-radius: 26px;
+      padding: 10px 18px;
+      min-height: 42px;
+    }
+    #drop {
+      background: #ceb7ff;
+      color: #25153a;
+      font-weight: 650;
+    }
+    .movement button {
+      background: #37343e;
+      color: #fbf6ed;
+    }
+    #reset {
+      background: #302d36;
+      color: #ece7ed;
+    }
+    button:disabled {
+      opacity: 0.48;
+      cursor: default;
+    }
+    button:focus-visible {
+      outline: 3px solid #f2cb73;
+      outline-offset: 3px;
+    }
+    p {
+      color: #c3bec9;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+    #status {
+      color: #f3eaf6;
+      margin: 0;
+    }
+    small {
+      color: #c3bec9;
+    }
+    @media (max-width: 540px) {
+      header {
+        align-items: flex-start;
+      }
+      .bar {
+        gap: 12px;
+      }
+      main {
+        padding-top: 22px;
+      }
+      .views button {
+        padding: 6px 10px;
+      }
+    }
+  </style>
+  <main>
+    <header>
+      <h1>The hallway</h1>
+      <div class="views" aria-label="Camera view">
+        <button id="audience" aria-pressed="true">Audience view</button>
+        <button id="robot" aria-pressed="false">Player view</button>
+      </div>
+    </header>
+    <canvas
+      width="1280"
+      height="720"
+      aria-label="A third-person robot in a hallway based on the venue photo. Use Drop banana peel to place an obstacle in the center aisle."
+    ></canvas>
+    <div class="bar">
+      <div class="actions">
+        <button id="drop" disabled>Drop banana peel</button
+        ><button id="reset" disabled>Reset</button>
+      </div>
+      <p role="status" id="status">Loading hallway…</p>
+    </div>
+    <div
+      class="actions movement"
+      style="margin-top: 12px"
+      aria-label="Player movement"
+    >
+      <button id="walk" disabled>Walk ahead</button
+      ><button id="left" disabled>Step left</button
+      ><button id="right" disabled>Step right</button>
+    </div>
+    <p>
+      Drop a peel, then walk ahead or step around it. Tap the aisle to choose
+      where it lands. W walks ahead. A and D step sideways.
+    </p>
+  </main>
+  <script src="robot.js"></script>
+  <script src="haunt.js"></script>
+</html>

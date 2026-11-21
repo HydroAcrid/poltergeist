@@ -2,19 +2,22 @@
 
 “Gemini is trying to escape this room. You’re the ghost. What do you change?”
 
-A game for the Gemini 4 NYC Hackathon. A player changes the room, Gemini investigates through its character’s camera, and the audience watches it choose an exit.
+A game for the Gemini 4 NYC Hackathon. Genie 4 builds a world from a photo of a real hallway. Gemini steers toward the exit. The audience plays the poltergeist and chooses what happens along the way.
 
 Start with the [feature map](FEATURES.md) and [lane assignments](KICKOFF.md#team-assignments). Share blockers and ready fixtures in the [lane handoffs issue](https://github.com/HydroAcrid/poltergeist/issues/2). The [review workflow kit](docs/workflows/README.md) is available for anyone who wants to try Kevin’s checks in Claude Code.
 
-[Watch the first painted-door test](apps/world/painted-door/replay/painted-door.mp4) · [Open the replay locally](apps/world/painted-door/README.md)
+## Play the third-person prototype
+
+After pulling `main`, open [the hallway](apps/world/painted-door/haunting/index.html) from your local checkout in a browser. Choose **Drop banana peel → Walk ahead**. Reset and try **Drop banana peel → Step left → Walk ahead**. Both paths work offline without installing packages or adding a key.
 
 ## First playable round
 
-1. Start in a hallway with one working door. Let the host add a painted door with a flickering EXIT sign.
-2. Give Gemini its camera view and movement controls. Keep the player’s prompt and the identity of the real exit out of its input.
-3. Show the audience Gemini’s view as it approaches a door, looks from the side, or tries the handle.
-4. Replay the action that decided the round. Let someone suggest a new trick for the rematch.
+1. Start Gemini in the photographed hallway. Give it the destination and show its robot avatar in third person, with the full body and both feet visible.
+2. Someone on a phone chooses an activity, such as dropping a banana peel in Gemini’s path. When the approved change happens, a stylized ghost appears where the peel lands, then fades.
+3. Watch the robot’s feet as it steps around the peel or hits it, stumbles and recovers. Reaching the designated exit before time runs out wins the round for Gemini. Replay the decisive moment and let someone propose a new trick for the rematch.
 
-## First prototype question
+## Prototype progress
 
-Does the painted door stay painted as the camera moves? Record a round from two angles. If the room holds together and the audience can see what Gemini learned by moving, build the phone input next.
+Scripted movement carried the camera through the arch in our first hallway photo. In the [local audience prototype](apps/world/painted-door/haunting/index.html), click the aisle to drop a banana peel and see the ghost fade beside it. The empty-hallway background and artwork are included. For the local rehearsal, a person drives the robot with the camera fixed so viewers can see its feet beside the peel. A separate live Genie run produced no clear peel. Contact with a live Genie obstacle and autonomous navigation both remain unverified.
+
+The earlier walking-ghost clip tested visibility, and a painted-door clip tests how the world holds up through a sidestep. [Watch the painted-door test](apps/world/painted-door/replay/painted-door.mp4) · [Open the replay locally](apps/world/painted-door/README.md)
