@@ -289,3 +289,20 @@ test('visible airborne movement beside the robot can earn a glance but no collis
   assert.equal(sent.filter(x => x.reaction).length, 1);
   assert.equal(r.fear, 0);
 });
+
+test('a relocation cannot claim a chair that was already in the hallway', async () => {
+  const {createPlacementController} = await moduleUnderTest;
+  const r = {props: [], fear: 0, deadline: 20000};
+  const q = createPlacementController(r, () => {}, () => {});
+  const original = chair(610, 590, 'upright chair');
+  const stray = chair(680, 760, 'tipped chair');
+  q.add('one', 'tip a chair', 'Moss Moth', 0);
+  q.observe(scene([original]), 1, 100, 150);
+  q.acknowledged('one', 1, 200, 2);
+  q.observe(scene([original, stray]), 5, 1500, 1700);
+  q.acknowledged('one', 2, 1800, 6);
+  q.observe(scene([original], {ahead:[600,590], threat:'startling'}), 8, 3100, 3200);
+  assert.equal(r.props[0].inPath, false);
+  assert.equal(r.props[0].reactionRequestedAt, undefined);
+  assert.equal(r.fear, 0);
+});
