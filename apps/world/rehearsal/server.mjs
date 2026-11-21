@@ -1,4 +1,7 @@
 import {createPlayout, frameSink, jpegPart} from './video-stream.mjs';
+import {createPreparedShow, registerPreparedMedia, serveMovie} from './prepared-show.mjs';
+import {createBufferedShow} from './buffered-show.mjs';
+import {renderSegment, bufferedEncoderReady} from './buffered-render.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -34,6 +37,8 @@ export async function registerStage(
     generatePlate,
     reviewSeed = reviewPlayerSeed,
     launchLive = openLive,
+    renderBuffered = renderSegment,
+    canEncode = bufferedEncoderReady,
     chapterTiming = {matchMs:matchDurationMs,cutMs:chapterCutMs,limitMs:chapterLimitMs},
     crowdPhone = false,
     hosted = false,
@@ -41,6 +46,14 @@ export async function registerStage(
     brainUrl = 'http://127.0.0.1:8903/api/brain/tick',
   },
 ) {
+  registerPreparedMedia(app, root);
+  let prepared = null, buffered = null;
+  app.get('/rehearsal/segments/:round/:file', async (req,reply) => {
+    const match = /^([1-9]\d*)\.mp4$/.exec(req.params.file);
+    const path = round?.id === req.params.round && match && buffered?.file(Number(match[1]));
+    if (!path) return reply.code(404).send();
+    return serveMovie(path, req, reply);
+  });
   let lobbyOpenedAt = null;
   let crossing = {};
   let round = null,
@@ -195,8 +208,8 @@ export async function registerStage(
   });
   const unsubscribe = bus.subscribe('*', (e) => {
     const h = e.payload;
-    if (e.type === 'haunt.public' && h.moderated?.safe) {
-      if (h.status === 'queued') {
+    if (e.type === 'haunt.public') {
+      if (h.status === 'queued' && h.moderated?.safe) {
         queue.set(h.hauntId, {
           id: h.hauntId,
           text: h.moderated.text,
@@ -211,6 +224,19 @@ export async function registerStage(
       h.episodeId !== round.id
     )
       return;
+    if (round.playMode === 'buffered-live') {
+      if (!buffered.enqueue(h,ghosts.get(h.hauntId),Date.now()))
+        bus.publish('haunt.injected','world',{hauntId:h.hauntId,episodeId:round.id,t:Date.now()-round.startedAt,
+          ok:false,simulated:false,error:'The render queue has closed.'},round.id);
+      return;
+    }
+    if (round.playMode === 'prepared-show') {
+      if (!prepared.choose(h, ghosts.get(h.hauntId), Date.now())) {
+        bus.publish('haunt.injected','world',{hauntId:h.hauntId,episodeId:round.id,
+          t:Date.now()-round.startedAt,ok:false,simulated:true,error:'That recording could not be scheduled.'},round.id);
+      }
+      return;
+    }
     if (round.live) {
       placement?.add(h.hauntId, h.text, ghosts.get(h.hauntId));
       return;
@@ -285,7 +311,8 @@ export async function registerStage(
     notifyEnd(r);
   }
   function providerClosing() {
-    return providerRound?.phase === 'ended' && providerRound.providerClosedAt == null;
+    return (providerRound?.phase === 'ended' && providerRound.providerClosedAt == null) ||
+      (round?.phase === 'ended' && buffered?.busy);
   }
   function interrupt(r,message) {
     publicStatus=message;
@@ -385,6 +412,20 @@ export async function registerStage(
     const r = round,
       now = Date.now();
     if (!r || r.phase === 'ended') return;
+    if (r.playMode === 'buffered-live') {
+      r.remainingMs = Math.max(0,r.deadline-now);
+      buffered.advance(now);
+      return;
+    }
+    if (r.playMode === 'prepared-show') {
+      r.remainingMs = Math.max(0, r.deadline-now);
+      if (r.remainingMs) prepared.advance(now);
+      else {
+        finish(r, null, 'time', r.deadline);
+        notifyEnd(r);
+      }
+      return;
+    }
     if (r.live) {
       if (showExpired(r,now)) return;
       if (r.chapters && ((activeTicket?.rotating && now>=activeTicket.closeBy) ||
@@ -596,7 +637,7 @@ export async function registerStage(
       task: {targetLabel:'exit', instruction:'Reach the exit through the hallway.'},
       startedAt: now,
       maxDurationMs: r.chapters ? Math.min(90_000, chapterTiming.limitMs, duration) : duration,
-      ...(r.chapters && {match: {clockMode:r.clockMode, durationMs:r.durationMs,
+      ...((r.chapters || r.playMode === 'prepared-show' || r.playMode === 'buffered-live') && {match: {clockMode:r.clockMode, durationMs:r.durationMs,
         ...(r.clockMode === 'wall' && {deadline:r.showDeadline})}}),
     };
     try {
@@ -672,7 +713,11 @@ export async function registerStage(
   const timer = setInterval(() => {
     const current = round;
     void update().catch(() => {
-      if (current?.live) {
+      if (current?.playMode === 'buffered-live') {
+        buffered?.stop();
+        finish(current,null,'interrupted',Date.now());
+        notifyEnd(current);
+      } else if (current?.live) {
         failLiveCallback(current);
       } else if (current && current === round) {
         finish(current,null,'interrupted',Date.now());
@@ -682,6 +727,7 @@ export async function registerStage(
   app.addHook('onClose', async () => {
     closing=true;
     clearInterval(timer);
+    await buffered?.dispose();
     unsubscribe();
     live?.stop();
     playout.reset();
@@ -707,6 +753,8 @@ export async function registerStage(
     lobby: lobbyState(),
     number,
     queue: [...queue.values()],
+    preparedAvailable: !custom,
+    bufferedAvailable: !!captureDir && canEncode(),
     canLive: !!captureDir,
     cameraTestDurationMs: liveMs,
     approvedVenueOpening: !custom && !!venueOpening,
@@ -726,11 +774,16 @@ export async function registerStage(
     const showMinutes=req.body?.showMinutes;
     if (showMinutes!==undefined && (![5,10].includes(showMinutes) || req.body?.mode!=='genie' || req.body?.chapters!==true))
       return reply.code(400).send({error:'Choose a 5 or 10 minute chaptered Genie show.'});
-    const paid = req.body?.mode === 'genie';
-    const chaptered = paid && req.body?.chapters === true;
-    if (paid && !chaptered && (!Number.isSafeInteger(liveMs) || liveMs <= 0 || liveMs > 90_000))
+    const rolling = req.body?.mode === 'buffered';
+    const paid = rolling || req.body?.mode === 'genie';
+    const chaptered = !rolling && paid && req.body?.chapters === true;
+    if (rolling && (!captureDir || !canEncode())) return reply.code(503).send({error:'The hosted video renderer is unavailable.'});
+    if (paid && !rolling && !chaptered && (!Number.isSafeInteger(liveMs) || liveMs <= 0 || liveMs > 90_000))
       return reply.code(400).send({error:'A single Genie camera test must run for 1–90,000 ms. Start a chaptered show for a longer game.'});
-    const playMode = !paid ? 'offline-rehearsal' : !chaptered ? 'camera-test'
+    const screening = req.body?.mode === 'prepared';
+    if (screening && custom)
+      return reply.code(409).send({error:'These scenes were recorded in the venue hallway. Choose the venue photo or start a live game with your photo.'});
+    const playMode = rolling ? 'buffered-live' : screening ? 'prepared-show' : !paid ? 'offline-rehearsal' : !chaptered ? 'camera-test'
       : showMinutes === 5 ? 'five-minute-demo' : 'ten-minute-game';
     if (req.body?.expectedPlayMode !== undefined && req.body.expectedPlayMode !== playMode)
       return reply.code(400).send({error: 'The game length changed. Select the duration again before starting.'});
@@ -739,8 +792,8 @@ export async function registerStage(
       return reply.code(409).send({ error: 'A round is already open.' });
     if (paid) {
       if (providerClosing()) return reply.code(409).send({ error: 'The previous live hallway is still closing.' });
-      const runway = () => worldLeaseWarning({mode:playMode, requestedAt, now:Date.now(),
-        durationMs:chaptered ? (showMinutes === 5 ? fiveMinuteShowMs : chapterTiming.matchMs) : liveMs,
+      const runway = () => worldLeaseWarning({mode:rolling ? 'five-minute-demo' : playMode, requestedAt, now:Date.now(),
+        durationMs:rolling ? fiveMinuteShowMs : chaptered ? (showMinutes === 5 ? fiveMinuteShowMs : chapterTiming.matchMs) : liveMs,
         openingMs:lobbyOpenedAt == null ? openingMs : 0, cutMs:chapterTiming.cutMs});
       const beforeReview = runway();
       if (beforeReview) return reply.code(409).send(beforeReview);
@@ -791,7 +844,10 @@ export async function registerStage(
       if (beforeOpen) return reply.code(409).send(beforeOpen);
       seed = candidate;
     }
+    if (buffered?.busy) return reply.code(409).send({error:'The last render is still closing.'});
+    if (buffered) { void buffered.dispose(); buffered = null; }
     number++;
+    prepared = null;
     playout.reset();
     liveFrame = null;
     pendingWinner = null;
@@ -821,7 +877,43 @@ export async function registerStage(
     }
     Object.assign(round, {playMode, requestedAt, plannedDurationMs: chaptered ? round.durationMs : paid ? liveMs : playMs});
     pilot = paid ? makePilot() : null;
-    if (paid) {
+    if (screening || rolling) {
+      const r = round;
+      Object.assign(r,{phase:'playing', startedAt:requestedAt, deadline:requestedAt+fiveMinuteShowMs,
+        clockMode:'wall', durationMs:fiveMinuteShowMs, remainingMs:fiveMinuteShowMs,
+        plannedDurationMs:fiveMinuteShowMs, showDeadline:requestedAt+fiveMinuteShowMs});
+      if (rolling) {
+        buffered = createBufferedShow({id:r.id,seed,start:requestedAt,deadline:r.deadline,
+          render:opts => renderBuffered({...opts, makePilot:() => pilot, captureDir}),
+          onReceipt:(pick,ok,error) => {
+            const now=Date.now();
+            if (ok) r.props.push({id:pick.id,name:pick.text,by:pick.by,seen:true,inPath:true,seenAt:now,shownAt:now});
+            bus.publish('haunt.injected','world',{hauntId:pick.id,episodeId:r.id,t:now-r.startedAt,
+              ok,simulated:false,...(error && {error})},r.id);
+          }, onScare:() => { r.fear++; }, onFinish:(reason,winner) => {
+            if (reason==='interrupted') r.stopDetail=buffered.error || 'The hallway did not finish preparing.';
+            finish(r,winner,reason,reason==='time' ? r.deadline : Date.now());
+            notifyEnd(r);
+          }});
+        r.prepared = buffered.state;
+        r.playbackMetrics = buffered.metrics;
+      } else {
+        prepared = createPreparedShow(requestedAt, r.deadline, (guest,now) => {
+          r.props.push({id:guest.id, name:guest.clip.title, by:guest.by, recorded:true, shownAt:now});
+          bus.publish('haunt.injected','world',{hauntId:guest.id,episodeId:r.id,t:now-r.startedAt,
+            ok:true,simulated:true},r.id);
+        });
+        r.prepared = prepared.state;
+      }
+      try { publishStart(r,requestedAt,rolling ? Math.min(90_000, chapterTiming.limitMs) : 0); }
+      catch {
+        buffered?.stop();
+        finish(r,null,'interrupted',Date.now());
+        notifyEnd(r);
+        return reply.code(503).send({error:'The audience room could not open. Try again.'});
+      }
+    }
+    if (paid && !rolling) {
       const r=round;
       placement=createPlacementController(r, command=>live?.send(command), (prop,ok)=>{
         bus.publish('haunt.injected','world',{
@@ -834,6 +926,19 @@ export async function registerStage(
   });
   app.post('/rehearsal/stop', async (req,reply)=>{
     if(req.headers['x-show-control']!=='1') return reply.code(403).send();
+    if (round?.playMode === 'buffered-live' && round.phase !== 'ended') {
+      round.stopDetail = 'The host ended the game.';
+      buffered.stop();
+      finish(round,null,'interrupted',Date.now());
+      notifyEnd(round);
+      return {id:round.id,phase:round.phase};
+    }
+    if (round?.playMode === 'prepared-show' && round.phase !== 'ended') {
+      round.stopDetail = 'The host ended the screening.';
+      finish(round,null,'interrupted',Date.now());
+      notifyEnd(round);
+      return {id:round.id,phase:round.phase};
+    }
     if (!round?.live || round.phase==='ended') return reply.code(409).send({error:'There is no live round to stop.'});
     interrupt(round,'The host stopped the hallway.');
     return {id:round.id,phase:round.phase};
@@ -926,5 +1031,7 @@ export async function registerStage(
     app.get(route, async (_, reply) =>
       reply.type(mime).send(readFileSync(resolve(root, file))),
     );
-  return Object.assign(() => round, {lobbyPhase: () => lobbyState().phase});
+  return Object.assign(() => round, {lobbyPhase: () => lobbyState().phase,
+    renderWindow: () => round?.phase === 'playing' && round.playMode === 'buffered-live' ? buffered.window(Date.now()) : null,
+    prepared: () => round?.phase === 'playing' && round?.playMode === 'prepared-show' ? prepared.gate(Date.now()) : null});
 }

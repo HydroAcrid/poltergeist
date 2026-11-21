@@ -103,7 +103,14 @@ function controls() {
     preparing = state?.platePreparing;
   const beforePhoto = !state?.round && state?.lobby?.phase === 'before-photo';
   const waiting = !!state && !state.round;
-  const canLaunch = !beforePhoto && !busy && state?.canLive;
+  const menu = el('show-minutes');
+  const recordedOption = menu.querySelector('[value="prepared"]');
+  recordedOption.disabled = !state?.preparedAvailable;
+  for (const option of menu.options) if (option !== recordedOption) option.disabled = !state?.canLive;
+  menu.querySelector('[value="buffered"]').disabled = !state?.bufferedAvailable;
+  if (menu.selectedOptions[0]?.disabled && state) menu.value = state.preparedAvailable ? 'prepared' : '5';
+  const screening = menu.value === 'prepared';
+  const canLaunch = !beforePhoto && !busy && (state?.canLive || state?.preparedAvailable);
   document.body.classList.toggle('waiting', waiting);
   document.querySelector('.score').hidden = !state?.round;
   el('lobby-intro').hidden = host || !waiting;
@@ -119,7 +126,7 @@ function controls() {
     photoChoice.open = beforePhoto;
     photoChoice.dataset.first = String(beforePhoto);
   }
-  el('offline-primary').hidden = beforePhoto || busy || state?.canLive || !state;
+  el('offline-primary').hidden = beforePhoto || busy || canLaunch || !state;
   el('offline-primary').disabled = loading || !connected;
   el('upload').classList.toggle('primary', beforePhoto);
   el('prepare').hidden = busy || !custom || !state?.canLive || ready || preparing;
@@ -131,14 +138,15 @@ function controls() {
   set('go-live', state?.providerClosing ? 'Closing camera test…' : 'Start ' + seconds + '-second camera test');
   el('go-show').hidden = !canLaunch;
   el('show-length').hidden = !canLaunch;
+  const buffered = menu.value === 'buffered';
   const isDemo = el('show-minutes').value === '5';
-  set('go-show',isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
-  set('show-cost',isDemo ? 'Includes blackouts. About $6 per generated minute.' :
+  set('go-show',buffered ? 'Start buffered live game' : screening ? 'Start audience screening' : isDemo ? 'Start 5-minute demo' : 'Start 10-minute game');
+  set('show-cost',buffered ? 'Generates paid Genie scenes from audience ideas. Guests can submit while the first scenes develop.' : screening ? 'Guests have 30 seconds to send ideas. Their picks play as recorded Genie scenes.' : isDemo ? 'Includes blackouts. About $6 per generated minute.' :
     'The clock pauses during blackouts. About $6 per generated minute.');
-  el('go-show').disabled ||= !canLaunch || el('go-live').disabled;
+  el('go-show').disabled ||= !canLaunch || (!screening && el('go-live').disabled);
   el('show-cost').hidden = !canLaunch;
   el('start').hidden = busy || (!beforePhoto && !state?.canLive);
-  el('stop-show').hidden = !busy || !state?.round?.live;
+  el('stop-show').hidden = !busy || (!state?.round?.live && state?.round?.playMode !== 'prepared-show');
   el('stop-show').disabled = loading || !connected;
   el('default').hidden = busy || (!custom && !beforePhoto);
   if (host) {
@@ -502,12 +510,13 @@ el('start').onclick = () =>
   run(() => request('/rehearsal/start', { mode: 'offline' }));
 el('offline-primary').onclick = el('start').onclick;
 function startWorld(chapters) {
+  const buffered = chapters && el('show-minutes').value === 'buffered';
   const minutes = Number(el('show-minutes').value);
-  const expectedPlayMode = chapters ? (minutes === 10 ? 'ten-minute-game' : 'five-minute-demo') : 'camera-test';
+  const expectedPlayMode = buffered ? 'buffered-live' : chapters ? (minutes === 10 ? 'ten-minute-game' : 'five-minute-demo') : 'camera-test';
   return run(async () => {
     const receipt = await request('/rehearsal/start', {
-      mode: 'genie', expectedPlayMode,
-      ...(chapters ? {chapters:true, showMinutes:minutes} : {}),
+      mode: buffered ? 'buffered' : 'genie', expectedPlayMode,
+      ...(chapters && !buffered ? {chapters:true, showMinutes:minutes} : {}),
       plateKey: state.plateKey,
       ...(state.approvedVenueOpening && !state.custom ? {useVenueOpening:true} : {seed:scene.seed(state)}),
     });
@@ -532,7 +541,9 @@ el('copy-report').onclick = async () => {
 };
 el('go-live').onclick = () => startWorld(false);
 el('show-minutes').onchange=controls;
-el('go-show').onclick = () => startWorld(true);
+el('go-show').onclick = () => el('show-minutes').value === 'prepared'
+  ? run(() => request('/rehearsal/start', {mode:'prepared', expectedPlayMode:'prepared-show'}))
+  : startWorld(true);
 el('stop-show').onclick = () => run(() => request('/rehearsal/stop', {round:state.round.id}));
 el('prepare').onclick = () =>
   run(() => request('/rehearsal/prepare-photo', { revision: state.revision }));

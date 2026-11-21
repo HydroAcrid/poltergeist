@@ -3,6 +3,8 @@ export function readiness(state) {
   if (!state) return 'Connecting to the host…';
   const round = state.round;
   if (round && round.phase !== 'ended') {
+    if (round.playMode === 'buffered-live') return 'Live audience · buffered Genie';
+    if (round.playMode === 'prepared-show') return 'Live audience · recorded Genie scenes';
     if (!round.live) return 'Offline rehearsal · simulated hallway and responses';
     return round.phase === 'playing' ? 'Genie 4 live' : 'Opening Genie 4…';
   }
@@ -22,7 +24,7 @@ export function modeLabel(round) {
   const mode = plannedMode(round);
   if (mode === 'camera-test' && round.plannedDurationMs)
     return Math.round(round.plannedDurationMs / 1000) + '-second camera test';
-  return ({'camera-test':'Camera test','five-minute-demo':'5-minute demo',
+  return ({'buffered-live':'Buffered live game','prepared-show':'Audience screening','camera-test':'Camera test','five-minute-demo':'5-minute demo',
     'ten-minute-game':'10 minutes of play','offline-rehearsal':'Offline rehearsal'})[mode] || 'Game';
 }
 
@@ -33,6 +35,8 @@ export function endReason(round) {
 }
 
 export function roundStatus(round) {
+  if (round.playMode === 'buffered-live') return round.prepared?.phase === 'playing' ? 'Playing the hallway while the next scene develops.' : 'Generating the next hallway scene.';
+  if (round.playMode === 'prepared-show') return round.prepared?.phase === 'collecting' ? 'Guests are sending their scene ideas.' : 'Playing audience-selected recordings.';
   if (round.phase === 'handoff') return 'The lights are out while the next hallway opens.';
   if (round.phase === 'playing') return round.live ? 'The robot is in the hallway.' : 'Offline rehearsal in progress.';
   return round.requestedAt ? 'Request received. Opening the hallway…' : 'Opening the hallway…';
@@ -47,6 +51,7 @@ export function runReport(round, now, hostname) {
     host: local ? 'local' : 'hosted', roundId: round.id, chapter: round.chapter ?? null, elapsedSeconds: elapsed,
     phase: round.phase, winner: round.winner ?? null, reason: round.reason ?? null,
     ...(round.stopDetail ? {detail:round.stopDetail} : {}),
+    ...(round.playbackMetrics ? {playback:round.playbackMetrics} : {}),
   };
   for (const key of ['lastMoveProposed', 'lastMoveApplied', 'lastMoveHeld']) {
     const move = round[key];
