@@ -136,7 +136,8 @@ async function capture() {
   }
   const motionBoundary = () => moveWindow.settledFrame(log.frames,Date.now());
   const noteMotion = () => placementView.moved(motionBoundary());
-  const cameraAllowed = () => !ending && !encounter.held && Date.now()>=steadyUntil && !placementView.held(Date.now());
+  let settlingChapter = false, holdChapterCamera = false;
+  const cameraAllowed = () => !holdChapterCamera && !ending && !encounter.held && Date.now()>=steadyUntil && !placementView.held(Date.now());
   const moving = () => Boolean(cameraPress || actorMoving || actorStopping || actionPending);
   let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
   async function releaseCamera(completing=false) {
@@ -296,6 +297,7 @@ async function capture() {
             throw error;
           } finally { placementView.finish(Date.now()); }
         } else if (stagePilot && command?.pause) {
+          if (chapterNumber && command.chapterHandoff) settlingChapter = true;
           const now=Date.now();
           const force=Boolean(command.encounter) || (command.settleCamera && now>=placedHoldUntil);
           steadyUntil=now+2700;
@@ -439,6 +441,12 @@ async function capture() {
           inspectRoom(ai,delta.data,abort.signal,playerReference,encounter.assessing).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
+              if (settlingChapter) {
+                // Once the shoulder shot is in position, leave it still for the full vision read.
+                // An unsuitable view can still use the normal camera recovery.
+                holdChapterCamera = checkpointEligible(scene,!follow.verified(observed));
+                if (holdChapterCamera && cameraPress) await releaseCamera();
+              }
               const held = await updateShot(log.frames);
               const lock=follow.status();
               const current = lock.observed === observed;

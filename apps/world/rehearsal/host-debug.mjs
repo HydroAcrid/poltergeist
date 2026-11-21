@@ -27,6 +27,7 @@ export function modeLabel(round) {
 }
 
 export function endReason(round) {
+  if (round.reason === 'interrupted' && round.stopDetail) return round.stopDetail;
   return ({exit:'The robot reached the exit.', fear:'Three scares stopped the robot.',
     time:'Time ran out.', interrupted:'The round was interrupted.'})[round.reason] || 'The round ended.';
 }
@@ -45,6 +46,7 @@ export function runReport(round, now, hostname) {
     mode: plannedMode(round), plannedDurationMs: round.plannedDurationMs ?? round.durationMs ?? null,
     host: local ? 'local' : 'hosted', roundId: round.id, chapter: round.chapter ?? null, elapsedSeconds: elapsed,
     phase: round.phase, winner: round.winner ?? null, reason: round.reason ?? null,
+    ...(round.stopDetail ? {detail:round.stopDetail} : {}),
   };
   for (const key of ['lastMoveProposed', 'lastMoveApplied', 'lastMoveHeld']) {
     const move = round[key];

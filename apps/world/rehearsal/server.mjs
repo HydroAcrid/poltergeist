@@ -9,7 +9,7 @@ import { checkpointEligible,validCheckpoint,matchDurationMs,fiveMinuteShowMs,cha
 import { openLive } from './live.mjs';
 import { hauntCue } from './haunt-cue.mjs';
 import { proposedKey } from './move-trace.mjs';
-import { createPlacementController } from './placement.mjs';
+import { createPlacementController, freshObservation } from './placement.mjs';
 import {
   newRound,
   beginPlay,
@@ -285,6 +285,7 @@ export async function registerStage(
   }
   function interrupt(r,message) {
     publicStatus=message;
+    r.stopDetail=message;
     nextChapterReady=false;
     continuation=null;
     if (r.startedAt) endLiveGame(r,null);
@@ -324,10 +325,10 @@ export async function registerStage(
       // Preserve the current game state while the last clean native frame
       // is verified. Reads already in flight can refer to a pre-stop view.
       activeTicket.settledFrom=now;
-      live.send({pause:true,settleCamera:true});
+      live.send({pause:true,settleCamera:true,chapterHandoff:true});
     }
     if (quiet && continuation && activeTicket.settledFrom && continuation.at>=activeTicket.settledFrom &&
-        continuation.steady && now-continuation.at<=4000 && !pendingWinner) {
+        continuation.steady && freshObservation(continuation,now,activeTicket.lastMotionAt) && !pendingWinner) {
       activeTicket.rotating=true;
       activeTicket.closeBy=now+35000;
       r.phase='handoff';
@@ -422,7 +423,11 @@ export async function registerStage(
                 if (prop) r.intent = { hauntId: prop.id, key: m.key, observed: m.observed, at: Date.now() };
               }
               if (m.navigationMoved && m.key === 'W') crossing.forwardAt = Date.now();
-              if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') placement?.moved();
+              if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') {
+                placement?.moved();
+                ticket.lastMotionAt = Date.now();
+                continuation = null;
+              }
               if (m.injected && r.phase === 'playing')
                 placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
               if (m.injectionDeferred && r.phase === 'playing') placement?.deferred(m.injectionDeferred, m.attempt, m.observed);
@@ -438,7 +443,7 @@ export async function registerStage(
                 if (r.chapters) {
                   const checkpoint=m.checkpoint && checkpointEligible(m.scene,m.trackingNavigationHeld) && Buffer.from(m.checkpoint,'base64');
                   continuation=validCheckpoint(checkpoint) && Number.isFinite(m.observedAt) && m.observedAt<=Date.now()
-                    ? {bytes:checkpoint,at:m.observedAt,steady:m.trackingPlacementReady===true} : null;
+                    ? {bytes:checkpoint,at:m.observedAt,received:Date.now(),steady:m.trackingPlacementReady===true} : null;
                 }
                 r.trackedFeet = m.scene.visible && m.scene.feetVisible !== false
                   ? [0, 1].map((i) => Math.round((m.scene.feet.left[i] + m.scene.feet.right[i]) / 2))

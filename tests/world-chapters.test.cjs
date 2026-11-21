@@ -382,3 +382,21 @@ test('camera tests advertise their configured duration and use a distinct receip
   assert.equal(state.cameraTestDurationMs,state.round.plannedDurationMs);
   assert.equal(h.providers[0].plannedDurationMs,state.round.plannedDurationMs);
 });
+
+test('a slow vision result can hand off only a stationary frame taken after the camera stopped',async t=>{
+  const h=await stage(t,{matchMs:600000,cutMs:55000,limitMs:90000});
+  const a=h.providers[0];h.frame(a,1);h.tick(55000);
+  assert.ok(a.commands.some(c=>c.chapterHandoff));
+  const observedAt=Date.now()+100;
+  h.tick(5200);
+  a.onMessage({scene,observed:1201,observedAt,trackingPlacementReady:true,trackingNavigationHeld:false,checkpoint:image(4).toString('base64')});
+  a.onMessage({cameraMoved:true});
+  h.tick(150);
+  assert.equal(h.current().phase,'playing','a corrective move invalidates the prior view');
+  const steadyAt=Date.now();
+  h.tick(5400);
+  a.onMessage({scene,observed:1451,observedAt:steadyAt,trackingPlacementReady:true,trackingNavigationHeld:false,checkpoint:image(5).toString('base64')});
+  h.tick(150);assert.equal(h.current().phase,'handoff');
+  a.close('completed');h.tick(150);
+  assert.deepEqual(h.providers[1].seed,image(5));
+});
