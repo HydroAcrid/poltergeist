@@ -50,10 +50,12 @@ textarea::placeholder{color:#8f857c}
 .msg:empty{display:none}
 .msg.bad{color:var(--bad)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
+#chips{display:grid;grid-template-columns:1fr 1fr}
 .chip{min-height:44px;padding:0 14px;border-radius:30px;background:transparent;border:1px solid var(--line);color:var(--paper);font-size:15px}
+#chips .chip{min-height:40px;padding:6px 10px;font-size:14px;line-height:1.2;text-align:center}
 #queue-pages{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .chip:active{background:var(--raised)}
-.chip.more{display:inline-flex;align-items:center;gap:6px;border-style:dashed;color:var(--amber);text-decoration:none;font-weight:600}
+.chip.more{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-style:dashed;color:var(--amber);text-decoration:none;font-weight:600}
 .send-row{justify-content:space-between;gap:10px}
 .btn.ghost{background:transparent;color:var(--paper);border:1px solid var(--line);display:inline-flex;align-items:center;gap:8px;padding:0 16px}
 .btn.ghost svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
