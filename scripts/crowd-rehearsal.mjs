@@ -182,7 +182,8 @@ async function inspectPhone(person) {
   if (person.name && person.name !== state.you.ghostName)
     issue("Assigned name changed");
   person.name = state.you.ghostName;
-  maxQueue = Math.max(maxQueue, state.waiting ? state.waiting.total + Number(!!state.queue[0]) : state.queue.length);
+  const queueSize = paged ? state.waiting.total + Number(state.queue.length > 0) : state.queue.length;
+  maxQueue = Math.max(maxQueue, queueSize);
   if (
     state.queue.some(
       (h) =>
