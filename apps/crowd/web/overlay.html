@@ -118,7 +118,7 @@ function render() {
   document.querySelector(".result")?.remove();
   if (phase === "result") {
     const r = el("div", "result");
-    r.append(el("div", "k", "Round over"), el("div", "h", (world?.fear ?? 0) >= 3 ? "👻 Audience wins: 3 scares" : "Round over"));
+    r.append(el("div", "k", "Round over"), el("div", "h", M.resultText(world)));
     document.body.append(r);
   }
 

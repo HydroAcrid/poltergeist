@@ -60,25 +60,33 @@ app.get("/rehearsal/state", async () => {
   const now = Date.now();
   const ep = world.current;
   const frac = ep ? Math.min(1, (now - ep.startedAt) / ep.maxDurationMs) : 0;
-  const props = [...injectedAt].map(([hauntId, at]) => ({
-    hauntId,
-    acked: at,
-    seen: now - at > 1500 ? at + 1500 : null,
+  // Same field conventions as World's real bodies (apps/crowd/test/fixtures/rehearsal-*.json):
+  // id/placedAt/acked/seen/inPath booleans, reactedAt 0 until it happens, response "flinch".
+  const props = [...injectedAt].map(([id, at]) => ({
+    id,
+    placedAt: at,
+    acked: true,
+    seen: now - at > 1500,
     inPath: now - at > 3000,
-    reactedAt: now - at > 5000 ? at + 5000 : null,
-    ...(now - at > 5000 ? { reaction: "Robot steps right around it" } : {}),
+    response: "flinch",
+    reactedAt: now - at > 5000 ? at + 5000 : 0,
   }));
   return {
     round: {
-      phase: ep ? "live" : "opening",
-      now,
+      phase: ep ? "playing" : "opening",
       deadline: ep ? ep.startedAt + ep.maxDurationMs : now + 24_000,
+      startedAt: ep ? ep.startedAt : 0,
       fear: Math.min(3, props.filter((p) => p.reactedAt).length),
-      trackedFeet: [740, Math.round(250 + frac * 550)],
-      trackedAt: now - 300,
-      observed: Math.round(frac * 1440),
       props,
+      winner: null,
+      finishedAt: 0,
+      live: false,
     },
+    trackedFeet: [740, Math.round(250 + frac * 550)],
+    trackedAt: now - 300,
+    observed: Math.round(frac * 1440),
+    queue: [],
+    now,
   };
 });
 

@@ -6,12 +6,12 @@ import * as M from "../web/overlay-model.js";
 const NOW = 1_800_000_000_000;
 const pub = (id: string, status: string, text: string, who: string) => ({ hauntId: id, status, displayName: who, moderated: { safe: true, text, tags: ["distractor"], model: "rules-only" }, votes: 0, seeded: false, createdAt: NOW });
 
-describe("normalizeRehearsal (provisional World shape)", () => {
+describe("normalizeRehearsal", () => {
   it("reads phase, deadline, fear, feet, observed time and prop stages", () => {
     const w = M.normalizeRehearsal({
       round: {
         phase: "live", deadline: NOW + 36_000, fear: 1,
-        trackedFeet: [740, 380], observed: { at: NOW - 500 },
+        trackedFeet: [740, 380], trackedAt: NOW - 500, observed: 2817,
         props: [{ hauntId: "ht_A", acked: true, seen: NOW - 2000, inPath: false, reactedAt: null, reaction: "Robot steps right around it" }],
       },
     });
@@ -105,5 +105,58 @@ describe("phase, clock and join", () => {
     expect(M.bigJoin("opening")).toBe(true);
     expect(M.bigJoin("result")).toBe(true);
     expect(M.bigJoin("live")).toBe(false);
+  });
+});
+
+describe("World's real /rehearsal/state bodies (test/fixtures/rehearsal-*.json)", () => {
+  const load = (f: string) => JSON.parse(require("node:fs").readFileSync(require("node:path").join(__dirname, "fixtures", f), "utf8"));
+
+  it("opening: phase, countdown to the opening deadline, World's queue as Up next, big join", () => {
+    const body = load("rehearsal-opening.json");
+    const w = M.normalizeRehearsal(body);
+    expect(w).toMatchObject({ phase: "opening", finished: false, fear: 0, serverNow: body.now, deadline: body.round.deadline, live: false });
+    expect(M.phaseOf(null, w)).toBe("opening");
+    expect(M.secondsLeft(null, w, body.now)).toBe(30);
+    expect(M.bigJoin(M.phaseOf(null, w))).toBe(true);
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "upnext", text: "A gust blows loose papers across the aisle", who: "Inky Fern" });
+  });
+
+  it("playing: reactedAt 0 is 'not yet', so a placed prop is only 'Sent to the hallway'", () => {
+    const body = load("rehearsal-playing.json");
+    const w = M.normalizeRehearsal(body);
+    expect(M.phaseOf(null, w)).toBe("live");
+    expect(w.props[0]).toMatchObject({ hauntId: "ht_01M7ZQ0D7XEXJ2KFTXE5KEMT0C", acked: 1795286944237, seen: undefined, inPath: undefined, reactedAt: undefined, reaction: undefined, text: "Paper storm", by: "Inky Fern" });
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "sent", label: "Sent to the hallway", text: "Paper storm", who: "Inky Fern" });
+    expect(M.cardSide(w, body.now)).toBeNull(); // no tracked feet in the fixture renderer → top-margin status
+  });
+
+  it("playing, once World sets reactedAt: shows the flinch as the reaction", () => {
+    const body = load("rehearsal-playing.json");
+    body.round.props[0].reactedAt = body.now - 200;
+    const w = M.normalizeRehearsal(body);
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "reacted", reaction: "Robot flinches" });
+  });
+
+  it("native: seen but off-path stays 'Seen', the card goes opposite the robot on the right, and it's finished", () => {
+    const body = load("rehearsal-native-selected.json");
+    const w = M.normalizeRehearsal(body);
+    expect(w.props[0]).toMatchObject({ acked: 0, seen: 0, inPath: undefined, reactedAt: undefined });
+    expect(M.pickCard({ hallway: [], queue: [] }, w)).toMatchObject({ stage: "seen", label: "Seen in the hallway", who: "Lucky Specter" });
+    expect(w.robotX).toBeCloseTo(0.879);
+    expect(M.cardSide(w, body.trackedAt + 500)).toBe("left");
+    expect(M.phaseOf(null, w)).toBe("result");
+  });
+
+  it("prefers Crowd's moderated text over World's copy when both have the haunting", () => {
+    const w = M.normalizeRehearsal(load("rehearsal-playing.json"));
+    const crowd = { hallway: [pub("ht_01M7ZQ0D7XEXJ2KFTXE5KEMT0C", "injected", "A gust blows loose papers across the aisle", "Inky Fern")], queue: [] };
+    expect(M.pickCard(crowd, w)).toMatchObject({ text: "A gust blows loose papers across the aisle" });
+  });
+
+  it("result headlines", () => {
+    expect(M.resultText({ winner: "robot" })).toBe("Robot escaped");
+    expect(M.resultText({ winner: "audience", reason: "fear", fear: 3 })).toBe("👻 Audience wins: 3 scares");
+    expect(M.resultText({ winner: "audience", reason: "timeout" })).toBe("Audience wins: time's up");
+    expect(M.resultText({ reason: "stream interrupted" })).toBe("Interrupted: no winner");
   });
 });
