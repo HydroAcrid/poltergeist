@@ -382,6 +382,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
               !p.reactedAt
             ) {
               p.reactedAt = at;
+              p.observedReaction = 'scare';
               round.fear++;
               round.lastReaction = { at, presentedAt: time, name: p.name, flinch: true };
             }

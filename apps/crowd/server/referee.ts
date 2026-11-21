@@ -24,7 +24,7 @@ export interface RefHaunt {
 }
 export interface RefereeInput {
   episode: Pick<Episode, "episodeId">;
-  ended: Pick<EpisodeEnded, "episodeId" | "reason" | "durationMs">;
+  ended: Pick<EpisodeEnded, "episodeId" | "reason" | "durationMs" | "hallway">;
   ticks: RefTick[];
   injected: RefInjected[];
   haunts: RefHaunt[];
@@ -68,6 +68,23 @@ const secs = (ms: number) => (ms / 1000).toFixed(1) + " s";
 export function ruleVerdict(input: RefereeInput, now: number): Verdict {
   const { ended } = input;
   const base = { episodeId: input.episode.episodeId, stage: "provisional" as const, overrodeRule: false, model: "rule", createdAt: now };
+
+  if (ended.hallway) {
+    const { reason, reactions } = ended.hallway;
+    const recorded = { ...base, hallway: ended.hallway, confidence: 1 };
+    const t = ended.durationMs;
+    if (reason === "exit")
+      return { ...recorded, outcome: "success", evidence: [{ t, note: "The robot reached the exit" }] };
+    if (reason === "interrupted")
+      return { ...recorded, outcome: "aborted", evidence: [{ t, note: "The hallway closed before a winner was determined" }] };
+    if (reason === "time")
+      return { ...recorded, outcome: "failure", failureT: t, blame: "agent", ruleBlame: "agent",
+        evidence: [{ t, note: "The timer expired before the robot reached the exit" }] };
+    const lastScare = reactions.filter(r => r.kind === "scare").sort((a, b) => b.at - a.at)[0];
+    if (lastScare)
+      return { ...recorded, outcome: "failure", failureT: t, blame: "adversary", ruleBlame: "adversary",
+        culpritHauntId: lastScare.hauntId, evidence: [{ t, note: "The robot reached the fear limit" }] };
+  }
 
   if (ended.reason === "success_claim") {
     const last = [...input.ticks].sort((a, b) => a.seq - b.seq).at(-1);

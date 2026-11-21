@@ -40,6 +40,14 @@ Live World captures save a framing report in the run’s `session.json`. It meas
 
 The host serves on loopback. Any event deployment or audience gateway should expose Courtney’s audience route separately from the host controls.
 
+## Match length and scoring
+
+Google lists “Up to 120 seconds per session” for Genie 4. After an interaction ends, its final frame can seed another interaction. Visual continuity depends on the new generation. [Model limits](https://aistudio.google.com/docs/models/genie-4#genie-4) · [Interaction guide](https://aistudio.google.com/docs/genie#limitations)
+
+The short live rehearsal starts its game clock on the first native frame. The hosted short-take setting was 32 seconds. For a multi-round show, keep the same World process running. Guests keep their assigned names, receipts and queued ideas. Each new round starts at zero fear. Three confirmed scares or an expired game clock award the round to the audience. Crossing the exit awards it to the robot. The scoreboard credits a separate scare to each idea that caused one. An observed sidestep appears in the feed.
+
+After setup, run `node scripts/rehearse-room-span.cjs` to exercise ten minutes of virtual game time on the real offline World, Brain and Crowd routes. The check follows one guest through a scare win, a dodge, an escape and a timeout. It verifies the scoreboard and the guest's receipt after the ten-minute mark.
+
 ## What failed in the wind-up penguin rehearsal
 
 On November 21, thirty virtual guests joined the same photo-seeded Genie round. Their phones delivered 37 private receipts, including seven revisions. Four ideas were selected. One reached Genie. The audience won on time with zero observed scares.

@@ -250,8 +250,8 @@ ol,ul{list-style:none;margin:0;padding:0}
     if (text != null) e.textContent = text;
     return e;
   }
-  const clock = (at) => {
-    const s = Math.max(0, Math.round((at - Date.now()) / 1000));
+  const duration = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
   };
 
@@ -407,8 +407,9 @@ ol,ul{list-style:none;margin:0;padding:0}
     // Where a waiting idea stands: carries over between rounds, about N rounds away.
     if (h.status === "queued") {
       const pos = state.waiting?.myPositions?.[h.hauntId] ?? (state.queue.findIndex((q) => q.hauntId === h.hauntId) + 1);
-      const per = state.slotsPerRound || 6;
-      if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
+      const per = state.slotsPerRound ?? 6;
+      if (per === 0) card.append(el("div", "why", "Waiting for the host to open a slot"));
+      else if (pos > 0 && !state.episodeActive) card.append(el("div", "why", pos <= per ? "Waiting for the next round" : "Waiting for the next round · about " + Math.ceil(pos / per) + " rounds away"));
       else if (pos > per) card.append(el("div", "why", "#" + pos + " in line · may carry over to the next round"));
     }
   }
@@ -457,13 +458,17 @@ ol,ul{list-style:none;margin:0;padding:0}
     }
   }
 
+  const clock = (at) => duration(at - Date.now());
+
   function renderPhase() {
     const ph = $("phase");
     ph.textContent = "";
     // Follow World's phase; never invent a countdown while World waits for the host.
     const lp = state.lobbyPhase;
     const ghosts = state.joined > 1 ? " · " + state.joined + " ghosts here" : "";
-    if (lp === "playing" || (!lp && state.episodeActive)) {
+    if (state.roundPausedRemainingMs != null) {
+      ph.append(el("span", "live", "The hallway is shifting"), " · ", el("b", "", duration(state.roundPausedRemainingMs)), " left · Keep sending ideas");
+    } else if (lp === "playing" || (!lp && state.episodeActive)) {
       ph.append(el("span", "live", "● Round " + (state.round ?? "") + " live"));
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
     } else if (lp === "before-photo") {

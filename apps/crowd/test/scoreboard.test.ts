@@ -45,6 +45,17 @@ describe("buildScoreboard", () => {
     expect(board.topTags[0]).toEqual({ tag: "visibility", injected: 1, landed: 1 });
   });
 
+  it("does not invent a reaction to a hallway idea that was only injected", () => {
+    const result = buildScoreboard({
+      haunts: [peel], injected: [{ hauntId: peel.hauntId, t: 8000, ok: true, episodeId: ep1 }],
+      verdicts: [verdict(ep1, { outcome: "success", failureT: undefined, hallway: { reason: "exit", reactions: [] } })],
+      policyVersion: "v1", now: NOW,
+    });
+    expect(result.attacks.landed).toBe(0);
+    expect(result.hallwayWins).toEqual({ robot: 1, audience: 0 });
+    expect(result.killFeed).toEqual([]);
+  });
+
   it("writes display-safe kill feed lines, newest first", () => {
     expect(board.killFeed.map((k) => k.text)).toEqual([
       "👻 world glitch: Genie forgot the target",

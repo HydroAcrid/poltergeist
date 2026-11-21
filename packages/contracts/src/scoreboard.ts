@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { EpochMs, HauntTag } from "./common.js";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 
 const Count = z.number().int().nonnegative();
 
@@ -12,6 +12,7 @@ export const Scoreboard = z
     rounds: Count,
     episodes: Count,
     successes: Count,
+    hallwayWins: z.object({ robot: Count, audience: Count }).strict().optional(),
     attacks: z.object({ submitted: Count, approved: Count, injected: Count, landed: Count }).strict(),
     uniqueAttackers: Count,
     topAttackers: z.array(z.object({ displayName: z.string().min(1).max(16), landed: Count }).strict()).max(5),

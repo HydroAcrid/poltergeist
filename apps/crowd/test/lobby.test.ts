@@ -2,6 +2,7 @@
 // projector; the phone follows World's lobby phase instead of an invented countdown.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CrowdState } from "@poltergeist/contracts/haunt.js";
+import type { MatchClock } from "../server/crowd.js";
 import { buildTestHub, type TestHub } from "./hub.js";
 
 let hub: TestHub;
@@ -71,6 +72,71 @@ describe("phone page follows World's phase", () => {
     const next = await hub.app.inject({ ...args, headers: { ...args.headers, "if-none-match": String(initial.headers.etag) } });
     expect(next.statusCode).toBe(200);
     expect(next.json()).toMatchObject({ lobbyPhase: "lobby" });
+  });
+
+  it("holds the same guest, clock and queued idea across a provider handoff, then dispatches on match time", async () => {
+    await hub.close();
+    let clock: MatchClock | undefined;
+    hub = await buildTestHub({ matchClock: () => clock, config: { seededFallback: false }, lobbyPhase: () => "playing" });
+    const a = await guest();
+    const me = (await a.poll()).you;
+    const durationMs = 600_000;
+    const startedAt = hub.clock.now();
+    const id = hub.world.startEpisode({ maxDurationMs: durationMs });
+    clock = { id, phase: "playing", durationMs, remainingMs: durationMs, deadline: startedAt + durationMs };
+    expect(await a.poll()).toMatchObject({ episodeActive: true, roundEndsAt: startedAt + durationMs, slotsPerRound: 50 });
+
+    hub.clock.advance(597_000);
+    clock = { ...clock, phase: "handoff", remainingMs: 3_000, deadline: 0 };
+    const submitted = await hub.app.inject({ method: "POST", url: "/api/crowd/haunt", headers: { cookie: a.cookie }, payload: { preset: "fog" } });
+    expect(submitted.statusCode).toBe(200);
+    await hub.crowd.whenIdle();
+    hub.clock.advance(30_000); // beyond the initial deadline, including the stale-episode grace
+    hub.crowd.tick();
+    const paused = await a.poll();
+    expect(paused).toMatchObject({ round: 1, episodeActive: true, roundPausedRemainingMs: 3_000, you: me });
+    expect(paused.roundEndsAt).toBeUndefined();
+    expect(paused.mine[0]?.status).toBe("queued");
+    expect(hub.dispatched()).toHaveLength(0);
+    expect(hub.crowd.scoreboard().rounds).toBe(0);
+
+    clock = { ...clock, phase: "playing", deadline: hub.clock.now() + 3_000 };
+    hub.crowd.tick();
+    await hub.world.flush();
+    const resumed = await a.poll();
+    expect(resumed).toMatchObject({ round: 1, episodeActive: true, roundEndsAt: clock.deadline, you: me });
+    expect(resumed.roundPausedRemainingMs).toBeUndefined();
+    expect(resumed.mine[0]).toMatchObject({ hauntId: submitted.json().hauntId, status: "injected", episodeId: id });
+    expect(hub.crowd.scoreboard().rounds).toBe(0);
+    hub.world.endEpisode();
+    expect(hub.crowd.scoreboard().rounds).toBe(1);
+  });
+
+  it("uses active play time for dispatch slots throughout a long match", async () => {
+    await hub.close();
+    let clock: MatchClock | undefined;
+    hub = await buildTestHub({ matchClock: () => clock, config: { seededFallback: false } });
+    const startedAt = hub.clock.now();
+    const id = hub.world.startEpisode({ maxDurationMs: 600_000 });
+    clock = { id, phase: "playing", durationMs: 600_000, remainingMs: 600_000, deadline: startedAt + 600_000 };
+    for (let i = 0; i < 8; i++) {
+      const a = await guest();
+      await hub.app.inject({ method: "POST", url: "/api/crowd/haunt", headers: { cookie: a.cookie }, payload: { preset: "fog" } });
+    }
+    hub.clock.advance(8_000);
+    hub.crowd.tick();
+    for (let i = 0; i < 5; i++) { hub.clock.advance(12_000); hub.crowd.tick(); }
+    expect(hub.dispatched()).toHaveLength(6);
+    clock = { ...clock, phase: "handoff", remainingMs: clock.deadline - hub.clock.now(), deadline: 0 };
+    hub.clock.advance(100_000);
+    hub.crowd.tick();
+    clock = { ...clock, phase: "playing", deadline: hub.clock.now() + clock.remainingMs };
+    hub.crowd.tick();
+    expect(hub.dispatched()).toHaveLength(6);
+    hub.clock.advance(12_000);
+    hub.crowd.tick();
+    expect(hub.dispatched()).toHaveLength(7);
+    expect(hub.dispatched().every((d) => (d as { episodeId: string }).episodeId === id)).toBe(true);
   });
 
   it("marks guest polls and displays the phase supplied by the host", async () => {

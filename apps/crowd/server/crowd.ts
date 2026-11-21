@@ -20,7 +20,7 @@ export interface CrowdConfig {
   dailyMax: number; // submissions per device per day
   firstDispatchMs: number; // first slot at t ≥ this
   intervalMs: number; // PG_HAUNT_INTERVAL_MS
-  maxPerEpisode: number; // PG_HAUNT_MAX_PER_EPISODE
+  maxPerEpisode: number | null; // explicit cap, otherwise six short-round slots or the sustained match cadence
   seededFallback: boolean;
   roundEveryMs: number | null; // null when the host starts each round
   endGraceMs: number; // past startedAt + maxDurationMs + this with no episode.ended → treat the round as interrupted
@@ -31,7 +31,7 @@ export const DEFAULT_CONFIG: CrowdConfig = {
   dailyMax: 30,
   firstDispatchMs: 8_000,
   intervalMs: 12_000,
-  maxPerEpisode: 6,
+  maxPerEpisode: null,
   seededFallback: true,
   roundEveryMs: 15 * 60_000,
   endGraceMs: 5_000,
@@ -45,7 +45,7 @@ export function configFromEnv(env: Record<string, string | undefined>): CrowdCon
   return {
     ...DEFAULT_CONFIG,
     intervalMs: num("PG_HAUNT_INTERVAL_MS", DEFAULT_CONFIG.intervalMs),
-    maxPerEpisode: num("PG_HAUNT_MAX_PER_EPISODE", DEFAULT_CONFIG.maxPerEpisode),
+    maxPerEpisode: env.PG_HAUNT_MAX_PER_EPISODE ? Math.floor(num("PG_HAUNT_MAX_PER_EPISODE", 6)) : null,
     rateMs: num("PG_HAUNT_RATE_MS", DEFAULT_CONFIG.rateMs),
     dailyMax: num("PG_HAUNT_DAILY_MAX", DEFAULT_CONFIG.dailyMax),
     seededFallback: env.PG_HAUNT_SEEDED_FALLBACK !== "0",
@@ -65,6 +65,15 @@ interface ActiveEpisode {
   nextSlotT: number;
 }
 
+/** Same game clock World uses while a live match crosses provider interactions. */
+export interface MatchClock {
+  id: string;
+  phase: "playing" | "handoff";
+  durationMs: number;
+  remainingMs: number;
+  deadline: number;
+}
+
 export interface CrowdDeps {
   bus: Bus;
   moderation: ModerationAdapter;
@@ -76,6 +85,7 @@ export interface CrowdDeps {
   /** Latest scene for the conductor (World's rehearsal state today). Missing or stale → FIFO. */
   scene?: () => SceneObservation | undefined;
   lobbyPhase?: () => CrowdState["lobbyPhase"];
+  matchClock?: () => MatchClock | undefined;
 }
 
 /** Display-safe copy. `forAuthor` keeps private moderation feedback. */
@@ -270,7 +280,8 @@ export class CrowdService {
   }
 
   state(deviceId: string, requestedPage?: number): CrowdState {
-    this.expireStaleRound();
+    const clock = this.matchClock();
+    this.expireStaleRound(clock);
     const mine = [...this.haunts.values()]
       .filter((h) => h.deviceId === deviceId)
       .sort((a, b) => fifo(b, a))
@@ -297,11 +308,12 @@ export class CrowdService {
       ...(waiting ? { waiting, waitingReasons: reasons } : reasons.length ? { waiting: reasons } : {}),
       episodeActive: this.active !== null,
       ...(this.active?.round !== undefined || this.lastRound !== undefined ? { round: this.active?.round ?? this.lastRound } : {}),
-      ...(this.active ? { roundEndsAt: this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
+      ...(clock?.phase === "handoff" ? { roundPausedRemainingMs: clock.remainingMs }
+        : this.active ? { roundEndsAt: clock?.deadline ?? this.active.endsAt } : { nextRoundAt: this.nextRoundAt() }),
       you: { ghostName: this.ghostName(deviceId) },
       mine,
       queue: queue.map((h) => toPublic(h)),
-      slotsPerRound: this.config.maxPerEpisode,
+      slotsPerRound: this.slotLimit(clock),
       joined: this.joined().here,
       lobbyPhase: this.deps.lobbyPhase?.(),
       ...(this.reserved ? { upNext: { ...this.reserved } } : {}),
@@ -328,7 +340,8 @@ export class CrowdService {
    * runs past its deadline plus a grace period is treated as interrupted: no more
    * dispatches, and phones stop showing it as live. Queued ideas wait for the next round.
    */
-  private expireStaleRound(): void {
+  private expireStaleRound(clock: MatchClock | undefined): void {
+    if (clock) return; // This matched, in-process World owns the end signal, including while its game clock is frozen.
     const ep = this.active;
     if (ep && this.now() >= ep.endsAt + this.config.endGraceMs) {
       this.deps.log?.("round passed its deadline without episode.ended; treating it as interrupted", { episodeId: ep.episodeId });
@@ -336,12 +349,28 @@ export class CrowdService {
     }
   }
 
+  private matchClock(): MatchClock | undefined {
+    if (!this.active) return undefined;
+    const clock = this.deps.matchClock?.();
+    return clock?.id === this.active.episodeId ? clock : undefined;
+  }
+
+  private slotLimit(clock: MatchClock | undefined): number {
+    if (this.config.maxPerEpisode !== null) return this.config.maxPerEpisode;
+    if (!clock) return 6;
+    const available = clock.durationMs - this.config.firstDispatchMs;
+    return Math.max(0, Math.ceil(available / Math.max(1, this.config.intervalMs)));
+  }
+
   tick(): void {
-    this.expireStaleRound();
+    const clock = this.matchClock();
+    this.expireStaleRound(clock);
+    if (clock?.phase === "handoff") return;
     this.reserve();
     const ep = this.active;
-    if (!ep || ep.dispatched >= this.config.maxPerEpisode) return;
-    const t = this.now() - ep.startedAt;
+    if (!ep || ep.dispatched >= this.slotLimit(clock)) return;
+    if (clock && this.now() >= clock.deadline) return;
+    const t = clock ? clock.durationMs - (clock.deadline - this.now()) : this.now() - ep.startedAt;
     if (t < ep.nextSlotT) return;
 
     // Re-check the reserved pick's hard rules right before sending; if it's now impossible,

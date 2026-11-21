@@ -18,7 +18,7 @@ export const Episode = z.object({
   policyVersion: z.string().min(1),
   round: z.number().int().optional(),
   startedAt: EpochMs,
-  maxDurationMs: Ms.max(90_000),
+  maxDurationMs: Ms,
 });
 export type Episode = z.infer<typeof Episode>;
 

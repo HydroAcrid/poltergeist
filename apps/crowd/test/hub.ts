@@ -17,7 +17,7 @@ export interface TestHub {
   close: () => Promise<void>;
 }
 
-export async function buildTestHub(opts: { scene?: () => SceneObservation | undefined; config?: Partial<CrowdConfig>; lobbyPhase?: CrowdDeps["lobbyPhase"] } = {}): Promise<TestHub> {
+export async function buildTestHub(opts: { scene?: () => SceneObservation | undefined; config?: Partial<CrowdConfig>; lobbyPhase?: CrowdDeps["lobbyPhase"]; matchClock?: CrowdDeps["matchClock"] } = {}): Promise<TestHub> {
   let t = new Date("2026-11-21T14:00:00").getTime();
   const clock = { now: () => t, advance: (ms: number) => void (t += ms) };
   const bus = new MemoryBus(clock.now);
@@ -25,7 +25,7 @@ export async function buildTestHub(opts: { scene?: () => SceneObservation | unde
   const app = Fastify();
   const operatorToken = "test-operator-token";
   let crowd!: CrowdService;
-  const mod = createCrowdModule({ now: clock.now, autoTick: false, scene: opts.scene, config: opts.config, lobbyPhase: opts.lobbyPhase, onService: (s) => (crowd = s) });
+  const mod = createCrowdModule({ now: clock.now, autoTick: false, scene: opts.scene, config: opts.config, lobbyPhase: opts.lobbyPhase, matchClock: opts.matchClock, onService: (s) => (crowd = s) });
   await mod.register(app, {
     bus,
     dataDir: "./data-test",

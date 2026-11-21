@@ -18,6 +18,7 @@ export interface CrowdModuleOptions {
   /** Scene for the conductor; defaults to polling PG_CROWD_SCENE_URL (World's /rehearsal/state) if set. */
   scene?: () => SceneObservation | undefined;
   lobbyPhase?: CrowdDeps["lobbyPhase"];
+  matchClock?: CrowdDeps["matchClock"];
 }
 
 function pickModeration(ctx: HubContext): ModerationAdapter {
@@ -40,6 +41,7 @@ export function createCrowdModule(opts: CrowdModuleOptions = {}): LaneModule {
       if (!opts.scene && sceneUrl) sceneSource = createRehearsalSceneSource(sceneUrl, { now: opts.now });
       service = new CrowdService({
         lobbyPhase: opts.lobbyPhase,
+        matchClock: opts.matchClock,
         scene: opts.scene ?? (sceneSource ? () => sceneSource!.scene() : undefined),
         bus: ctx.bus,
         moderation: pickModeration(ctx),

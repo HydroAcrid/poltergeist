@@ -224,7 +224,13 @@ export async function registerStage(
       {
         episodeId: r.id,
         endedAt: r.finishedAt,
-        durationMs: r.finishedAt - r.startedAt,
+        hallway: {
+          reason: r.reason,
+          reactions: r.props.filter(p => p.observedReaction && p.reactedAt).map(p => ({
+            hauntId: p.id, at: p.reactedAt, kind: p.observedReaction,
+          })),
+        },
+        durationMs: r.chapters ? r.durationMs-r.remainingMs : r.finishedAt-r.startedAt,
         reason:
           { time: 'timeout', exit: 'success_claim', fear: 'operator_stop' }[
             r.reason

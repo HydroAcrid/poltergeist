@@ -109,6 +109,7 @@ export function applyDecision(round, observation, decision, now) {
   ) {
     const flinch = prop.response === 'flinch';
     prop.reactedAt = now;
+    prop.observedReaction = flinch ? 'scare' : 'sidestep';
     if (flinch) round.fear++;
     else
       round.lane = Math.max(
