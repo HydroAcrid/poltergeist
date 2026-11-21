@@ -19,7 +19,7 @@ const requireCrowd = createRequire(
 const app = requireCrowd('fastify')();
 const bus = new MemoryBus();
 const crowd = createCrowdModule({
-  config: { firstDispatchMs: 8000, seededFallback: false },
+  config: { firstDispatchMs: 1200, seededFallback: false },
 });
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = Number(process.env.PG_STAGE_PORT || 8914);

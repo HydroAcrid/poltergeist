@@ -15,9 +15,18 @@ export function fromTrailView(scene) {
     const row=y-origin[0],col=x-origin[1];
     return [clamp(800-(row*dy+col*dx)),clamp(500+row*dx-col*dy)];
   }
+  function obstacle(o) {
+    const foot = project(o.point);
+    if (!o.box) return { point: foot };
+    // Brain measures obstruction width at the floor. Rotate the contact edge along
+    // with its centre so a wide obstacle can't disappear beside the path.
+    const left = project([o.box[2], o.box[1]])[1];
+    const right = project([o.box[2], o.box[3]])[1];
+    return { point: foot, box: [foot[0], Math.min(left, right), foot[0], Math.max(left, right)] };
+  }
   return {...scene,feet:{left:project(scene.feet.left),right:project(scene.feet.right)},
     goal:scene.goal?project(scene.goal):scene.rightFloorVisible?[350,500]:undefined,
-    obstacles:scene.obstacles.map(o=>({point:project(o.point)}))};
+    obstacles:scene.obstacles.map(obstacle)};
 }
 // Genie trains movement and camera orientation as different native controls.
 export function trailInput(choice) {

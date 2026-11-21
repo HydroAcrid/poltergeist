@@ -184,23 +184,29 @@ export async function registerStage(
       placement?.add(h.hauntId, h.text, ghosts.get(h.hauntId));
       return;
     }
-    const ok = place(round, h, Date.now());
-    if (ok) round.props.at(-1).by = ghosts.get(h.hauntId);
+    const upcoming = round.upcoming ||= [];
+    if (!upcoming.some((p) => p.id === h.hauntId) && !round.props.some((p) => p.id === h.hauntId)) {
+      upcoming.push({ id: h.hauntId, name: h.text, by: ghosts.get(h.hauntId), selectedAt: Date.now() });
+    }
+  });
+  function placeOffline(r, item, now) {
+    const ok = place(r, {hauntId: item.id, text: item.name}, now);
+    if (ok) Object.assign(r.props.at(-1), { by: item.by, selectedAt: item.selectedAt, sentAt: now, seenAt: now, seen: true, inPath: true });
     else publicStatus = 'That idea could not be staged in this rehearsal.';
     bus.publish(
       'haunt.injected',
       'world',
       {
-        hauntId: h.hauntId,
-        episodeId: round.id,
-        t: Date.now() - round.startedAt,
+        hauntId: item.id,
+        episodeId: r.id,
+        t: now - r.startedAt,
         ok,
         simulated: true,
         ...(!ok ? { error: 'Unsupported rehearsal effect' } : {}),
       },
-      round.id,
+      r.id,
     );
-  });
+  }
   function notifyEnd(r) {
     bus.publish(
       'episode.ended',
@@ -224,6 +230,7 @@ export async function registerStage(
       now = Date.now();
     if (!r || r.phase === 'ended') return;
     if (r.live) {
+      if (r.phase === 'playing') placement?.tick(now);
       if (r.phase === 'opening' && now >= r.deadline) {
         r.phase = 'preparing';
         try {
@@ -245,7 +252,7 @@ export async function registerStage(
                 r.providerDeadline = m.expiresAt;
                 if (r.phase === 'playing') r.deadline = m.expiresAt;
               }
-              if (m.cameraMoved && r.phase === 'playing') placement?.moved();
+              if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') placement?.moved();
               if (m.injected && r.phase === 'playing')
                 placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
               if (m.injectionFailed && r.phase === 'playing') placement?.failed(m.injectionFailed, m.attempt ?? 1);
@@ -272,11 +279,7 @@ export async function registerStage(
                 } else if (placement?.navigationPaused()) {
                   r.action = 'Assessing the path';
                 } else if (decision.action.key !== 'NOOP') {
-                  placement?.moved();
-                  live.send({
-                    key: decision.action.key,
-                    ms: decision.action.holdMs,
-                  });
+                  live.send(placement.characterCommand(decision));
                 }
               }
               if (m.observationFailed)
@@ -344,6 +347,9 @@ export async function registerStage(
       finish(r, 'audience', 'time', now);
       notifyEnd(r);
       return;
+    }
+    if (r.upcoming?.length && now - r.upcoming[0].selectedAt >= 1800) {
+      placeOffline(r, r.upcoming.shift(), now);
     }
     if (tickPending || now < nextStep) return;
     tickPending = true;
@@ -452,7 +458,7 @@ export async function registerStage(
           hauntId:prop.id, episodeId:r.id, t:Date.now()-r.startedAt, ok, simulated:false,
           ...(!ok ? {error:'The haunting could not be placed in the visible walking lane.'} : {}),
         },r.id);
-      });
+      }, { cueLeadMs: 1800 });
     }
     return { id: round.id, openingMs };
   });
@@ -526,6 +532,7 @@ export async function registerStage(
     ['/stage.js', 'stage.js', 'text/javascript'],
     ['/scene.js', 'scene.js', 'text/javascript'],
     ['/look.mjs', 'look.mjs', 'text/javascript'],
+    ['/haunt-cue.mjs', 'haunt-cue.mjs', 'text/javascript'],
     ['/veil.mjs', 'veil.mjs', 'text/javascript'],
     ['/photo.js', 'photo.mjs', 'text/javascript'],
     ['/phone.js', 'phone.js', 'text/javascript'],

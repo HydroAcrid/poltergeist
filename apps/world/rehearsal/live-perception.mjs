@@ -15,7 +15,7 @@ export async function inspectRoom(ai, image, signal) {
         parts: [
           { inlineData: { mimeType: 'image/jpeg', data: image } },
           {
-            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return each boot touching the floor and a tight head-to-boots bodyBox [top,left,bottom,right]. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. The robot is filmed from a trailing diagonal chase camera. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
+            text: 'Locate the small flashlight robot and the passable signed exit in this image. Coordinates are [y,x] integers 0–1000. Return each boot touching the floor and a tight head-to-boots bodyBox [top,left,bottom,right]. goal is the centre of the doorway at FLOOR level. If the robot or goal is hidden, say so. The robot is filmed from a trailing diagonal chase camera. If visible, give ahead as a floor point one or two strides in front of the robot in the direction its body and flashlight face. Set rightFloorVisible only if the next few steps of its floor lane on the RIGHT are in view. List clearly visible floor obstacles, furniture and people ahead, plus localized visible effects crossing the lane such as a swirl of papers or a bank of fog. Give each a descriptive common name and bounds [top,left,bottom,right]. For each obstacle mark its relation to the robot: crossing for a moving airborne effect visibly intersecting the next step or the body’s forward path, noticeable for a distinct eye-catching movement beside the robot within its field of view, otherwise ordinary. Stationary room furniture is ordinary. Only list what is visible. Report stumbling only for an actual visible loss of balance. Use startled only for a clearly visible recoil or both boots making a short hop. A pause, a normal walk or a turn is upright. Report threat as startling only for a clearly visible sudden alarming motion or threatening obstacle directly on the next footsteps. An ordinary chair is ordinary. Use unclear if uncertain. Do not infer a scare from an obstacle.',
           },
         ],
       },
@@ -47,6 +47,7 @@ export async function inspectRoom(ai, image, signal) {
               type: 'object',
               properties: {
                 label: { type: 'string' },
+                relation: { type: 'string', enum: ['crossing', 'noticeable', 'ordinary'] },
                 box: {
                   type: 'array',
                   items: { type: 'integer' },
@@ -54,7 +55,7 @@ export async function inspectRoom(ai, image, signal) {
                   maxItems: 4,
                 },
               },
-              required: ['label', 'box'],
+              required: ['label', 'box', 'relation'],
             },
           },
         },
@@ -96,7 +97,8 @@ export async function inspectRoom(ai, image, signal) {
       .filter(
         (o) => valid(o.box, 4) && o.box[0] <= o.box[2] && o.box[1] <= o.box[3],
       )
-      .map(({ label, box }) => ({
+      .map(({ label, box, relation }) => ({
+        relation,
         label: String(label).slice(0, 30),
         box,
         point: [box[2], Math.round((box[1] + box[3]) / 2)],

@@ -1,3 +1,4 @@
+import { hauntCue } from './haunt-cue.mjs';
 import { createScene } from './scene.js';
 import { readPhoto, toJpeg } from './photo.js';
 const el = (id) => document.getElementById(id);
@@ -14,10 +15,7 @@ let state,
   connected = false,
   liveId = '',
   lastBusy;
-let event,
-  observed = new Set(),
-  previousRound = '',
-  lastQueue = '',
+let lastQueue = '',
   previousCaption = '';
 const set = (id, text) => {
   if (el(id).textContent !== text) el(id).textContent = text;
@@ -90,31 +88,6 @@ function controls() {
     lastBusy = busy;
   }
 }
-function note(key, by, text, at) {
-  if (observed.has(key)) return;
-  observed.add(key);
-  event = { by: by || 'Haunting', text, until: at + 3200 };
-}
-function events(r, at) {
-  if (r?.id !== previousRound) {
-    previousRound = r?.id;
-    observed = new Set();
-    event = null;
-  }
-  if (r?.phase !== 'playing') return;
-  const effect = r.props.at(-1);
-  if (effect && (effect.seen || !r.live))
-    note(effect.id + ':visible', effect.by, effect.name, at);
-  if (r.lastReaction) {
-    const reaction = r.lastReaction;
-    note(
-      'react:' + reaction.at,
-      effect?.by,
-      reaction.flinch ? 'The robot flinched.' : 'The robot stepped aside.',
-      at,
-    );
-  }
-}
 async function sync() {
   const res = await fetch('/rehearsal/state', { cache: 'no-store' });
   if (!res.ok) throw Error();
@@ -131,7 +104,7 @@ async function sync() {
   state = s;
   connected = true;
   queue(s);
-  events(s.round, s.now);
+
   const r = s.round;
   if (r?.live && r.phase === 'playing' && liveId !== r.id) {
     liveId = r.id;
@@ -167,7 +140,9 @@ function paint() {
       label = 'Starts in',
       clock = '0:30',
       cue = '',
-      caption = '';
+      caption = '',
+      by = '',
+      card = null;
     if (r) {
       const sec = Math.max(0, Math.ceil((r.deadline - now) / 1000)),
         elapsed = (now - r.openedAt) / 1000;
@@ -186,11 +161,13 @@ function paint() {
         phase = r.live ? (worldVisible ? 'Live · Genie 4' : 'Opening the hallway') : 'Round in play';
         clock = time(sec);
         label = 'Time left';
-        if (r.live && !worldVisible) {
-          if(now-r.startedAt>4500)caption = 'Opening the hallway…';
-        } else if (event && event.until > now) {
-          cue = event.by;
-          caption = event.text;
+        card = hauntCue(r, now);
+        if (card) {
+          cue = card.label;
+          caption = card.text;
+          by = card.by || '';
+        } else if (r.live && !worldVisible && now-r.startedAt > 4500) {
+          caption = 'Opening the hallway…';
         }
       } else {
         phase =
@@ -218,16 +195,23 @@ function paint() {
     if (!connected) {
       cue = '';
       caption = 'Reconnecting…';
+      card = null;
+      by = '';
     }
     set('phase', phase);
     set('timer-label', label);
     set('clock', clock);
     set('cue', cue);
     set('caption', caption);
+    set('ghost-by', by);
+    const story = el('story');
+    story.classList.toggle('haunt-card', !!card);
+    story.classList.toggle('on-left', !!card && r?.trackedAt > now - 5000 && r.trackedBody?.[1] + r.trackedBody?.[3] > 1040);
     el('story').hidden = !caption;
-    if (caption !== previousCaption) {
-      set('announce', caption ? cue + ' ' + caption : '');
-      previousCaption = caption;
+    const announcement = [cue, caption, by].filter(Boolean).join('. ');
+    if (announcement !== previousCaption) {
+      set('announce', announcement);
+      previousCaption = announcement;
     }
     const fear = r?.fear || 0,
       fearMeter = document.querySelector('.fear');
