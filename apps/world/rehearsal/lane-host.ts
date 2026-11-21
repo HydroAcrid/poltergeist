@@ -79,7 +79,7 @@ const currentRound = await registerStage(app, {
     process.env.PG_BRAIN_URL || `http://127.0.0.1:${port}/api/brain/tick`,
 });
 const crowd = createCrowdModule({
-  config: { firstDispatchMs: 1200, seededFallback: false },
+  config: { firstDispatchMs: 1200, seededFallback: false, roundEveryMs: null },
   scene: process.env.PG_CROWD_SCENE_URL ? undefined : () => sceneFromRehearsal(currentRound(), Date.now()),
 });
 await crowd.register(app, {

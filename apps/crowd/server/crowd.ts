@@ -22,7 +22,7 @@ export interface CrowdConfig {
   intervalMs: number; // PG_HAUNT_INTERVAL_MS
   maxPerEpisode: number; // PG_HAUNT_MAX_PER_EPISODE
   seededFallback: boolean;
-  roundEveryMs: number; // public rounds every 15 min (:00 :15 :30 :45)
+  roundEveryMs: number | null; // null when the host starts each round
   endGraceMs: number; // past startedAt + maxDurationMs + this with no episode.ended → treat the round as interrupted
 }
 
@@ -296,8 +296,9 @@ export class CrowdService {
     return [...this.haunts.values()].sort((a, b) => fifo(b, a));
   }
 
-  private nextRoundAt(): number {
+  private nextRoundAt(): number | undefined {
     const every = this.config.roundEveryMs;
+    if (every === null) return undefined;
     return Math.ceil((this.now() + 1) / every) * every;
   }
 

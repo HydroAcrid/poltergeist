@@ -249,8 +249,8 @@ function paint() {
     }
     if (worldVisible && canvas.dataset.played !== r.id) canvas.dataset.played = r.id;
     let phase = 'Before the round',
-      label = 'Starts in',
-      clock = '0:30',
+      label = '',
+      clock = '',
       cue = '',
       caption = '',
       by = '',
@@ -260,6 +260,7 @@ function paint() {
         elapsed = (now - r.openedAt) / 1000;
       if (r.phase === 'opening') {
         phase = 'Ghosts can submit';
+        label = 'Starts in';
         clock = time(sec);
         if (elapsed >= 12 && elapsed < 16) {
           cue = '';
@@ -312,6 +313,7 @@ function paint() {
       by = '';
     }
     set('phase', phase);
+    el('round-clock').hidden = !r;
     set('timer-label', label);
     set('clock', clock);
     set('cue', cue);

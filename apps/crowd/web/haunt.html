@@ -455,6 +455,8 @@ ol,ul{list-style:none;margin:0;padding:0}
       if (state.roundEndsAt) ph.append(" · ", el("b", "", clock(state.roundEndsAt)), " left");
     } else if (state.nextRoundAt) {
       ph.append("Next round in ", el("b", "", clock(state.nextRoundAt)));
+    } else if (state.you) {
+      ph.textContent = "Waiting for the host";
     }
   }
 

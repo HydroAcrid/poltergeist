@@ -259,6 +259,20 @@ describe("scheduler and fake World", () => {
     expect(after.round).toBe(1);
   });
 
+  it("only publishes a clock during play in a host-started room", async () => {
+    await hub.close();
+    hub = await buildTestHub({ config: { roundEveryMs: null } });
+    const a = await phone();
+    expect(await a.state()).not.toHaveProperty("nextRoundAt");
+    const startedAt = hub.clock.now();
+    hub.world.startEpisode({ maxDurationMs: 60_000 });
+    expect(await a.state()).toMatchObject({ episodeActive: true, roundEndsAt: startedAt + 60_000 });
+    hub.world.endEpisode();
+    const after = await a.state();
+    expect(after).not.toHaveProperty("roundEndsAt");
+    expect(after).not.toHaveProperty("nextRoundAt");
+  });
+
   it("treats a round that runs past its deadline with no episode.ended as over (interrupted, no winner)", async () => {
     const a = await phone();
     await a.submit({ text: "fog lol" });
