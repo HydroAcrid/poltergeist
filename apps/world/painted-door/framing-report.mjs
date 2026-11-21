@@ -11,11 +11,14 @@ export function assessFraming(events, totalFrames) {
   const result = {status: 'insufficient', samples: samples.length, firstHeight: null, lastHeight: null, firstWidth:null, lastWidth:null, issues: []};
   let priorFrame = 0;
   let incomplete = samples.length < 3 || !totalFrames;
-  for (const {scene, observed} of samples) {
+  for (const {scene, observed, tracking} of samples) {
     // Frames are 24 fps. A gap longer than four seconds leaves this stretch unverified.
     if (observed <= priorFrame || observed - priorFrame > 96) incomplete = true;
     priorFrame = observed;
     const box = scene.bodyBox;
+    if (scene.playerCount > 1) result.issues.push({frame:observed,faults:['multiple players']});
+    if (scene.shoulderView === 'other') result.issues.push({frame:observed,faults:['camera left the rear-right view']});
+    if (scene.playerCount !== 1 || scene.playerMatch !== true || scene.shoulderView !== 'rear-right' || tracking?.held) incomplete = true;
     if (!scene.visible || !validBodyBox(box)) {
       incomplete = true;
       continue;

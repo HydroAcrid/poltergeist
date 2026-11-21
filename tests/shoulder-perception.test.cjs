@@ -3,16 +3,21 @@ const assert = require('node:assert/strict');
 
 test('ambiguous player identity holds navigation even when the visible box looks valid', async () => {
   const { inspectRoom } = await import('../apps/world/rehearsal/live-perception.mjs');
-  async function see(playerCount) {
+  async function see(playerCount,playerMatch=true) {
     const scene = {
-      playerCount, robotVisible: true, feetVisible: false, left: [0,0], right: [0,0],
+      playerCount, playerMatch, shoulderView:'rear-right', robotVisible: true, feetVisible: false, left: [0,0], right: [0,0],
       upperBodyBox: [285,45,872,375], bodyBox: [280,40,1000,420], obstacles: [],
     };
-    return inspectRoom({models: {generateContent: async () => ({text: JSON.stringify(scene)})}}, '');
+    return inspectRoom({models: {generateContent: async request => {
+      const parts=request.contents[0].parts;
+      assert.deepEqual(parts.filter(part=>part.inlineData).map(part=>part.inlineData.data),['canonical','live-frame']);
+      return {text:JSON.stringify(scene)};
+    }}}, 'live-frame', undefined, 'canonical');
   }
   assert.equal((await see(2)).visible, false);
   assert.equal((await see(1)).visible, true);
   assert.equal((await see(0)).visible, false);
+  assert.equal((await see(1,false)).visible, false);
 });
 
 test('the shoulder pilot keeps native exit and obstacle coordinates and marks hidden feet as estimated', async () => {

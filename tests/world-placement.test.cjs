@@ -362,3 +362,24 @@ test('the live card only shows an intent tied to this obstacle and observation',
   r.lastReaction = { at: 1400, flinch: true };
   assert.deepEqual(hauntCue(r, 1500), { label: 'The robot flinched', text: prop.name, by: undefined });
 });
+
+test('a changed actor lock defers the same haunting until a fresh footfall can aim it', async () => {
+  const {createPlacementController} = await moduleUnderTest;
+  const round = {props:[], fear:0, deadline:10000};
+  const sent = [];
+  const controller = createPlacementController(round, message => {
+    if (message.haunt) sent.push(message.haunt);
+  }, () => {});
+  controller.add('penguin','Wind-up penguin','Moss Moth',100);
+  controller.observe(scene(),1,100,110);
+  assert.equal(sent[0].observed,1);
+  controller.deferred('penguin',1,1);
+  controller.tick(120);
+  controller.observe(scene([], {visible:false}),2,130,140);
+  assert.equal(sent.length,1);
+  assert.equal(round.props[0].acked,false);
+  controller.observe(scene(),3,150,160);
+  assert.deepEqual(sent.map(s=>[s.id,s.attempt,s.observed]),[['penguin',1,1],['penguin',1,3]]);
+  controller.deferred('penguin',1,1);
+  assert.equal(round.props[0].placement,'sent');
+});

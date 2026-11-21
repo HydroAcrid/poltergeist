@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const report = import('../apps/world/painted-door/framing-report.mjs');
-const sample = (observed, bodyBox) => ({observed, scene:{visible:true, bodyBox}});
+const sample = (observed, bodyBox) => ({observed, scene:{visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right', bodyBox}});
 
 test('the captured zoom-in and retreat both fail the native framing check', async () => {
   const {assessFraming} = await report;
@@ -25,9 +25,19 @@ test('steady framing requires observations throughout the clip', async () => {
 
 test('right-shoulder composition tolerates the intended lower crop but preserves the head and route', async()=>{
   const {assessFraming}=await report;
-  const observations=[1,48,96].map(n=>({observed:n,scene:{visible:true,bodyBox:[290,55,1000,435],feetVisible:false,rightFloorVisible:true}}));
+  const observations=[1,48,96].map(n=>({observed:n,scene:{visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,435],feetVisible:false,rightFloorVisible:true}}));
   assert.equal(assessFraming(observations,120).status,'within framing at sampled times');
   observations[1].scene.bodyBox=[0,35,1000,485];
   observations[1].scene.rightFloorVisible=false;
   assert.deepEqual(assessFraming(observations,120).issues[0].faults,['clipped','route obscured']);
+});
+
+test('a matching body rectangle alone cannot certify one continuously followed actor',async()=>{
+  const {assessFraming}=await report;
+  const samples=[1,48,95].map(frame=>sample(frame,[292,54,1000,432]));
+  samples[1].scene.playerCount=2;
+  assert.deepEqual(assessFraming(samples,119).issues[0].faults,['multiple players']);
+  samples[1].scene.playerCount=1;
+  samples[1].tracking={held:true};
+  assert.equal(assessFraming(samples,119).status,'insufficient');
 });

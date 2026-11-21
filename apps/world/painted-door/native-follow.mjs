@@ -285,10 +285,22 @@ export function createNativeFollow() {
     rangeTrend = false,
     localRatio = null,
     clearLane = false,
-    reacquiring = false;
+    reacquiring = false,
+    holdReason = 'waiting for live subject';
+  function lose(reason) {
+    holdReason = reason;
+    lost = true;
+    reacquiring = true;
+    anchor.known = false;
+    anchor.vx = 0;
+    lastBox = null;
+    rangeTrend = false;
+    localRatio = null;
+    clearLane = false;
+  }
   function advance(previous, current) {
     anchor = locate(previous, current, anchor);
-    if (!anchor.known) { reacquiring = true; lost = true; lastBox = null; }
+    if (!anchor.known) lose('subject texture lost');
     current.track = { ...anchor };
     const base = history.findLast(
       (frame) =>
@@ -302,9 +314,7 @@ export function createNativeFollow() {
     const frame = sampleFrame(bytes, number),
       prev = history.at(-1);
     if (prev && number <= prev.number) return;
-    if (lastGrounding >= 0 && number - lastGrounding > 24 * 16) {
-      anchor.known = false; lost = true; reacquiring = true; lastBox = null;
-    }
+    if (lastGrounding >= 0 && number - lastGrounding > 24 * 4) lose('stale observation');
     if (prev && anchor.known) advance(prev, frame);
     history.push(frame);
     // Keep more than ER2's request timeout to align each delayed measurement
@@ -323,28 +333,35 @@ export function createNativeFollow() {
     const match = history.findIndex((f) => f.number >= number);
     const index = match < 0 ? history.length - 1 : match;
     lastGrounding = number;
-    if (!scene.visible) {
-      lost = true;
-      reacquiring = true;
-      anchor.known = false;
-      anchor.vx = 0;
-      lastBox = null;
-      rangeTrend = false;
-      localRatio = null;
+    if (history.at(-1).number-number > 24*4) { lose('stale observation'); return; }
+    if (scene.playerCount !== 1 || !scene.visible || !scene.playerMatch || scene.shoulderView !== 'rear-right') {
+      lose(scene.playerCount > 1 ? 'duplicate players' : !scene.visible || !scene.playerMatch ? 'identity unconfirmed' : 'shoulder view unconfirmed');
       return;
     }
-    // A cropped shoulder shot has no visible boots. Track the head, shoulders
-    // and backpack; an extended flashlight arm can widen the full silhouette.
     const upper=validBodyBox(scene.upperBodyBox);
     const b=upper ? scene.upperBodyBox : scene.bodyBox;
-    if(!validBodyBox(b)){
-      lost=true;reacquiring=true;anchor.known=false;lastBox=null;rangeTrend=false;localRatio=null;
-      return;
+    if (!validBodyBox(scene.bodyBox)) { lose('body unlocated'); return; }
+    const [top, left, bottom, right] = scene.bodyBox;
+    const bodyWidth = (right-left)/1000, bodyX = (right+left)/2000;
+    // The opening seed supplies the identity anchor. A small, distant lookalike
+    // cannot acquire it, including while recovering after an ambiguous sighting.
+    if (!lastBox || reacquiring) {
+      if (Math.abs(bodyX-shoulderFrame.x) > .16 || bodyWidth < .23 || bodyWidth > .56 || top > 570 || bottom < 810) {
+        lose('outside seed shoulder position');
+        return;
+      }
     }
     const h=(b[2]-b[0])/1000;
     const x=(b[1]+b[3])/2000;
     const scale=(b[3]-b[1])/1000/(upper?shoulderFrame.packWidth:shoulderFrame.width);
     const prior=lastBox?.upper===upper ? lastBox : null;
+    // Compare at the observed frame, not at the later time the vision answer arrived.
+    const aligned = history[index].track;
+    if (prior && !reacquiring && aligned?.known && (Math.abs(x-aligned.x) > .16 ||
+        scale/prior.scale < .58 || scale/prior.scale > 1.75)) {
+      lose('discontinuous subject');
+      return;
+    }
     const dt=prior?Math.max(1/24,(number-prior.number)/24):1;
     const vh=prior?clamp((scale-prior.scale)/dt,-.8,.8):0;
     const vx=prior?clamp((x-prior.x)/dt,-.6,.6):0;
@@ -357,6 +374,7 @@ export function createNativeFollow() {
     if (reacquiring && prior && Math.abs(prior.x - x) < .12 &&
         Math.abs(prior.scale - scale) < .25) reacquiring = false;
     lost = reacquiring;
+    holdReason = reacquiring ? 'confirming returning subject' : null;
     lastBox={upper,number,scale,x};
     anchor={x,y:(b[0]*.50+b[2]*.50)/1000,h,scale,top:b[0]/1000,bottom:b[2]/1000,vx,vh,known:true};
     history[index].track = { ...anchor };
@@ -372,6 +390,7 @@ export function createNativeFollow() {
       clearLane,
       grounded: lastGrounding >= 0,
       observed: lastGrounding,
+      holdReason,
     };
   }
   function correction(now, allowCamera = true) {
@@ -396,9 +415,9 @@ export function characterInstruction(command) {
     command.key
   ];
   if (command.key === "W")
-    return "One continuous trailing shot: the robot takes two small walking strides along the visible floor toward the exit. The eye travels the same two strides behind its right shoulder as the floor passes underneath. The head and orange backpack stay large on the left. Robot and viewpoint pause together.";
+    return "One continuous trailing shot: the existing foreground robot takes two small walking strides along the visible floor toward the exit. The eye travels the same two strides behind its right shoulder as the floor passes underneath. The head and orange backpack stay large on the left. Robot and viewpoint pause together.";
   if (command.key === "S")
-    return "The robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
+    return "The existing foreground robot takes one small step back along its approach and the observer glides back the same distance behind its right shoulder. Its backpack remains the same size.";
   if (command.key === "A" || command.key === "D")
     return command.reaction === "avoid"
       ? `The robot takes exactly one visible sidestep to its ${dir} around the obstruction, keeping both boots clear. It plants its foot and points its flashlight along the open route.`

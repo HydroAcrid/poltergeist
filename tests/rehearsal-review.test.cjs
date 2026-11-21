@@ -5,7 +5,7 @@ test('review rejects a paper sighting for a windup penguin, stale results and an
   const { reviewRehearsal } = await import('../scripts/review-rehearsal.mjs');
   const events = [1, 48, 95].map(observed => ({
     observed, observedAt: 1000 + observed,
-    scene: { visible: true, playerCount: 1, bodyBox: [290, 55, 1000, 435],
+    scene: { visible: true, playerCount: 1, playerMatch:true, shoulderView:'rear-right', bodyBox: [290, 55, 1000, 435],
       rightFloorVisible: true, obstacles: [{label: 'windup penguin'}] },
   }));
   const session = {episodeId:'round-a', terminal:'completed', frames:119, events};

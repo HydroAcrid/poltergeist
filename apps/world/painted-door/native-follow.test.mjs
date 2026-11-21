@@ -29,7 +29,7 @@ const image = fs.readFileSync(
 );
 function sighting(box) {
   return {
-    visible: true,
+    visible: true, playerCount:1, playerMatch:true, shoulderView:'rear-right',
     bodyBox: box,
     feet: { left: [box[2], box[1]], right: [box[2], box[3]] },
   };
@@ -80,7 +80,7 @@ test("accepts cropped boots; only a clipped head gets a brief tilt per sighting"
   const tracker = createNativeFollow();
   for (const [frame, box, expected] of [
     [1, [295, 65, 1000, 425], null],
-    [6, [15, 205, 715, 325], "arrow_up"],
+    [6, [15, 65, 1000, 425], "arrow_up"],
   ]) {
     tracker.push(image, frame);
     tracker.observe(sighting(box), frame);
@@ -95,25 +95,25 @@ test("unseen startup and lost observations stay still; stale observations cannot
   tracker.push(image, 1);
   assert.equal(tracker.permits("W"), false);
   assert.equal(tracker.correction(1000), null);
-  tracker.observe(sighting([435, 205, 820, 325]), 1);
+  tracker.observe(sighting([290, 55, 1000, 435]), 1);
   assert.equal(tracker.permits("W"), true);
   tracker.push(image, 6);
   tracker.observe({ visible: false }, 6);
-  tracker.observe(sighting([435, 205, 820, 325]), 1);
+  tracker.observe(sighting([290, 55, 1000, 435]), 1);
   assert.equal(tracker.permits("W"), false);
   assert.equal(tracker.correction(2000), null);
   tracker.push(image, 11);
-  tracker.observe(sighting([435, 205, 820, 325]), 11);
+  tracker.observe(sighting([290, 55, 1000, 435]), 11);
   assert.equal(tracker.permits("W"), false, "one sighting cannot reacquire identity");
   tracker.push(image, 16);
-  tracker.observe(sighting([435, 205, 820, 325]), 16);
+  tracker.observe(sighting([290, 55, 1000, 435]), 16);
   assert.equal(tracker.permits("W"), true);
 });
 
 test("low-confidence pixels release a held camera key and stop active robot travel before ER2 reports loss", async () => {
   const tracker = createNativeFollow();
   tracker.push(uniform(0), 1);
-  tracker.observe(sighting([435, 205, 820, 325]), 1);
+  tracker.observe(sighting([290, 55, 1000, 435]), 1);
   tracker.push(uniform(255), 6);
   const lock = tracker.status();
   assert.equal(lock.known, false);
@@ -194,15 +194,15 @@ test("bounded depth component needs both independently measured shrinkage and fr
 test('upper body remains a valid camera anchor when both boots fall below the frame',()=>{
   const tracker=createNativeFollow();
   tracker.push(image,1);
-  tracker.observe({visible:true,bodyBox:[290,55,1000,435],upperBodyBox:[290,75,840,355],feetVisible:false},1);
+  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,435],upperBodyBox:[290,75,840,355],feetVisible:false},1);
   assert.equal(tracker.permits('W'),true);
   assert.equal(tracker.status().scale,1);
   assert.equal(tracker.correction(1000),null);
   tracker.push(image,6);
-  tracker.observe({visible:true,bodyBox:[290,55,1000,540],upperBodyBox:[290,75,840,355],feetVisible:false},6);
+  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',bodyBox:[290,55,1000,540],upperBodyBox:[290,75,840,355],feetVisible:false},6);
   assert.equal(tracker.status().rangeTrend,false,'turning the flashlight alone must not change chase distance');
   tracker.push(image,11);
-  tracker.observe({visible:true,feetVisible:false},11);
+  tracker.observe({visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',feetVisible:false},11);
   assert.equal(tracker.permits('W'),false);
 });
 
@@ -227,4 +227,29 @@ test('committed forward walk can pace a centered shoulder before depth drift', (
   for (const override of [{clearLane:false},{scale:1.25},{x:.65},{lost:true},{known:false}]) {
     assert.equal(shoulderStride({...subject,...override}),null);
   }
+});
+
+test('duplicate, distant replacement and sudden identity jumps cannot restart the camera or actor', () => {
+  const tracker = createNativeFollow();
+  const at = (n, scene) => { tracker.push(image,n); tracker.observe(scene,n); return tracker.permits('W'); };
+  const opening = sighting([292,54,1000,432]);
+  const distant = sighting([413,575,640,675]);
+  assert.equal(at(1,distant),false);
+  assert.equal(at(6,opening),false);
+  assert.equal(at(11,opening),true);
+  assert.equal(at(16,{...opening,playerCount:2}),false);
+  assert.equal(tracker.status().holdReason,'duplicate players');
+  assert.equal(tracker.correction(100000),null);
+  assert.equal(at(21,opening),false);
+  assert.equal(at(26,opening),true);
+  assert.equal(at(31,distant),false);
+  assert.equal(tracker.status().holdReason,'discontinuous subject');
+  assert.equal(at(36,{...opening,playerMatch:false}),false);
+  assert.equal(at(41,{...opening,shoulderView:'other'}),false);
+  assert.equal(at(46,opening),false);
+  assert.equal(at(51,opening),true);
+  tracker.push(image,151);
+  assert.equal(tracker.permits('W'),false);
+  tracker.observe(opening,52);
+  assert.equal(tracker.permits('W'),false);
 });

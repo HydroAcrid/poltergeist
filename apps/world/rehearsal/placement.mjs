@@ -199,6 +199,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     send({ pause: true });
   }
   function trySend(job, time) {
+    if (job.deferredFrame != null && latest?.frame <= job.deferredFrame) return false;
     if (time < Math.max(job.prop.cueAt + cueLeadMs, job.retryAfter || 0) || !freshObservation(latest, time, lastMove) || time >= round.deadline)
       return false;
     const prop = job.prop,
@@ -216,6 +217,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     job.ackFrame = null;
     job.ackTime = null;
     job.previousPose = latest.scene.pose;
+    job.sentObservation = latest.frame;
     job.lastChecked = null;
     pauseForAssessment(time);
     const body = latest.scene.bodyBox;
@@ -231,6 +233,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         id: prop.id,
         text: prop.name,
         target,
+        observed: latest.frame,
         hint,
         attempt: prop.attempt,
       },
@@ -300,6 +303,17 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         p.acked = true;
         report(p, true);
       }
+    },
+    deferred(id, attempt, observed) {
+      const job = jobs.get(id);
+      if (!job || job.closed || job.prop.placement !== 'sent' ||
+          attempt !== job.prop.attempt || observed !== job.sentObservation) return;
+      // Nothing reached the provider. Re-aim this same proposal only after another observation.
+      job.deferredFrame = observed;
+      job.prop.attempt--;
+      job.prop.placement = job.prop.attempt ? 'correcting' : 'waiting';
+      if (!job.prop.attempt) job.baseline = null;
+      inspectUntil = 0;
     },
     failed(id, attempt) {
       const job = jobs.get(id);

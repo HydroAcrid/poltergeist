@@ -289,6 +289,7 @@ export async function registerStage(
               if ((m.cameraMoved || m.navigationMoved) && r.phase === 'playing') placement?.moved();
               if (m.injected && r.phase === 'playing')
                 placement?.acknowledged(m.injected, m.attempt ?? 1, m.injectedAt ?? Date.now(), m.injectedFrame);
+              if (m.injectionDeferred && r.phase === 'playing') placement?.deferred(m.injectionDeferred, m.attempt, m.observed);
               if (m.injectionFailed && r.phase === 'playing') placement?.failed(m.injectionFailed, m.attempt ?? 1);
               if (
                 m.scene &&

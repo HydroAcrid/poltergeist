@@ -43,6 +43,7 @@ async function capture() {
   }
   const autonomous = values['two-moves'] || values['chair-test'] || values.round;
   const stagePilot = values['stage-pilot'];
+  const playerReference = stagePilot ? readFileSync(new URL('../rehearsal/explorer.webp', import.meta.url)).toString('base64') : null;
   if (stagePilot && (!values.round || !process.send)) throw Error('Start the spectator round from the World broker.');
   if (values.round) {
     if (values['two-moves'] || values['chair-test']) throw new Error('Choose a single round mode.');
@@ -71,6 +72,7 @@ async function capture() {
   if (values.round) setup.world_prompt.text += ' Keep the same small cautious robot, orange twin-strap backpack and lit brass-rim flashlight in its RIGHT hand. Preserve the dark room and warm beam from the seed. It walks toward the signed exit with both feet on the floor.';
   if (stagePilot) setup.world_prompt.text = [
     hallwayLighting,
+    "The reference image already contains the entire cast: one explorer at lower left. Animate that existing foreground figure for the entire take. The aisle ahead contains only the room and the invited obstacles. Preserve its helmet, orange backpack, flashlight and scale throughout.",
     "One continuous third-person shoulder shot. The camera is attached to a short steady boom behind and just RIGHT of the same little robot’s right shoulder, looking forward down the room, within fifteen degrees of its heading. Our eye is just above the head, tilted slightly down onto the next patch of floor. As the robot moves the observer travels with it at the same speed, fixed distance and focal length.",
     "Keep the near back of its head, sage right shoulder, orange twin-strap backpack and brass flashlight prominent in the LEFT third. The visible silhouette occupies 35 to 40 percent of screen width. Its head starts around 29 percent down. Thighs meet the bottom edge with both boots below the picture. Keep this foreground composition as the hall moves past. The open route and obstacles are visible just beyond the right shoulder across the middle and right.",
     "The robot lifts its flashlight to look down the actual photographed aisle and pauses for its next instruction. Long connected bays, familiar lamps and flooring continue toward a distant illuminated exit near center-right. Keep the next few unobstructed steps on-screen; the robot can halt, turn, or move around a visible encounter."
@@ -109,7 +111,7 @@ async function capture() {
   let gameClock, looking=false, nextLook=0;
   const follow = stagePilot ? createNativeFollow() : null;
   const moveWindow = createMoveWindow(log.fps);
-  let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0;
+  let cameraPress=null, lookRelease, steadyUntil=0, actorMoving=false, placedHoldUntil=0, recoveryRequested=false;
   async function releaseCamera() {
     const press=cameraPress;
     if(!press) return;
@@ -141,7 +143,7 @@ async function capture() {
   async function stopActor(force=false) {
     if(!actorMoving && !force) return;
     actorMoving=false;
-    await session.send("The robot stops its current step now, plants both boots, and waits in place. Its flashlight stays lit.");
+    await session.send("Hold the current view. The existing foreground figure finishes its step and stays in place. Preserve the same lit flashlight and room.");
     record('Paused robot travel');
   }
   if (autonomous) watchdog = setTimeout(stop, stagePilot ? Number(process.env.PG_REHEARSAL_LIVE_MS || 45000) + 35000 : values.round ? 60000 : 45000);
@@ -170,11 +172,17 @@ async function capture() {
       try {
         if (stagePilot && command?.haunt) {
           const haunt = command.haunt;
+          const lock = follow.status();
+          if (!follow.permits('W') || haunt.observed !== lock.observed) {
+            publish({injectionDeferred:haunt.id, attempt:haunt.attempt, observed:haunt.observed});
+            record('Held placement for a current single-player view',{id:haunt.id,attempt:haunt.attempt,observed:haunt.observed,holdReason:lock.holdReason});
+            return;
+          }
           const [y, x] = haunt.target || [];
           const location = Number.isFinite(y) && Number.isFinite(x)
             ? `The robot's planned next footfall is at ${Math.round(x/10)} percent across and ${Math.round(y/10)} percent down this view.`
             : "Place it across the walking line joining the robot’s boots and the next stretch of walkable floor.";
-          const instruction = [haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
+          const instruction = ["Only the audience effect changes. Keep the one existing foreground explorer and camera fixed.", haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
             /chair/i.test(haunt.text) ? "One bright yellow tipped-over chair spans that path." : "",
             "Keep the effect, its contact with the floor, and the approaching robot in view."].filter(Boolean).join(" ");
           try {
@@ -196,7 +204,7 @@ async function capture() {
           record(command.settleCamera ? 'Held the camera for placement' : 'Paused at the encounter');
         } else if(stagePilot && !command?.key && command?.reaction) {
           const instruction=reactionInstruction(command);
-          if(!instruction || !follow.permits('W')) return;
+          if(!instruction || !follow.permits('W') || (command.observed != null && command.observed !== follow.status().observed)) return;
           moveWindow.settle(log.frames, Date.now(), 1);
           await releaseCamera();
           await stopActor();
@@ -293,15 +301,25 @@ async function capture() {
         if(stagePilot && !ending && !looking && Date.now()>=nextLook && log.frames>=1) {
           looking=true;
           const observed=log.frames, observedAt=Date.now();
-          inspectRoom(ai,delta.data,abort.signal).then(async scene=>{
+          inspectRoom(ai,delta.data,abort.signal,playerReference).then(async scene=>{
             if(!ending){
               follow.observe(scene,observed);
               const lock=follow.status();
               if(unsafeForwardPress(lock)) await releaseCamera();
               const held = await holdIfUntracked(lock,releaseCamera,stopActor);
-              const currentScene = !held && lock.observed === observed ? scene : { visible:false, obstacles:[] };
+              const current = lock.observed === observed;
+              const currentScene = !held && current ? scene : { visible:false, playerCount:scene.playerCount, obstacles:[] };
+              if (!held && current) recoveryRequested = false;
+              if (held && current && !recoveryRequested && (scene.playerCount > 1 || scene.visible && scene.playerMatch && scene.shoulderView === 'other')) {
+                recoveryRequested = true;
+                const instruction = scene.playerCount > 1
+                  ? "Restore the original single-subject shot. Keep the existing closest orange backpack on the left, continuously in place. Clear the duplicate explorer farther down the hallway; the floor ahead belongs to the room and its obstacles."
+                  : "Ease the observer back behind the right shoulder of the existing foreground explorer. Keep its backpack in the left third and the aisle visible past the right shoulder. Hold the figure and obstacles in place.";
+                await session.send(instruction);
+                record('Requested single-subject recovery',{observed,holdReason:lock.holdReason});
+              }
               publish({scene:currentScene,observed,observedAt});
-              record('Gemini observed live frame',{observed,observedAt,scene});
+              record('Gemini observed live frame',{observed,observedAt,scene,tracking:{held:held || !current,reason:lock.holdReason}});
             }
           }).catch(error=>{
             if (!ending) {
