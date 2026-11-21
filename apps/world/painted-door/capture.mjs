@@ -315,8 +315,9 @@ async function capture() {
           const location = Number.isFinite(y) && Number.isFinite(x)
             ? `The robot's planned next footfall is at ${Math.round(x/10)} percent across and ${Math.round(y/10)} percent down this view.`
             : "Place it across the walking line joining the robot’s boots and the next stretch of walkable floor.";
-          const instruction = ["Both boots of the one existing explorer stay planted on the same floorboards. It watches with its flashlight while the effect arrives. The observer stays in place at the same angle and distance.", haunt.text, location, haunt.hint || "The effect crosses the lane one or two strides in front of the boots. The robot must stop or go around it.",
-            "Keep the effect, its contact with the aisle, and the stationary explorer in the same shot. Wait here for the next player instruction."].filter(Boolean).join(" ");
+          const instruction = [haunt.text, location, haunt.hint,
+            "The selected effect occupies that part of the aisle throughout the explorer’s assessment and next move. A moving effect keeps crossing or circling there; a solid obstacle comes to rest there. Let it clear only after the explorer responds.",
+            "Continue this same shot. Both boots stay parked, with the flashlight aimed at the effect. Keep the effect and its relation to the explorer visible together. Hold the observer still and wait for the next player instruction."].filter(Boolean).join(" ");
           try {
             // A placement leaves the actor and camera still. Its acknowledgement
             // watermark and the newly visible obstacle qualify the first response

@@ -12,8 +12,12 @@ export function guardInstruction(pose) {
 const recovery = continuity+' Let the existing explorer straighten its knees, lower its left forearm, bring the right-hand flashlight back to working height, and stand balanced on the same two floorboards. Wait there.';
 
 export function guardMatchesView(scene, obstacle) {
-  if (!guardInstruction(scene.move?.guard) || !scene.visible || scene.playerCount!==1 || !scene.playerMatch ||
-      scene.shoulderView!=='rear-right' || !scene.feetVisible || scene.pose!=='upright' ||
+  // A startled expression can precede physical recoil. Only an explicitly
+  // unguarded player can receive a new direction, and later frames verify it.
+  const unguarded = scene.guardPose === 'none' &&
+    (scene.pose === 'upright' || (scene.pose === 'startled' && scene.move?.guard === 'recoil'));
+  if (!unguarded || !guardInstruction(scene.move?.guard) || !scene.visible || scene.playerCount!==1 || !scene.playerMatch ||
+      scene.shoulderView!=='rear-right' || !scene.feetVisible ||
       scene.threat!=='startling' || scene.move.intent!=='hold' || scene.move.avoiding!==true) return false;
   if (scene.move.guard==='recoil') return true;
   const b=obstacle?.box, upper=scene.upperBodyBox;

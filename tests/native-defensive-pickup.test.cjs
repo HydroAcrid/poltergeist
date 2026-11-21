@@ -91,3 +91,33 @@ test('buffered admission for a duck requires native evidence and independent pix
   row.guardReview.checkedFrame=50;
   assert.equal(reviewSegment(clip,[pick],0,false).ok,false);
 });
+
+test('an alerted but physically unguarded explorer can perform its chosen recoil, with no credit after the obstacle has left',async()=>{
+  const {guardMatchesView,createGuardPickup}=await native;
+  const {createPlacementController}=await placement;
+  // Actual QA native observation 321, after placement was delivered at 228.
+  const detected={visible:true,playerCount:1,playerMatch:true,shoulderView:'rear-right',feetVisible:true,
+    feet:{left:[708,287],right:[711,342]},ahead:[549,497],bodyBox:[223,234,737,420],
+    pose:'startled',guardPose:'none',threat:'startling',move:{intent:'hold',guard:'recoil',avoiding:true},
+    obstacles:[{label:'swarm of bats',box:[53,298,473,869],relation:'crossing',solid:false}]};
+  assert.equal(guardMatchesView(detected,detected.obstacles[0]),true);
+  assert.equal(guardMatchesView({...detected,guardPose:'recoil'},detected.obstacles[0]),false);
+  assert.equal(guardMatchesView({...detected,pose:'stumbling'},detected.obstacles[0]),false);
+  const r={props:[],fear:0,deadline:60000};
+  const q=createPlacementController(r,()=>{},()=>{});
+  q.add('swarm','A swarm of bats sweeps across the flashlight beam','Ghost',1000);
+  q.observe({...detected,obstacles:[],pose:'upright'},156,1100,1300);
+  q.acknowledged('swarm',1,1400,228);
+  q.observe(detected,321,5000,7700);
+  const direction=q.characterCommand(hold,7700);
+  assert.deepEqual(direction,{reaction:'guard',guard:'recoil',encounter:'swarm',observed:321});
+  assert.equal(r.fear,0);
+  const pickup=createGuardPickup(24);
+  assert.ok(pickup.reserve(direction,{observed:321,scene:detected,image:'native reference'}));
+  pickup.applied(383,7800);
+  assert.equal(pickup.observe(detected,400),null,'same unguarded pose is never proof');
+  const late={...detected,obstacles:[],guardPose:'recoil'};
+  const review=pickup.observe(late,420);
+  q.observe(late,420,9200,11000,false,review);
+  assert.equal(r.fear,0);assert.equal(r.props[0].reactedAt,undefined);
+});

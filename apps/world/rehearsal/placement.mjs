@@ -15,7 +15,7 @@ const effects = [
   [
     /\b(?:bats?|bat swarm)\b/i,
     /\bbats?\b|winged swarm/i,
-    'A dense flock of distinct dark bats pours out of the doorway ahead, wheels through the flashlight at chest height, and passes across the explorer’s route. Let the wing silhouettes read against the lit far wall, leave the robot visible and keep the hallway intact.',
+    'One flock emerges from the doorway ahead and circles at chest height over the next footstep. Its moving wings repeatedly cross the flashlight in that same spot while the explorer decides how to respond. Let the wing silhouettes read against the lit far wall, leave the robot visible and keep the hallway intact.',
   ],
   [
     /\b(?:hurricanes?|tornado(?:es)?|cyclones?|twisters?)\b/i,
@@ -48,7 +48,8 @@ const effects = [
   [/balloon/i, /balloon/i],
   [/bucket|pail/i, /bucket|pail|mopping cart/i,
     'The rolling bucket cuts across the light on the next footstep and stops just ahead of the robot. Its rim comes only to the robot’s knees. Keep it beside the robot in depth as it crosses the aisle.'],
-  [/flicker|blackout|lights out/i, /flicker|blackout|shadow|dark patch/i],
+  [/flicker|blackout|lights out/i, /flicker|blackout|shadow|dark patch/i,
+    'One existing overhead light above the next footstep falters and stays dim. A distinct patch of darkness falls across the route ahead. Keep the other practical lights and the explorer’s flashlight on so the change stays readable.'],
 ];
 const ignore = new Set(
   'the this that from into across place drop throw create large small giant tiny bright robot hallway path aisle exit floor beside front behind walking goes appears suddenly rolls rolling slide scare block blocks some with toward under its next'.split(
@@ -372,7 +373,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
     job.lastChecked = null;
     const body = latest.scene.bodyBox;
     const bodyHint = box(body)
-      ? `In this shot the robot is ${Math.round((body[2] - body[0]) / 10)} percent of the picture height. Stage this beside its feet at that same depth and perspective scale. Keep the foreground between the camera and robot open.`
+      ? `In this shot the robot is ${Math.round((body[2] - body[0]) / 10)} percent of the picture height. Use the next footfall to anchor perspective and scale. Keep the foreground between the camera and robot open.`
       : 'Place it at the same distance from the viewer as the robot’s next footstep.';
     const hint = [
       retry ? 'Relocate the existing haunting into the walking line.' : '',
@@ -552,7 +553,7 @@ export function createPlacementController(round, send, report, { cueLeadMs = 0 }
         const p = job.prop;
         const result = inspectPlacement(scene, job.effect, job.baseline);
         const directed=job.guard;
-        if (guardReview && directed && !p.reactedAt && guardReview.encounter===p.id &&
+        if (guardReview && directed && result?.inPath && result.soleThreat && !p.reactedAt && guardReview.encounter===p.id &&
             guardReview.guard===directed.guard && guardReview.basis===directed.basis &&
             Number.isInteger(guardReview.appliedFrame) && guardReview.appliedFrame>=directed.basis &&
             guardReview.checkedFrame===frame && frame>guardReview.appliedFrame &&
