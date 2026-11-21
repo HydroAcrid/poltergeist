@@ -32,4 +32,8 @@ The live host uses its private root `.env` with `GEMINI_API_KEY`. If the capture
 
 Open **Host**, capture or choose the hallway photo, and select **Prepare photo for Genie**. This sends the selected photo to Gemini to build the angled room. **Start Genie round** opens one paid world interaction. On the projector, the venue photo gives way to an opaque ghost loading screen. The audience can submit ideas while the world opens. The screen lifts when decoded frames show motion in the robot’s region. The projector then shows the complete native stream. The reduced-motion setting keeps the loading artwork still. A new run uses the same robot reference. Gemini Robotics ER 2 observes the floor and obstacles from pixels, and Brain chooses the next input. A haunting can pause the robot or request a flinch. Fear increases only after World observes the reaction.
 
+The projector shows the chosen haunting in a small **Up next** card before World sends it. **Taking effect** means the request went to Genie. **In the robot’s path** requires a sighting in its walking lane. A scare requires an observed change of pose. The card stays clear of the score and sits on the opposite side from the robot when its latest position is available.
+
+Live World captures save a framing report in the run’s `session.json`. It measures robot size, horizontal position and clipping from observed frames. Check the uncut native recording for forward travel alongside the robot, especially during a pause or sidestep. The framing report measures composition and can flag drift even when the robot is still visible.
+
 The host serves on loopback. Any event deployment or audience gateway should expose Courtney’s audience route separately from the host controls.
